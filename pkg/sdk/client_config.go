@@ -243,6 +243,15 @@ type ClientConfig struct {
 	PlanStore      PlanStore      `json:"-"`
 	LongTermMemory LongTermMemory `json:"-"`
 
+	// ExtractMemories makes the client read each conversation when its session closes and store what is worth
+	// remembering in LongTermMemory (preferences and corrections, procedures that worked, pitfalls). It does nothing
+	// without LongTermMemory. Off by default: it stores facts from conversations without the user asking, and costs
+	// one model call per session of three user turns or more.
+	ExtractMemories bool `json:"extract_memories,omitempty"`
+
+	// MemoryExtractionModel is the model that reads the conversation for ExtractMemories. Zero uses Model.
+	MemoryExtractionModel ModelIdentifier `json:"memory_extraction_model,omitempty"`
+
 	// UserID identifies the caller for PlanStore.CreateOrUpdate (submit_plan)
 	// - a host embedding this SDK for more than one user must set this per
 	// request/session so plan documents get persisted against the actual

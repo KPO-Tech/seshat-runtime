@@ -130,6 +130,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 
 	// Engine config
 	queryConfig := buildEngineConfig(config)
+	queryConfig.MemoryExtractor = newMemoryExtractor(config, apiClient)
 	queryConfig.ManagedInstructions = managedInstructionsText(config.ManagedPolicy)
 	queryConfig.BrowserManager = browserManager
 

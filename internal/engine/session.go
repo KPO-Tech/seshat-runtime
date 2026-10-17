@@ -35,6 +35,9 @@ type Session struct {
 	systemPromptTemplateOverride *string
 	workingDirectoryOverride     *string
 
+	// userID is the authenticated user of the latest turn, kept for what happens when the session closes.
+	userID string
+
 	// mu guards cancelFn and phase.
 	mu sync.Mutex
 	// cancelFn cancels the context passed to the current Loop.Run.
@@ -204,6 +207,7 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 		return nil, err
 	}
 	defer s.endTurn()
+	s.rememberUserID(ctx)
 	if s.engine != nil && s.engine.hookExecutor != nil {
 		defer s.engine.hookExecutor.ExecuteAsync(context.Background(), types.HookEventTurnEnd, map[string]any{
 			"session_id": s.state.SessionID,
@@ -477,6 +481,7 @@ func (s *Session) Close() error {
 	s.state.MarkClosed()
 	contextusage.Forget(s.state.SessionID)
 	messages := s.state.CloneMessages()
+	s.extractMemories(messages)
 
 	if s.engine.memoryService != nil {
 		s.rememberSessionSummary()
