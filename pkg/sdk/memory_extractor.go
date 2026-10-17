@@ -17,5 +17,9 @@ func newMemoryExtractor(config *ClientConfig, apiClient *providers.Client) engin
 	if cfg.Model.Model == "" {
 		cfg.Model = config.Model
 	}
-	return longterm.NewExtractor(config.LongTermMemory, apiClient, cfg)
+	extractor := longterm.NewExtractor(config.LongTermMemory, apiClient, cfg)
+	if store, ok := config.LongTermMemory.(longterm.Consolidatable); ok && config.ConsolidateMemories {
+		extractor.SetConsolidator(longterm.NewConsolidator(store, apiClient, longterm.ConsolidatorConfig{Model: cfg.Model}))
+	}
+	return extractor
 }
