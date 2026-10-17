@@ -35,6 +35,7 @@ import (
 	twitterTool "github.com/KPO-Tech/seshat-runtime/internal/tools/social/twitter"
 	askUserQuestionTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/ask_user"
 	configTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/config"
+	contextUsageTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/context_usage"
 	fimtool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/fim"
 	goalTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/goal"
 	lspTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/lsp"
@@ -186,6 +187,8 @@ func RegisterBuiltinToolsWithConfig(reg *tool.Registry, config *Config) error {
 		goalTool.NewCreateGoalTool(),
 		goalTool.NewGetGoalTool(),
 		goalTool.NewUpdateGoalTool(),
+		// Context window (the loop records the size of each request; the tool only reads it).
+		contextUsageTool.NewTool(),
 		// Agent control plane (Phase 5) — wait/list/send/close use the default async manager.
 		// spawn_agent is registered in sdk/client.go (needs the live engine instance).
 		agentsTool.NewWaitAgentTool(),

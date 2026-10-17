@@ -98,6 +98,8 @@ type ClientConfig struct {
 
     // ── Context management ────────────────────────────────────────────────
     AutoCompact             bool // compact transcript when context window fills (default true)
+    CompactThreshold        float64 // share of the window that triggers compaction (default 0.85)
+    CompactTarget           float64 // share the recent messages kept verbatim may take afterwards (default 0.5, below the threshold)
     TurnTokenBudget         int  // if set, pause when budget is exhausted per turn
     BudgetContinuationLimit int  // max budget-continuation cycles (0 = unlimited)
     ContinuationNudgeLimit  int  // max text nudges before giving up (default 3)

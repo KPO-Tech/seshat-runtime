@@ -7,6 +7,7 @@ import (
 
 	"github.com/KPO-Tech/seshat-runtime/internal/modes"
 	"github.com/KPO-Tech/seshat-runtime/internal/prompt"
+	compact "github.com/KPO-Tech/seshat-runtime/internal/runtime/memory"
 	contract "github.com/KPO-Tech/seshat-runtime/internal/tools/contract"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
@@ -536,6 +537,10 @@ type MutableState struct {
 
 	// Usage is token usage information
 	Usage *types.TokenUsage
+
+	// UsageAnchor is the size of the conversation as the provider last counted it (see compact.UsageAnchor). Reset by
+	// compaction, which rewrites the messages it described.
+	UsageAnchor *compact.UsageAnchor
 
 	// StopReason is why the loop stopped
 	StopReason string

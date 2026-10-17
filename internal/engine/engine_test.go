@@ -2788,7 +2788,7 @@ func (f *fakeCompactionStrategy) AutoCompact(
 
 // CheckBlockingLimit always reports the request fits - these tests exercise
 // AutoCompact's own behavior, not the M1 blocking-limit guard.
-func (f *fakeCompactionStrategy) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier) error {
+func (f *fakeCompactionStrategy) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier, _ *compact.TrackingState) error {
 	return nil
 }
 
@@ -2900,7 +2900,7 @@ func (f *fakeFailingCompactionStrategy) AutoCompact(
 
 // CheckBlockingLimit always reports the request fits - these tests exercise
 // the circuit breaker, not the M1 blocking-limit guard.
-func (f *fakeFailingCompactionStrategy) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier) error {
+func (f *fakeFailingCompactionStrategy) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier, _ *compact.TrackingState) error {
 	return nil
 }
 
@@ -2990,7 +2990,7 @@ func (c *countingCompactionStrategy) AutoCompact(
 
 // CheckBlockingLimit always reports the request fits - these tests exercise
 // pre_compact/post_compact hooks, not the M1 blocking-limit guard.
-func (c *countingCompactionStrategy) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier) error {
+func (c *countingCompactionStrategy) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier, _ *compact.TrackingState) error {
 	return nil
 }
 
@@ -3224,7 +3224,7 @@ func (blockingLimitExceededCompactor) AutoCompact(
 	return compact.CompactionResult{Messages: messages, DidCompact: false}, nil
 }
 
-func (blockingLimitExceededCompactor) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier) error {
+func (blockingLimitExceededCompactor) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier, _ *compact.TrackingState) error {
 	return types.NewError(types.ErrCodeCompactFull, "request too big even after compaction")
 }
 

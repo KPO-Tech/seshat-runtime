@@ -82,6 +82,7 @@ When a session starts with MCP servers configured:
 2. The server's available tools are fetched and merged with Seshat's built-in tools.
 3. The agent sees all tools as a flat list and can call any of them.
 4. Tool calls are routed to the right server transparently.
+   A tool whose definition (name, description and input schema) is over 8,000 bytes is left out, and so are the tools of a server past 64,000 bytes in total; both are logged. Set `max_tool_spec_bytes` or `max_server_spec_bytes` on the server to change a cap (a negative value removes it).
 5. When the session ends, stdio subprocesses are terminated cleanly.
 
 ---

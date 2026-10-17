@@ -23,7 +23,7 @@ func TestCheckBlockingLimit_ReturnsTypedErrorWhenOverLimit(t *testing.T) {
 	model := types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "claude-3-5-sonnet-20241022"}
 	messages := []types.Message{types.UserMessage("m1", "this message alone is already more than ten tokens long")}
 
-	err := engine.CheckBlockingLimit("", messages, model)
+	err := engine.CheckBlockingLimit("", messages, model, nil)
 	if err == nil {
 		t.Fatal("expected a blocking-limit error")
 	}
@@ -41,7 +41,7 @@ func TestCheckBlockingLimit_NilWhenWithinLimit(t *testing.T) {
 	model := types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "claude-3-5-sonnet-20241022"}
 	messages := []types.Message{types.UserMessage("m1", "hi")}
 
-	if err := engine.CheckBlockingLimit("", messages, model); err != nil {
+	if err := engine.CheckBlockingLimit("", messages, model, nil); err != nil {
 		t.Fatalf("expected no error for a small request, got %v", err)
 	}
 }

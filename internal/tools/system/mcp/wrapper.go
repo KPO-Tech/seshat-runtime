@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -13,6 +14,13 @@ import (
 
 const ListMcpResourcesToolName = "mcp_list_resources"
 const ReadMcpResourceToolName = "mcp_read_resource"
+
+const (
+	// DefaultMaxToolSpecBytes is the most one MCP tool definition may take (name, description and input schema).
+	DefaultMaxToolSpecBytes = 8_000
+	// DefaultMaxServerSpecBytes is the most the tool definitions of one MCP server may take together.
+	DefaultMaxServerSpecBytes = 64_000
+)
 
 type Wrapper struct {
 	serverName string
@@ -158,16 +166,50 @@ func (w *Wrapper) WrapTool(mcpTool Tool) (tool.Tool, error) {
 	return builtTool, nil
 }
 
+// WrapTools wraps the tools of one server, within the server's size caps (see ServerConfig.MaxToolSpecBytes). A tool
+// whose definition is over its cap, or that would take the server past its total, is left out and logged: every
+// definition costs context on every request, and one chatty server must not fill the window.
 func (w *Wrapper) WrapTools(mcpTools []Tool) ([]tool.Tool, error) {
+	perTool := resolveSpecCap(w.config.MaxToolSpecBytes, DefaultMaxToolSpecBytes)
+	perServer := resolveSpecCap(w.config.MaxServerSpecBytes, DefaultMaxServerSpecBytes)
 	wrapped := make([]tool.Tool, 0, len(mcpTools))
+	total := 0
 	for _, mcpTool := range mcpTools {
+		size := toolSpecBytes(mcpTool)
+		if perTool > 0 && size > perTool {
+			log.Printf("[mcp] server %q: tool %q left out, its definition is %d bytes (cap %d)", w.serverName, mcpTool.Name, size, perTool)
+			continue
+		}
+		if perServer > 0 && total+size > perServer {
+			log.Printf("[mcp] server %q: tool %q left out, the server is over its %d byte total", w.serverName, mcpTool.Name, perServer)
+			continue
+		}
 		wrappedTool, err := w.WrapTool(mcpTool)
 		if err != nil {
 			return nil, fmt.Errorf("failed to wrap tool '%s': %w", mcpTool.Name, err)
 		}
+		total += size
 		wrapped = append(wrapped, wrappedTool)
 	}
 	return wrapped, nil
+}
+
+// toolSpecBytes is the size of what the model is sent for a tool: its name, description and input schema.
+func toolSpecBytes(t Tool) int {
+	raw, _ := json.Marshal(t.InputSchema)
+	return len(t.Name) + len(t.Description) + len(raw)
+}
+
+// resolveSpecCap maps a configured cap to a limit: 0 means the default, a negative value means no limit.
+func resolveSpecCap(configured, def int) int {
+	switch {
+	case configured < 0:
+		return 0
+	case configured == 0:
+		return def
+	default:
+		return configured
+	}
 }
 
 func (w *Wrapper) formatMCPResult(result *ToolCallResult) (string, error) {

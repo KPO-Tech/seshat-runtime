@@ -105,6 +105,15 @@ type ClientConfig struct {
 	// works on any provider without needing an Anthropic key.
 	CompactSummaryModel ModelIdentifier `json:"compact_summary_model,omitempty"`
 
+	// CompactThreshold is the share of the context window at which the conversation is compacted automatically
+	// (for example 0.85). Zero uses the default. It must be below 1.
+	CompactThreshold float64 `json:"compact_threshold,omitempty"`
+
+	// CompactTarget is the share of the window the recent messages kept as they are may take after a compaction
+	// (for example 0.5): lower keeps less verbatim and leaves more room before the next one. Zero uses the default.
+	// It must be below CompactThreshold.
+	CompactTarget float64 `json:"compact_target,omitempty"`
+
 	// TrustProjectInstructions gates SESHAT.md/AGENTS.md/.seshat/instructions.md
 	// found in WorkingDir behind project trust before they are injected into
 	// the system prompt (see docs/project-trust.md). It is called with the
@@ -233,6 +242,15 @@ type ClientConfig struct {
 	RAGService     *RAGService    `json:"-"`
 	PlanStore      PlanStore      `json:"-"`
 	LongTermMemory LongTermMemory `json:"-"`
+
+	// ExtractMemories makes the client read each conversation when its session closes and store what is worth
+	// remembering in LongTermMemory (preferences and corrections, procedures that worked, pitfalls). It does nothing
+	// without LongTermMemory. Off by default: it stores facts from conversations without the user asking, and costs
+	// one model call per session of three user turns or more.
+	ExtractMemories bool `json:"extract_memories,omitempty"`
+
+	// MemoryExtractionModel is the model that reads the conversation for ExtractMemories. Zero uses Model.
+	MemoryExtractionModel ModelIdentifier `json:"memory_extraction_model,omitempty"`
 
 	// UserID identifies the caller for PlanStore.CreateOrUpdate (submit_plan)
 	// - a host embedding this SDK for more than one user must set this per
