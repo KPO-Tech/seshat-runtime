@@ -73,6 +73,7 @@ type (
 	StageRuntimeEvent         = types.StageRuntimeEvent
 	ProviderRetryRuntimeEvent = types.ProviderRetryRuntimeEvent
 	CompactionRuntimeEvent    = types.CompactionRuntimeEvent
+	ContextUsageRuntimeEvent  = types.ContextUsageRuntimeEvent
 
 	// Lifecycle hooks
 	HookEvent        = types.HookEvent
@@ -213,6 +214,8 @@ const (
 	RuntimeEventTypeStage                = types.RuntimeEventTypeStage
 	RuntimeEventTypeProviderRetry        = types.RuntimeEventTypeProviderRetry
 	RuntimeEventTypeCompaction           = types.RuntimeEventTypeCompaction
+	RuntimeEventTypeContextUsage         = types.RuntimeEventTypeContextUsage
+	RuntimeEventTypeCompacting           = types.RuntimeEventTypeCompacting
 
 	// HookEvent constants — lifecycle events emitted throughout the engine.
 	HookEventSessionStart       = types.HookEventSessionStart

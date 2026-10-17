@@ -14,6 +14,8 @@ func EnterpriseAgentToolNames() []string {
 	names = append(names,
 		// Git worktrees.
 		"enter_worktree", "exit_worktree",
+		// How much of the context window is left.
+		"get_context_remaining",
 	)
 	return append(names, BrowserCoreToolNames()...)
 }

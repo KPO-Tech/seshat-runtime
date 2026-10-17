@@ -275,7 +275,7 @@ func TestShouldCompact_BelowThreshold(t *testing.T) {
 		Model:    "claude-3-5-haiku-20241022",
 	}
 	short := makeTextMsg("m0", types.RoleUser, "hi")
-	if e.ShouldCompact("", []types.Message{short}, model) {
+	if e.ShouldCompact("", []types.Message{short}, model, nil) {
 		t.Error("expected ShouldCompact=false for tiny content")
 	}
 }
@@ -291,7 +291,7 @@ func TestShouldCompact_AboveThreshold(t *testing.T) {
 	// Rough char-to-token ratio is 4:1; pad 20% to ensure we cross the threshold.
 	large := strings.Repeat("a", threshold*4+threshold)
 	msg := makeTextMsg("m0", types.RoleUser, large)
-	if !e.ShouldCompact("", []types.Message{msg}, model) {
+	if !e.ShouldCompact("", []types.Message{msg}, model, nil) {
 		t.Error("expected ShouldCompact=true for content above threshold")
 	}
 }

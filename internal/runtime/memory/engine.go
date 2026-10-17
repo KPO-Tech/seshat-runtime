@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -94,8 +95,8 @@ func (e *Engine) BlockingLimitTokens(model types.ModelIdentifier) int {
 }
 
 // CheckBlockingLimit implements CompactionStrategy.CheckBlockingLimit.
-func (e *Engine) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier) error {
-	used := e.CalculateUsage(systemPrompt, messages)
+func (e *Engine) CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier, tracking *TrackingState) error {
+	used := e.UsedTokens(systemPrompt, messages, tracking)
 	limit := e.BlockingLimitTokens(model)
 	if used > limit {
 		return types.NewError(types.ErrCodeCompactFull, fmt.Sprintf(
@@ -112,14 +113,42 @@ func (e *Engine) TargetTokens(model types.ModelIdentifier) int {
 	return int(float64(effective) * e.config.CompactTargetPercentage)
 }
 
-// CalculateUsage calculates total token usage for the current request.
+// CalculateUsage estimates the tokens of a system prompt and messages. It ignores the tool definitions and anything the
+// provider reported; UsedTokens is the figure to decide on.
 func (e *Engine) CalculateUsage(systemPrompt string, messages []types.Message) int {
 	return e.contextManager.EstimateRequestTokens(systemPrompt, messages)
 }
 
-// ShouldCompact returns true if compaction should be attempted.
-func (e *Engine) ShouldCompact(systemPrompt string, messages []types.Message, model types.ModelIdentifier) bool {
+// UsedTokens is the size of the request about to be sent. With a provider-reported anchor it is that figure plus an
+// estimate of the messages added since; without one it is the estimate plus the tool definitions.
+func (e *Engine) UsedTokens(systemPrompt string, messages []types.Message, tracking *TrackingState) int {
+	if tracking != nil && tracking.Anchor != nil && tracking.Anchor.Tokens > 0 &&
+		tracking.Anchor.MessageCount <= len(messages) {
+		return tracking.Anchor.Tokens + e.contextManager.CalculateMessagesTokens(messages[tracking.Anchor.MessageCount:])
+	}
 	used := e.CalculateUsage(systemPrompt, messages)
+	if tracking != nil {
+		used += tracking.ExtraTokens
+	}
+	return used
+}
+
+// Budget reports the window of a model and the two thresholds that matter to a host showing a context gauge. A nil
+// engine (a host that wires none) reports a zero budget.
+func (e *Engine) Budget(model types.ModelIdentifier) ContextBudget {
+	if e == nil {
+		return ContextBudget{}
+	}
+	return ContextBudget{
+		WindowTokens:        types.GetContextWindow(model).MaxTokens,
+		AutoCompactAtTokens: e.AutoCompactThresholdTokens(model),
+		BlockingLimitTokens: e.BlockingLimitTokens(model),
+	}
+}
+
+// ShouldCompact returns true if compaction should be attempted.
+func (e *Engine) ShouldCompact(systemPrompt string, messages []types.Message, model types.ModelIdentifier, tracking *TrackingState) bool {
+	used := e.UsedTokens(systemPrompt, messages, tracking)
 	return used >= e.AutoCompactThresholdTokens(model)
 }
 
@@ -131,12 +160,18 @@ func (e *Engine) Compact(
 	model types.ModelIdentifier,
 	sessionID types.SessionID,
 	turnID types.TurnID,
+	tracking *TrackingState,
 ) (CompactionResult, error) {
-	preCompactTokens := e.CalculateUsage(systemPrompt, messages)
+	preCompactTokens := e.UsedTokens(systemPrompt, messages, tracking)
 	targetTokens := e.TargetTokens(model)
+	// What replaces the messages is not covered by the provider's figure, so it is measured by estimate.
+	rewritten := &TrackingState{}
+	if tracking != nil {
+		rewritten.ExtraTokens = tracking.ExtraTokens
+	}
 
 	microCompacted := e.microCompact(messages)
-	postMicroTokens := e.CalculateUsage(systemPrompt, microCompacted)
+	postMicroTokens := e.UsedTokens(systemPrompt, microCompacted, rewritten)
 	if postMicroTokens <= targetTokens {
 		return CompactionResult{
 			Messages:            microCompacted,
@@ -149,13 +184,19 @@ func (e *Engine) Compact(
 		}, nil
 	}
 
-	summary, err := e.generateSummary(ctx, microCompacted, model, sessionID, turnID)
+	// Only what is dropped needs a summary: the tail is kept as it is.
+	preservedStart := e.findPreservedStart(microCompacted, targetTokens)
+	toSummarize := microCompacted[:preservedStart]
+	if preservedStart == 0 {
+		toSummarize = microCompacted
+	}
+	summary, err := e.generateSummary(ctx, toSummarize, model, sessionID, turnID)
 	if err != nil {
 		return CompactionResult{}, fmt.Errorf("failed to generate summary: %w", err)
 	}
 
-	compactedMessages := e.buildPostCompactMessages(microCompacted, summary, targetTokens)
-	postCompactTokens := e.CalculateUsage(systemPrompt, compactedMessages)
+	compactedMessages := e.assembleCompacted(microCompacted, preservedStart, summary)
+	postCompactTokens := e.UsedTokens(systemPrompt, compactedMessages, rewritten)
 	metadata, err := e.buildCompactionMetadata("summary", preCompactTokens, postCompactTokens, targetTokens, compactedMessages)
 	if err != nil {
 		return CompactionResult{}, fmt.Errorf("failed to build compaction metadata: %w", err)
@@ -194,31 +235,31 @@ func (e *Engine) AutoCompact(
 		return CompactionResult{
 			Messages:            messages,
 			DidCompact:          false,
-			PreCompactTokens:    e.CalculateUsage(systemPrompt, messages),
-			PostCompactTokens:   e.CalculateUsage(systemPrompt, messages),
+			PreCompactTokens:    e.UsedTokens(systemPrompt, messages, tracking),
+			PostCompactTokens:   e.UsedTokens(systemPrompt, messages, tracking),
 			TargetTokens:        e.TargetTokens(model),
 			ConsecutiveFailures: current.ConsecutiveFailures,
 		}, nil
 	}
-	if !e.ShouldCompact(systemPrompt, messages, model) {
+	if !e.ShouldCompact(systemPrompt, messages, model, tracking) {
 		return CompactionResult{
 			Messages:            messages,
 			DidCompact:          false,
-			PreCompactTokens:    e.CalculateUsage(systemPrompt, messages),
-			PostCompactTokens:   e.CalculateUsage(systemPrompt, messages),
+			PreCompactTokens:    e.UsedTokens(systemPrompt, messages, tracking),
+			PostCompactTokens:   e.UsedTokens(systemPrompt, messages, tracking),
 			TargetTokens:        e.TargetTokens(model),
 			ConsecutiveFailures: current.ConsecutiveFailures,
 		}, nil
 	}
 
-	result, err := e.Compact(ctx, systemPrompt, messages, model, sessionID, turnID)
+	result, err := e.Compact(ctx, systemPrompt, messages, model, sessionID, turnID, &current)
 	if err != nil {
 		current.ConsecutiveFailures++
 		return CompactionResult{
 			Messages:            messages,
 			DidCompact:          false,
-			PreCompactTokens:    e.CalculateUsage(systemPrompt, messages),
-			PostCompactTokens:   e.CalculateUsage(systemPrompt, messages),
+			PreCompactTokens:    e.UsedTokens(systemPrompt, messages, tracking),
+			PostCompactTokens:   e.UsedTokens(systemPrompt, messages, tracking),
 			TargetTokens:        e.TargetTokens(model),
 			ConsecutiveFailures: current.ConsecutiveFailures,
 		}, err
@@ -265,14 +306,39 @@ func (e *Engine) generateSummary(
 	return "", fmt.Errorf("no summary generated for session %s turn %s", sessionID, turnID)
 }
 
+const summaryInstructions = `You are writing a handoff for another model that will carry on this work with only your summary and the last few messages. It cannot see anything you leave out. Write, in this order:
+
+1. What the user asked for: the goal, and any change of direction since.
+2. Decisions made, and the reason for each.
+3. What has been done: files changed, commands run, results that still matter.
+4. Where things stand now, and what remains, as concrete next steps.
+5. Facts to keep exactly: paths, names, ids, numbers, error messages, URLs.
+6. The user's preferences and constraints.
+
+Be concise and specific. Do not invent anything that is not in the conversation.
+
+Conversation:
+
+`
+
+const (
+	// summaryToolInputChars and summaryToolResultChars bound how much of a tool call the summarizer is shown: enough
+	// to see what was asked and what came back, not the whole payload.
+	summaryToolInputChars  = 300
+	summaryToolResultChars = 600
+
+	// keptUserMessageTokens caps the earlier user messages that are carried over word for word.
+	keptUserMessageTokens = 20_000
+
+	// handoffPrefix tells the model that resumes what the summary is.
+	handoffPrefix = "The conversation was compacted to free context. Another model worked on this before you; " +
+		"below is the summary it wrote, then the user's earlier messages word for word. " +
+		"Build on the work already done and do not repeat it."
+)
+
 func (e *Engine) buildSummaryPrompt(messages []types.Message) string {
 	var builder strings.Builder
-	builder.WriteString("Summarize the conversation so the runtime can continue work after compaction. Preserve:\n")
-	builder.WriteString("- active user requests\n")
-	builder.WriteString("- decisions already made\n")
-	builder.WriteString("- tool uses and outcomes that still matter\n")
-	builder.WriteString("- unresolved work and constraints\n\n")
-	builder.WriteString("Conversation:\n\n")
+	builder.WriteString(summaryInstructions)
 	for _, msg := range messages {
 		builder.WriteString(fmt.Sprintf("[%s] ", msg.Role))
 		for _, block := range msg.Content {
@@ -280,9 +346,9 @@ func (e *Engine) buildSummaryPrompt(messages []types.Message) string {
 			case types.TextContent:
 				builder.WriteString(content.Text)
 			case types.ToolUseContent:
-				builder.WriteString(fmt.Sprintf("Tool use: %s ", content.Name))
+				builder.WriteString(fmt.Sprintf("Tool use: %s %s ", content.Name, clipForSummary(toolInputText(content.Input), summaryToolInputChars)))
 			case types.ToolResultContent:
-				builder.WriteString(fmt.Sprintf("Tool result: %s ", e.microCompactor.CalculateToolResultSummary(content)))
+				builder.WriteString(fmt.Sprintf("Tool result (%s): %s ", e.microCompactor.CalculateToolResultSummary(content), clipForSummary(content.Content, summaryToolResultChars)))
 			}
 		}
 		builder.WriteString("\n")
@@ -290,11 +356,36 @@ func (e *Engine) buildSummaryPrompt(messages []types.Message) string {
 	return builder.String()
 }
 
+func toolInputText(input map[string]any) string {
+	if len(input) == 0 {
+		return ""
+	}
+	raw, err := json.Marshal(input)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+// clipForSummary cuts s to at most n characters, on a character boundary, marking the cut.
+func clipForSummary(s string, n int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= n {
+		return string(r)
+	}
+	return string(r[:n]) + "..."
+}
+
 func (e *Engine) buildPostCompactMessages(messages []types.Message, summary string, targetTokens int) []types.Message {
-	preservedStart := e.findPreservedStart(messages, targetTokens)
+	return e.assembleCompacted(messages, e.findPreservedStart(messages, targetTokens), summary)
+}
+
+// assembleCompacted builds the transcript that replaces messages: a summary (with the user's earlier messages kept
+// word for word), a marker, then the preserved tail from preservedStart on.
+func (e *Engine) assembleCompacted(messages []types.Message, preservedStart int, summary string) []types.Message {
 	compacted := make([]types.Message, 0, len(messages)-preservedStart+2)
 
-	summaryMessage := types.SystemMessage(compactSummaryMessageID, fmt.Sprintf("Previous conversation summary:\n\n%s", summary))
+	summaryMessage := types.SystemMessage(compactSummaryMessageID, e.summaryText(messages[:preservedStart], summary))
 	summaryMessage.Metadata = &types.MessageMetadata{TurnID: "compact"}
 	compacted = append(compacted, summaryMessage)
 
@@ -306,6 +397,61 @@ func (e *Engine) buildPostCompactMessages(messages []types.Message, summary stri
 	compacted = append(compacted, marker)
 	compacted = append(compacted, types.CloneMessages(messages[preservedStart:])...)
 	return compacted
+}
+
+// summaryText is the hand-off prefix, the summary, and the user's messages from the dropped part, newest kept first
+// within keptUserMessageTokens, written oldest first.
+func (e *Engine) summaryText(dropped []types.Message, summary string) string {
+	var kept []string
+	budget := keptUserMessageTokens
+	for i := len(dropped) - 1; i >= 0; i-- {
+		text, ok := userText(dropped[i])
+		if !ok {
+			continue
+		}
+		cost := e.preparer.CalculateMessageTokens(dropped[i])
+		if cost > budget {
+			break
+		}
+		budget -= cost
+		kept = append(kept, text)
+	}
+
+	var b strings.Builder
+	b.WriteString(handoffPrefix)
+	b.WriteString("\n\nSummary:\n\n")
+	b.WriteString(summary)
+	if len(kept) > 0 {
+		b.WriteString("\n\nThe user's earlier messages, word for word:\n")
+		for i := len(kept) - 1; i >= 0; i-- {
+			b.WriteString("\n---\n")
+			b.WriteString(kept[i])
+		}
+	}
+	return b.String()
+}
+
+// userText returns the text of a message the user wrote. Compaction artifacts, which are system messages, and tool
+// results, which are not the user's words, are not.
+func userText(msg types.Message) (string, bool) {
+	if msg.Role != types.RoleUser {
+		return "", false
+	}
+	var parts []string
+	for _, block := range msg.Content {
+		switch c := block.(type) {
+		case types.TextContent:
+			if strings.TrimSpace(c.Text) != "" {
+				parts = append(parts, c.Text)
+			}
+		case types.ToolResultContent:
+			return "", false
+		}
+	}
+	if len(parts) == 0 {
+		return "", false
+	}
+	return strings.Join(parts, "\n"), true
 }
 
 func (e *Engine) findPreservedStart(messages []types.Message, targetTokens int) int {
