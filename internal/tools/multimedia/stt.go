@@ -35,6 +35,7 @@ func NewSTTTool(transcriber stt.SpeechToText) *STTTool { return &STTTool{transcr
 func (t *STTTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        sttToolName,
+		SearchHint:  "transcribe audio to text speech recognition",
 		DisplayName: "Speech to Text",
 		Description: sttDesc,
 		Category:    "audio",

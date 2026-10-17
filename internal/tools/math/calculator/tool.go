@@ -49,6 +49,7 @@ const (
 func New() (tool.Tool, error) {
 	return tool.NewBuilder(ToolName).
 		WithDisplayName("Calculator").
+		WithSearchHint("evaluate a math expression arithmetic algebra calculus").
 		WithDescription(ToolDescription).
 		WithCategory("math").
 		ReadOnly().

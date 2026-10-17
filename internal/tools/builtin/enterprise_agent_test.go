@@ -87,3 +87,20 @@ func TestEnterpriseAgentLoadedToolsStayUnderTheTokenBudget(t *testing.T) {
 		t.Errorf("the loaded tools cost about %d tokens; the budget is 20,000", tokens)
 	}
 }
+
+// A deferred tool is found by keywords only: without a search hint the agent has a name and nothing else to match.
+func TestEveryDeferredToolHasASearchHint(t *testing.T) {
+	reg, err := NewBuiltinRegistryWithConfig(&Config{})
+	if err != nil {
+		t.Fatalf("build registry: %v", err)
+	}
+	for _, name := range EnterpriseAgentDeferredToolNames() {
+		tl, ok := reg.Resolve(name)
+		if !ok {
+			continue // registered later by the SDK or the host
+		}
+		if hint := tl.Definition().SearchHint; len(hint) < 10 {
+			t.Errorf("deferred tool %q has no useful search hint (%q)", name, hint)
+		}
+	}
+}

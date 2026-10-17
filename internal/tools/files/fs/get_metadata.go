@@ -39,6 +39,7 @@ func NewGetMetadataTool(workingDir string) *GetMetadataTool {
 func (t *GetMetadataTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        "get_file_metadata",
+		SearchHint:  "file size, modified date, permissions, type of a file",
 		DisplayName: "Get File Metadata",
 		Description: "Return metadata for a file or directory: size, type (file/dir/symlink), permissions, timestamps. Does not read file content.",
 		Category:    "filesystem",

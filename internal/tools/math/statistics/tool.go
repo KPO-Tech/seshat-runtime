@@ -43,6 +43,7 @@ const (
 func New() (tool.Tool, error) {
 	return tool.NewBuilder(ToolName).
 		WithDisplayName("Statistics").
+		WithSearchHint("statistics mean median standard deviation variance regression correlation").
 		WithDescription(ToolDescription).
 		WithCategory("math").
 		ReadOnly().

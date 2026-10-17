@@ -46,6 +46,7 @@ const (
 func New() (tool.Tool, error) {
 	return tool.NewBuilder(ToolName).
 		WithDisplayName("Financial Calculator").
+		WithSearchHint("financial math loan mortgage interest npv irr amortization").
 		WithDescription(ToolDescription).
 		WithCategory("math").
 		ReadOnly().

@@ -19,6 +19,7 @@ func NewListTool() *ListTool { return &ListTool{} }
 func (t *ListTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        "seshat_list_skills",
+		SearchHint:  "list available skills and their descriptions",
 		DisplayName: "List Skills",
 		Description: "List the skills available to the current Seshat runtime, including builtin, managed, user, project, MCP, and installed repo collections. Use this before creating a new skill or when searching for an existing one.",
 		InputSchema: schema.FromMap(map[string]any{

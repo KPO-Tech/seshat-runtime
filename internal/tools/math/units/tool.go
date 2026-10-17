@@ -39,6 +39,7 @@ Supply a list in the values field to convert multiple numbers at once.`
 func New() (tool.Tool, error) {
 	return tool.NewBuilder(ToolName).
 		WithDisplayName("Unit Converter").
+		WithSearchHint("convert between units of measurement length weight temperature volume").
 		WithDescription(ToolDescription).
 		WithCategory("math").
 		ReadOnly().
