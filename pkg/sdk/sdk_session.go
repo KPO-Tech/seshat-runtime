@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"errors"
 
 	"github.com/KPO-Tech/seshat-runtime/internal/engine"
 	modeexec "github.com/KPO-Tech/seshat-runtime/internal/modes/execution"
@@ -158,6 +159,26 @@ func (s *Session) ClearPlanMode() {
 // still has to reach the next turn.
 func ApprovePlan(sessionID SessionID) {
 	modeexec.MarkPlanApproved(sessionID)
+}
+
+// CompactionOutcome is what a manual compaction did: the size of the conversation before and after, in tokens.
+type CompactionOutcome struct {
+	PreTokens  int `json:"pre_tokens"`
+	PostTokens int `json:"post_tokens"`
+}
+
+// ErrNothingToCompact is returned by Compact when the conversation is too short to shrink.
+var ErrNothingToCompact = engine.ErrNothingToCompact
+
+// Compact summarizes the older part of the conversation now, instead of waiting for the automatic threshold, and
+// keeps the most recent messages as they are. It refuses while a turn is running. The host receives
+// context.compacting and then context.compacted events. It returns an error on a nil session.
+func (s *Session) Compact(ctx context.Context) (CompactionOutcome, error) {
+	if s == nil || s.session == nil {
+		return CompactionOutcome{}, errors.New("nil session")
+	}
+	out, err := s.session.Compact(ctx)
+	return CompactionOutcome{PreTokens: out.PreTokens, PostTokens: out.PostTokens}, err
 }
 
 // ApprovePlan records the user's acceptance of the plan this session submitted

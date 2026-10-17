@@ -33,7 +33,7 @@ type CompactionStrategy interface {
 	// error (ErrCodeCompactFull) if not - even after AutoCompact has already
 	// tried. Called right after AutoCompact so an oversized request fails
 	// locally with a clear reason instead of at the provider (M1 in TODO.md).
-	CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier) error
+	CheckBlockingLimit(systemPrompt string, messages []types.Message, model types.ModelIdentifier, tracking *TrackingState) error
 }
 
 // Verify Engine satisfies CompactionStrategy at compile time.

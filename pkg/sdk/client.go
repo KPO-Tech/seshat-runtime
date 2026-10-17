@@ -106,8 +106,9 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		apiClient = providers.NewClient(apiKey, config.Model.Provider)
 	}
 	titleAPIClient := buildTitleAPIClient(config, apiKey, apiClient)
-	titleGenerator, err := buildTitleGenerator(config)
-	if err != nil {
+	compactConfig, compactErr := buildCompactConfig(config)
+	titleGenerator, titleErr := buildTitleGenerator(config)
+	if err := errors.Join(compactErr, titleErr); err != nil {
 		return nil, err
 	}
 
@@ -117,8 +118,6 @@ func NewClient(config *ClientConfig) (*Client, error) {
 
 	// Core subsystems
 	orchestrator := execution.NewOrchestrator()
-	compactConfig := compact.DefaultConfig()
-	compactConfig.SummaryModel = config.CompactSummaryModel
 	compactor := compact.NewEngine(apiClient, compactConfig)
 	promptAssembler := prompt.NewAssembler()
 	promptAssembler.SetDefaultSections(prompt.DefaultSystemPromptSections())

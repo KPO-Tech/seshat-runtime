@@ -338,6 +338,8 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) RunResult {
 			}
 		}
 
+		l.emitContextUsage(ctx, state, req)
+
 		apiResp, err := l.callModel(ctx, state, req)
 		if err != nil {
 			// Record error in monitoring
@@ -361,6 +363,8 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) RunResult {
 		l.updateUsage(state, &apiResp.Usage)
 		assistantMessage := buildAssistantMessage(apiResp, req.TurnID, len(state.Messages))
 		state.Messages = append(state.Messages, assistantMessage)
+		recordUsageAnchor(state, &apiResp.Usage)
+		l.emitContextUsage(ctx, state, req)
 
 		toolUses := l.extractToolUses(apiResp.Content)
 		if len(toolUses) > 0 {
@@ -801,6 +805,7 @@ func (l *Loop) maybeAutoCompact(ctx context.Context, state *MutableState, req Ru
 	}
 
 	if !hookDenied {
+		l.emitCompacting(ctx, state, req)
 		result, err := l.compactor.AutoCompact(
 			ctx,
 			req.SystemPrompt,
@@ -808,7 +813,7 @@ func (l *Loop) maybeAutoCompact(ctx context.Context, state *MutableState, req Ru
 			req.Model,
 			req.SessionID,
 			req.TurnID,
-			&compact.TrackingState{ConsecutiveFailures: state.AutoCompactFailureCount},
+			compactionTracking(state, req),
 		)
 		if err != nil {
 			state.AutoCompactFailureCount = result.ConsecutiveFailures
@@ -825,6 +830,9 @@ func (l *Loop) maybeAutoCompact(ctx context.Context, state *MutableState, req Ru
 			// see recordPreviousResponse/buildAPIRequest.
 			state.PreviousResponseID = ""
 			state.PreviousResponseMessageCount = 0
+			// The provider's figure described the messages that were just replaced.
+			state.UsageAnchor = nil
+			l.emitCompacted(ctx, req, result.PreCompactTokens, result.PostCompactTokens)
 		}
 		// Post-compact notification, like every other *_complete hook in this
 		// file: fire-and-forget, not stop-capable (there is nothing left to gate
@@ -842,7 +850,7 @@ func (l *Loop) maybeAutoCompact(ctx context.Context, state *MutableState, req Ru
 	// huge tool result, or compaction itself failing to shrink enough).
 	// Fail locally with a typed error instead of letting the provider reject
 	// an oversized request (M1 in TODO.md).
-	if err := l.compactor.CheckBlockingLimit(req.SystemPrompt, state.Messages, req.Model); err != nil {
+	if err := l.compactor.CheckBlockingLimit(req.SystemPrompt, state.Messages, req.Model, compactionTracking(state, req)); err != nil {
 		return err
 	}
 	return nil
