@@ -15,6 +15,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The browse agent no longer lists five tools that do not exist** (`tree`, `wikipedia`, `scholarly_search`, `web_map`, `web_crawl`). Its allowlist now holds only registered tools, and a test fails if a name matches none.
 - **MCP tools reached the model with no parameters.** The schema an MCP server sends for a tool is a whole JSON schema, but it was nested a second time as the `properties` of a new one, so the model saw `{"properties":{"properties":{}}}` and had to guess every argument name. The server's schema is now converted as is, with its properties and required list.
 
 ### Removed
