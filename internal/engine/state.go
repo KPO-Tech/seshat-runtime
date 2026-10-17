@@ -115,11 +115,13 @@ func Terminate(reason string, stopReason string) Transition {
 // this struct keeps only the canonical transcript, tool surface, and aggregate
 // counters that must survive across turns and restores.
 type SessionState struct {
-	SessionID           types.SessionID
-	TurnID              types.TurnID
-	Messages            []types.Message
-	Tools               map[string]tool.Tool
-	DiscoveredDeferred  []string
+	SessionID          types.SessionID
+	TurnID             types.TurnID
+	Messages           []types.Message
+	Tools              map[string]tool.Tool
+	DiscoveredDeferred []string
+	// DeferredScope are the tools the main agent can find with tool_search besides the registry's deferred ones.
+	DeferredScope       []string
 	PermissionContext   *types.PermissionContext
 	DenialTracking      *types.DenialTrackingState
 	TurnNumber          int
@@ -354,6 +356,13 @@ func (s *SessionState) PendingDeferredToolNames(reg *tool.Registry) []string {
 			InputSchema: deferredTool.Definition().InputSchema,
 			Metadata:    deferredTool.Definition().Metadata,
 		}, profile) {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	for _, name := range scopedDeferredNames(reg, s.DeferredScope) {
+		if seen[name] || discovered[name] {
 			continue
 		}
 		seen[name] = true

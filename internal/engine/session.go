@@ -146,6 +146,9 @@ func (e *Engine) NewSessionFromState(
 
 	sessionState := NewSessionState(sessionID, turnID, messageCopy, tools, turnNumber, metadata.TotalTokens, metadata)
 	sessionState.SetPermissionContext(normalizePermissionContext(sessionState.PermissionContextSnapshot(), e.defaultPermissionContext()))
+	if surfaceProfile == tool.ToolSurfaceProfileMonoRun {
+		sessionState.DeferredScope = append([]string(nil), e.config.MainAgentDeferredTools...)
+	}
 
 	session := &Session{
 		engine:            e,
@@ -286,6 +289,7 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 		ProviderTools:           apiReq.Tools,
 		Tools:                   runtimeTools,
 		ToolRegistry:            s.engine.toolRegistry,
+		DeferredScope:           s.state.DeferredScope,
 		RefreshSystemPrompt:     s.refreshSystemPrompt,
 		AutoDetectStage:         s.config.PromptStage == prompt.StageDefault,
 		SessionID:               s.state.SessionID,

@@ -5294,3 +5294,44 @@ func firstUserText(messages []types.Message) string {
 	}
 	return ""
 }
+
+// stateScopedTestTool is a plain tool (not flagged as deferred) that a host lists as findable by the main agent.
+type stateScopedTestTool struct{ stateDeferredTestTool }
+
+func (stateScopedTestTool) Definition() tool.Definition {
+	return tool.Definition{Name: "scoped", Description: "scoped tool"}
+}
+
+func TestMainAgentDeferredScopeIsPendingUntilDiscovered(t *testing.T) {
+	reg := registry.NewRegistry()
+	for _, tl := range []registry.Tool{stateDeferredTestTool{}, stateScopedTestTool{}} {
+		if err := reg.Register(tl); err != nil {
+			t.Fatalf("register: %v", err)
+		}
+	}
+	metadata := &types.SessionMetadata{ID: types.SessionID("s"), Status: types.SessionStatusActive, Additional: make(map[string]any)}
+	state := NewSessionState(types.SessionID("s"), types.TurnID("t"), nil, map[string]registry.Tool{}, 0, 0, metadata)
+
+	// Without a scope only the registry's own deferred tool is pending.
+	if got := state.PendingDeferredToolNames(reg); !reflect.DeepEqual(got, []string{"deferred"}) {
+		t.Fatalf("without a scope, pending = %#v", got)
+	}
+
+	// With a scope the listed tool is pending too; an unknown name is ignored.
+	state.DeferredScope = []string{"scoped", "no_such_tool"}
+	if got := state.PendingDeferredToolNames(reg); !reflect.DeepEqual(got, []string{"deferred", "scoped"}) {
+		t.Fatalf("with a scope, pending = %#v", got)
+	}
+
+	// Once discovered it is no longer pending, and the remaining-names helper of the loop agrees.
+	state.RegisterDiscoveredDeferredTools([]string{"scoped"})
+	if got := state.PendingDeferredToolNames(reg); !reflect.DeepEqual(got, []string{"deferred"}) {
+		t.Fatalf("after discovery, pending = %#v", got)
+	}
+	if got := remainingDeferredToolNames(reg, []string{"scoped"}, state.DeferredScope); !reflect.DeepEqual(got, []string{"deferred"}) {
+		t.Fatalf("remaining names = %#v", got)
+	}
+	if got := scopedDeferredNames(reg, nil); got != nil {
+		t.Fatalf("no scope must give no names, got %#v", got)
+	}
+}

@@ -320,6 +320,7 @@ func buildEngineConfig(config *ClientConfig) *engine.Config {
 		StopHooks:                config.StopHooks,
 		MaxConsecutiveDenials:    config.MaxConsecutiveDenials,
 		MainAgentTools:           config.MainAgentTools,
+		MainAgentDeferredTools:   config.MainAgentDeferredTools,
 	}
 	if pc := config.PromptConfig; pc != nil {
 		if pc.SystemPrompt != nil {

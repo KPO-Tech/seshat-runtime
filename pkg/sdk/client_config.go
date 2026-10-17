@@ -315,6 +315,11 @@ type ClientConfig struct {
 	// curated list). Sub-agents started through the agent tools are not
 	// limited by it. Empty (the default) offers every enabled tool.
 	MainAgentTools []string `json:"main_agent_tools,omitempty"`
+
+	// MainAgentDeferredTools are tools the main agent does not have loaded but can find with tool_search and then use.
+	// Together with MainAgentTools it makes the three levels of a general agent: always loaded, found on demand, and (for
+	// everything else) not offered. Sub-agents are not affected. Empty keeps today's behaviour.
+	MainAgentDeferredTools []string `json:"main_agent_deferred_tools,omitempty"`
 }
 
 // PreToolHookConfig is a single shell hook that runs before a tool call.

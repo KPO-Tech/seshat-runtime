@@ -174,8 +174,11 @@ type RunRequest struct {
 	Tools              map[string]tool.Tool      `json:"-"`
 	// Toolsets are resolved dynamically at the start of each iteration.
 	// Their tools are merged into Tools each iteration (Toolset wins on name collision).
-	Toolsets            []tool.Toolset                                                                                                                      `json:"-"`
-	ToolRegistry        *tool.Registry                                                                                                                      `json:"-"`
+	Toolsets     []tool.Toolset `json:"-"`
+	ToolRegistry *tool.Registry `json:"-"`
+	// DeferredScope are tools the main agent can find with tool_search besides the registry's deferred ones (see
+	// toolsearch.WithScope). Empty for sub-agents.
+	DeferredScope       []string                                                                                                                            `json:"-"`
 	RefreshSystemPrompt func(ctx context.Context, tools map[string]tool.Tool, pendingDeferred []string, stage prompt.ExecutionStage) (PromptRefresh, error) `json:"-"`
 	// AutoDetectStage enables per-iteration stage detection. The engine sets this
 	// when no static PromptStage is configured so that stage overlays fire
@@ -251,6 +254,7 @@ type toolDiscoveryUpdate struct {
 
 // Run executes the main query loop.
 func (l *Loop) Run(ctx context.Context, req RunRequest) RunResult {
+	ctx = toolsearch.WithScope(ctx, req.DeferredScope)
 	startTime := time.Now()
 	l.currentFallbackIndex = -1
 	l.activeFallbackClient = nil
@@ -295,7 +299,7 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) RunResult {
 			detectedStage := DetectTurnStage(state.Messages, req.TurnID)
 			if detectedStage != state.CurrentStage {
 				state.CurrentStage = detectedStage
-				refresh, refreshErr := req.RefreshSystemPrompt(ctx, req.Tools, remainingDeferredToolNames(req.ToolRegistry, state.DiscoveredDeferred), detectedStage)
+				refresh, refreshErr := req.RefreshSystemPrompt(ctx, req.Tools, remainingDeferredToolNames(req.ToolRegistry, state.DiscoveredDeferred, req.DeferredScope), detectedStage)
 				if refreshErr == nil {
 					req.SystemPrompt = refresh.SystemPrompt
 					req.SystemPromptBlocks = append([]types.SystemPromptBlock(nil), refresh.SystemPromptBlocks...)
@@ -1149,10 +1153,26 @@ func (l *Loop) integrateDiscoveredDeferredTools(ctx context.Context, state *Muta
 		seen[name] = true
 	}
 
+	// Only what tool_search could have offered this agent may be loaded: the registry's deferred tools, and the main
+	// agent's own scope. A name that is neither never reaches the request, whatever the model asked for.
+	findable := make(map[string]bool)
+	for _, deferred := range req.ToolRegistry.ListDeferred() {
+		if deferred != nil {
+			findable[deferred.Definition().Name] = true
+		}
+	}
+	for _, name := range scopedDeferredNames(req.ToolRegistry, req.DeferredScope) {
+		findable[name] = true
+	}
+
 	added := false
 	for _, name := range discovered {
 		name = strings.TrimSpace(name)
 		if name == "" || seen[name] {
+			continue
+		}
+		if !findable[name] {
+			update.Unresolved = append(update.Unresolved, name)
 			continue
 		}
 		resolved, ok := req.ToolRegistry.Resolve(name)
@@ -1177,7 +1197,7 @@ func (l *Loop) integrateDiscoveredDeferredTools(ctx context.Context, state *Muta
 	sort.Strings(update.Unresolved)
 	req.ProviderTools = prompt.BuildProviderToolDefinitions(req.Tools)
 	if req.RefreshSystemPrompt != nil {
-		refresh, err := req.RefreshSystemPrompt(ctx, req.Tools, remainingDeferredToolNames(req.ToolRegistry, state.DiscoveredDeferred), state.CurrentStage)
+		refresh, err := req.RefreshSystemPrompt(ctx, req.Tools, remainingDeferredToolNames(req.ToolRegistry, state.DiscoveredDeferred, req.DeferredScope), state.CurrentStage)
 		if err != nil {
 			update.RefreshFailed = err
 			return update
@@ -1188,7 +1208,7 @@ func (l *Loop) integrateDiscoveredDeferredTools(ctx context.Context, state *Muta
 	return update
 }
 
-func remainingDeferredToolNames(reg *tool.Registry, discovered []string) []string {
+func remainingDeferredToolNames(reg *tool.Registry, discovered []string, scope []string) []string {
 	if reg == nil {
 		return nil
 	}
@@ -1210,7 +1230,31 @@ func remainingDeferredToolNames(reg *tool.Registry, discovered []string) []strin
 		unique[name] = true
 		names = append(names, name)
 	}
+	for _, name := range scopedDeferredNames(reg, scope) {
+		if seen[name] || unique[name] {
+			continue
+		}
+		unique[name] = true
+		names = append(names, name)
+	}
 	sort.Strings(names)
+	return names
+}
+
+// scopedDeferredNames returns the names of the registry's enabled tools that the host listed as findable by the main
+// agent (Config.MainAgentDeferredTools). A name the registry does not know, or whose tool is disabled, is left out.
+func scopedDeferredNames(reg *tool.Registry, scope []string) []string {
+	if reg == nil || len(scope) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(scope))
+	for _, name := range scope {
+		resolved, ok := reg.Resolve(name)
+		if !ok || resolved == nil || !resolved.IsEnabled() {
+			continue
+		}
+		names = append(names, resolved.Definition().Name)
+	}
 	return names
 }
 

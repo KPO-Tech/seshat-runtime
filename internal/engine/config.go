@@ -90,6 +90,11 @@ type Config struct {
 	// none. Empty keeps every registered tool.
 	MainAgentTools []string `json:"main_agent_tools,omitempty"`
 
+	// MainAgentDeferredTools are tools the main agent does not have loaded but can find with tool_search and then use
+	// (they are not in MainAgentTools). A tool in neither list is not offered to the main agent at all. Sub-agents are
+	// not given this list. Empty keeps the behaviour where only MCP tools and skills are found through tool_search.
+	MainAgentDeferredTools []string `json:"main_agent_deferred_tools,omitempty"`
+
 	// DisableStreaming opts out of server-sent-event streaming. Streaming is
 	// enabled by default; set this to true only when the provider or test
 	// harness does not support SSE.
