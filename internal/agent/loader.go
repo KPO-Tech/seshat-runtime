@@ -6,14 +6,9 @@ var (
 		"read_file",
 		"glob",
 		"grep",
-		"tree",
 		"tool_search",
-		"wikipedia",
-		"scholarly_search",
 		"web_fetch",
 		"web_search",
-		"web_map",
-		"web_crawl",
 		"browser_open",
 		"browser_navigate",
 		"browser_snapshot",
@@ -254,4 +249,9 @@ func ToAgentDefinition(builtIn BuiltInAgentDefinition) *AgentDefinition {
 		MaxTurns:        builtIn.MaxTurns,
 		GetSystemPrompt: builtIn.GetSystemPrompt,
 	}
+}
+
+// BrowseAgentToolNames returns the tools the built-in browse agent may use.
+func BrowseAgentToolNames() []string {
+	return append([]string(nil), browseAgentTools...)
 }

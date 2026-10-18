@@ -419,6 +419,14 @@ type ServerConfig struct {
 
 	// Headers are HTTP headers (for http/sse)
 	Headers map[string]string `json:"headers,omitempty"`
+
+	// MaxToolSpecBytes caps one tool's definition (name, description, input schema) for this server. 0 uses
+	// DefaultMaxToolSpecBytes, a negative value removes the cap. A tool over its cap is left out.
+	MaxToolSpecBytes int `json:"max_tool_spec_bytes,omitempty"`
+
+	// MaxServerSpecBytes caps the definitions of all this server's tools together. 0 uses
+	// DefaultMaxServerSpecBytes, a negative value removes the cap. Tools past the total are left out.
+	MaxServerSpecBytes int `json:"max_server_spec_bytes,omitempty"`
 }
 
 // ProgressCallback is called when an MCP server sends a progress notification

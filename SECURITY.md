@@ -54,6 +54,7 @@ seshat is a **local-first** runtime. By default:
 
 - It runs as the invoking user — no privilege escalation.
 - Bash commands are sandboxed on Linux via **Landlock** (kernel-level filesystem isolation scoped to the working directory).
+- On macOS and Windows commands are confined by [srt](https://github.com/anthropic-experimental/sandbox-runtime) when it is installed and working (Windows support is **alpha** and is not set up automatically); otherwise they run with your full rights, as they do on any host without a sandbox. Docker is the isolation that works everywhere. `sdk.SandboxBackend()` reports `landlock`, `srt` or `none`.
 - No telemetry is sent anywhere.
 - Credentials are read from environment variables or the local `~/.seshat/auth.json` store — never sent to external services except the configured LLM provider.
 - A command the model runs gets the environment of the process **without its secrets** (provider keys, database and cloud credentials): see [`docs/tools.md`](./docs/tools.md).

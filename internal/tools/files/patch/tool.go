@@ -29,6 +29,7 @@ func NewApplyPatchTool(workingDir string) *ApplyPatchTool {
 func (t *ApplyPatchTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        "apply_patch",
+		SearchHint:  "apply a unified diff patch to several files at once",
 		DisplayName: "Apply Patch",
 		Description: applyPatchDescription,
 		Category:    "filesystem",

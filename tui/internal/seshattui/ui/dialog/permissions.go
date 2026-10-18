@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/KPO-Tech/seshat-runtime/internal/textsafe"
 	read "github.com/KPO-Tech/seshat-runtime/internal/tools/files/read"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/agent/tools"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/fsext"
@@ -652,7 +653,8 @@ func (p *Permissions) renderBashContent(width int) string {
 	}
 
 	t := p.com.Styles
-	content := params.Command
+	// The person approves by reading: hidden and direction-changing characters are shown as «U+XXXX».
+	content := textsafe.Reveal(params.Command)
 	if highlighted, err := common.SyntaxHighlight(t, content, "command.sh", t.Dialog.Permissions.ParamsBg); err == nil {
 		content = highlighted
 	}

@@ -106,8 +106,9 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		apiClient = providers.NewClient(apiKey, config.Model.Provider)
 	}
 	titleAPIClient := buildTitleAPIClient(config, apiKey, apiClient)
-	titleGenerator, err := buildTitleGenerator(config)
-	if err != nil {
+	compactConfig, compactErr := buildCompactConfig(config)
+	titleGenerator, titleErr := buildTitleGenerator(config)
+	if err := errors.Join(compactErr, titleErr); err != nil {
 		return nil, err
 	}
 
@@ -117,8 +118,6 @@ func NewClient(config *ClientConfig) (*Client, error) {
 
 	// Core subsystems
 	orchestrator := execution.NewOrchestrator()
-	compactConfig := compact.DefaultConfig()
-	compactConfig.SummaryModel = config.CompactSummaryModel
 	compactor := compact.NewEngine(apiClient, compactConfig)
 	promptAssembler := prompt.NewAssembler()
 	promptAssembler.SetDefaultSections(prompt.DefaultSystemPromptSections())
@@ -131,6 +130,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 
 	// Engine config
 	queryConfig := buildEngineConfig(config)
+	queryConfig.MemoryExtractor = newMemoryExtractor(config, apiClient)
 	queryConfig.ManagedInstructions = managedInstructionsText(config.ManagedPolicy)
 	queryConfig.BrowserManager = browserManager
 
@@ -320,6 +320,7 @@ func buildEngineConfig(config *ClientConfig) *engine.Config {
 		StopHooks:                config.StopHooks,
 		MaxConsecutiveDenials:    config.MaxConsecutiveDenials,
 		MainAgentTools:           config.MainAgentTools,
+		MainAgentDeferredTools:   config.MainAgentDeferredTools,
 	}
 	if pc := config.PromptConfig; pc != nil {
 		if pc.SystemPrompt != nil {

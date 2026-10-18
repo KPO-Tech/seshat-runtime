@@ -12,6 +12,7 @@ import (
 	"github.com/KPO-Tech/seshat-runtime/internal/execution"
 	"github.com/KPO-Tech/seshat-runtime/internal/prompt"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
+	contextusage "github.com/KPO-Tech/seshat-runtime/internal/tools/special/context_usage"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
@@ -33,6 +34,9 @@ type Session struct {
 	appendSystemPromptOverride   *string
 	systemPromptTemplateOverride *string
 	workingDirectoryOverride     *string
+
+	// userID is the authenticated user of the latest turn, kept for what happens when the session closes.
+	userID string
 
 	// mu guards cancelFn and phase.
 	mu sync.Mutex
@@ -146,6 +150,9 @@ func (e *Engine) NewSessionFromState(
 
 	sessionState := NewSessionState(sessionID, turnID, messageCopy, tools, turnNumber, metadata.TotalTokens, metadata)
 	sessionState.SetPermissionContext(normalizePermissionContext(sessionState.PermissionContextSnapshot(), e.defaultPermissionContext()))
+	if surfaceProfile == tool.ToolSurfaceProfileMonoRun {
+		sessionState.DeferredScope = append([]string(nil), e.config.MainAgentDeferredTools...)
+	}
 
 	session := &Session{
 		engine:            e,
@@ -200,6 +207,7 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 		return nil, err
 	}
 	defer s.endTurn()
+	s.rememberUserID(ctx)
 	if s.engine != nil && s.engine.hookExecutor != nil {
 		defer s.engine.hookExecutor.ExecuteAsync(context.Background(), types.HookEventTurnEnd, map[string]any{
 			"session_id": s.state.SessionID,
@@ -286,6 +294,7 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 		ProviderTools:           apiReq.Tools,
 		Tools:                   runtimeTools,
 		ToolRegistry:            s.engine.toolRegistry,
+		DeferredScope:           s.state.DeferredScope,
 		RefreshSystemPrompt:     s.refreshSystemPrompt,
 		AutoDetectStage:         s.config.PromptStage == prompt.StageDefault,
 		SessionID:               s.state.SessionID,
@@ -390,19 +399,6 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 	// rest of this turn's stream, since - unlike a separate async
 	// condense call - compaction here already ran synchronously inside
 	// the turn that just completed.
-	if loopResult.Compacted {
-		s.emitRuntimeEvent(types.RuntimeEvent{
-			Type:       types.RuntimeEventTypeCompaction,
-			SessionID:  s.state.SessionID,
-			TurnID:     s.state.TurnID,
-			TurnNumber: response.TurnNumber,
-			CompactionEvent: &types.CompactionRuntimeEvent{
-				PreCompactTokens:  loopResult.CompactPreTokens,
-				PostCompactTokens: loopResult.CompactPostTokens,
-			},
-		})
-	}
-
 	return response, nil
 }
 
@@ -483,7 +479,9 @@ func (s *Session) Close() error {
 		s.runtimeEventQueue.Close()
 	}
 	s.state.MarkClosed()
+	contextusage.Forget(s.state.SessionID)
 	messages := s.state.CloneMessages()
+	s.extractMemories(messages)
 
 	if s.engine.memoryService != nil {
 		s.rememberSessionSummary()

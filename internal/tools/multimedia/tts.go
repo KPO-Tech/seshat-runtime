@@ -33,6 +33,7 @@ func NewTTSTool(generator tts.Generation) *TTSTool { return &TTSTool{generator: 
 func (t *TTSTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        ttsToolName,
+		SearchHint:  "read text aloud generate speech audio from text",
 		DisplayName: "Text to Speech",
 		Description: ttsDesc,
 		Category:    "audio",

@@ -345,7 +345,7 @@ func (m *UI) drawSidebar(scr uv.Screen, area uv.Rectangle) {
 	if height < logoHeightBreakpoint {
 		sidebarLogo = logo.SmallRender(m.com.Styles, width, logo.Opts{Hyper: m.com.IsHyper()})
 	}
-	blocks := []string{sidebarLogo, title, "", cwd, "", m.modelInfo(width), ""}
+	blocks := []string{sidebarLogo, title, "", cwd, m.sandboxInfo(width), "", m.modelInfo(width), ""}
 	sidebarHeader := lipgloss.JoinVertical(lipgloss.Left, blocks...)
 
 	var remainingHeightArea image.Rectangle

@@ -212,6 +212,20 @@ Fixed on 2026-10-10, on branch `docs/todo-bugs`. H1-H8 are committed (`a416dc6`,
 
 **Side-finding (not fixed, not yet in this list):** while investigating H6's `plan.status_changed`, found that `PlanStore.SetStatus` (`internal/tools/builtin/config.go`) - the interface method for marking a plan document pending/validated/rejected - has no caller anywhere in the codebase either. `SeshatWorkspace.ApprovePlan` only exits plan mode; it never calls `SetStatus`. This looks like an abandoned/incomplete plan-approval feature, separate from H8's skill-loading gap. Worth its own TODO item if the feature is still wanted.
 
+## Improvements taken from reading Codex (2026-10-17)
+
+Not bugs: work decided after reading `helps/codex/codex-rs` (Apache-2.0). Files read: `ext/skills/src/render.rs`, `core/src/compact*.rs`, `prompts/templates/compact/`, `core/src/mcp_tool_exposure.rs`, `memories/`, `core/gpt_5_2_prompt.md`. Order is the order of work; the product owner asked for 1 to 5 first and wants to discuss 6 and 7 before anything is written.
+
+1. **Skill catalogue budget.** Codex caps the catalogue at 2 % of the context window (at most 10,000 tokens, 8,000 characters when the window is unknown), truncates each description to 1,024 characters, and degrades by levels (full description, then name only, then a warning). Ours is unbounded: the `skill` tool description grows by about 40-80 tokens per skill.
+2. **`get_context_remaining` tool and `context.usage` event.** Codex gives the agent a tool to read what is left of its window; the host shows the same number.
+3. **Compaction.** Configurable threshold (Codex: `model_auto_compact_token_limit` plus an effective-window percentage); count tool schemas and provider-reported usage; keep the latest user messages (Codex keeps up to 20,000 tokens); put a hand-over sentence before the summary (`summary_prefix.md`); `pre_compact`/`post_compact` hooks already exist here; manual compaction in the SDK; start/finish events.
+4. **MCP schema caps.** Codex limits a plugin tool schema to 8 KB and the plugin total to 64 KB. Add the same two limits so one chatty server cannot fill the context.
+5. **Two-phase memory.** Phase 1 summarises each idle past session in the background (a no-op is allowed and preferred when nothing is reusable); phase 2 consolidates into a summary, a searchable registry and generated skills. Read path: summary injected, registry searched with a budget of 4-6 steps, drift-prone facts verified or flagged as memory-derived.
+6. **General agent prompt** (to discuss): Codex's prompt has sections on autonomy and persistence, planning, validating the work, ambition versus precision, and how to present the answer.
+7. **Single `apply_patch` edit tool** (to discuss): changes how the agent edits files.
+
+Not in Codex, still ours to design: keyword search over skills (`skill_search`, a pinned handful, the rest searchable). Codex only budgets and degrades the catalogue.
+
 ## Already corrected in the documentation
 
 The website pages were fixed on 2026-10-09 to match the code (see the `seshat-ai` repository, pull requests 139 and 140): hook events, runtime events, the permission order, the `bypass` and `auto` modes, the blocking limit, and the default number of turns. Fixing the code does not need the pages to change before, but the pages must be updated when an item above is fixed.

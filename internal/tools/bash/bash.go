@@ -136,11 +136,11 @@ func NewTool(config *ToolConfig) *Tool {
 	// accepts that bash then refuses to run at all, or into SandboxKind=Docker
 	// above. That tradeoff needs to be visible, not silent, for an agent
 	// platform that executes model-issued shell commands.
-	if sandboxExecutor == nil && !landlockAvailable() && !config.RequireSandbox {
+	if sandboxExecutor == nil && !SandboxAvailable() && !config.RequireSandbox {
 		slog.Warn(
 			"bash tool: no OS-level sandbox available on this platform — shell commands will run unconfined on the host",
 			"platform", runtime.GOOS,
-			"hint", "Landlock (the current confinement backend) is Linux-only and no Docker sandbox is configured; set ToolConfig.SandboxKind=sandbox.EnvironmentDocker for real isolation, or RequireSandbox=true to refuse unconfined execution instead of allowing it silently",
+			"hint", "Landlock (the current confinement backend) is Linux-only and no Docker sandbox is configured; install srt (npm i -g @anthropic-ai/sandbox-runtime) or set ToolConfig.SandboxKind=sandbox.EnvironmentDocker for real isolation, or RequireSandbox=true to refuse unconfined execution instead of allowing it silently",
 		)
 	}
 
@@ -634,6 +634,10 @@ func (t *Tool) executeLocalCommand(ctx context.Context, execCtx *ExecutionContex
 	}
 
 	cmdPath, cmdArgs, sandboxEnv, sandboxed := commandWithLandlock(t.shell, shellArgs(t.shell, actualCommand), execCtx.WorkingDirectory)
+	if !sandboxed {
+		// Landlock is Linux-only; where srt is installed it confines the command on macOS and Windows.
+		cmdPath, cmdArgs, sandboxed = srtCommand(t.shell, shellArgs(t.shell, actualCommand), execCtx.WorkingDirectory)
+	}
 
 	if execCtx.WorkingDirectory != "" && !sandboxed && t.config != nil && t.config.RequireSandbox {
 		return nil, fmt.Errorf("sandbox required but unavailable on this host: refusing to run the command unconfined")
@@ -886,7 +890,27 @@ func applyPatchCommandName(s string) bool {
 // end user instead of leaving it as a backend-log-only warning — see
 // ToolConfig.RequireSandbox and NewTool's startup log.
 func SandboxAvailable() bool {
-	return landlockAvailable()
+	return landlockAvailable() || srtAvailable()
+}
+
+// Sandbox backends reported by SandboxBackend.
+const (
+	BackendLandlock = "landlock"
+	BackendSrt      = "srt"
+	BackendNone     = "none"
+)
+
+// SandboxBackend names the confinement that local bash commands get on this host: Landlock (Linux), srt (macOS,
+// Windows, or Linux without Landlock) or none. "none" means commands run with the user's full rights, and a host
+// application should say so rather than show a lock.
+func SandboxBackend() string {
+	switch {
+	case landlockAvailable():
+		return BackendLandlock
+	case srtAvailable():
+		return BackendSrt
+	}
+	return BackendNone
 }
 
 // SandboxKind reports which sandbox backend this specific Tool instance

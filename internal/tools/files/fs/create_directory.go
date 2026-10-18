@@ -30,6 +30,7 @@ func NewCreateDirectoryTool(workingDir string) *CreateDirectoryTool {
 func (t *CreateDirectoryTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        "create_directory",
+		SearchHint:  "create a new folder or directory",
 		DisplayName: "Create Directory",
 		Description: "Create a directory and any necessary parent directories. Equivalent to mkdir -p.",
 		Category:    "filesystem",

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/KPO-Tech/seshat-runtime/internal/textsafe"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/agent/tools"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/message"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/styles"
@@ -84,6 +85,8 @@ func (b *BashToolRenderContext) RenderTool(sty *styles.Styles, width int, opts *
 	if output == "" && opts.Result.Content != tools.BashNoOutput {
 		output = opts.Result.Content
 	}
+	// What a process printed may hold escape sequences that rewrite the screen or the clipboard.
+	output = textsafe.SanitizeOutput(output)
 
 	if output == "" {
 		noOut := sty.Tool.StateCancelled.Render("(no output)")
@@ -236,6 +239,7 @@ func renderJobTool(sty *styles.Styles, opts *ToolRenderOpts, width int, action, 
 		return joinToolParts(header, earlyState)
 	}
 
+	content = textsafe.SanitizeOutput(content)
 	if content == "" {
 		noOut := sty.Tool.StateCancelled.Render("(no output)")
 		return joinToolParts(header, sty.Tool.Body.Render(noOut))

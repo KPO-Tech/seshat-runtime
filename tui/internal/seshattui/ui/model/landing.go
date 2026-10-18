@@ -77,6 +77,7 @@ func (m *UI) landingHeaderView(width int) string {
 	}
 
 	right := lipgloss.NewStyle().Foreground(t.ToolCallSuccess.GetForeground()).Render("ready")
+	right = m.sandboxChip() + "  " + right
 
 	gap := max(0, width-lipgloss.Width(left)-lipgloss.Width(right)-2)
 	return " " + left + strings.Repeat(" ", gap) + right + " "
@@ -114,6 +115,7 @@ func (m *UI) chatHeaderView(width int) string {
 		right = spinnerStyle.Render(m.todoSpinner.View()) + " " + modeLabel
 	}
 
+	right = m.sandboxChip() + "  " + right
 	gap := max(0, width-lipgloss.Width(left)-lipgloss.Width(right)-2)
 	return " " + left + strings.Repeat(" ", gap) + right + " "
 }

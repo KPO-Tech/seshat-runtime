@@ -2,9 +2,31 @@ package memory
 
 import "github.com/KPO-Tech/seshat-runtime/internal/types"
 
-// TrackingState carries circuit-breaker state across loop iterations.
+// TrackingState carries circuit-breaker state across loop iterations, and what the loop knows about the size of the
+// request beyond the messages it hands over.
 type TrackingState struct {
 	ConsecutiveFailures int `json:"consecutive_failures"`
+
+	// ExtraTokens is the size of the request outside the system prompt and the messages: the tool definitions, which
+	// cost context on every request (about 36,000 tokens for the whole builtin registry).
+	ExtraTokens int `json:"extra_tokens,omitempty"`
+
+	// Anchor is the last size the provider reported. When set, the size of the request is that figure plus an estimate
+	// of the messages added since, which is exact for everything the provider counted (tools included).
+	Anchor *UsageAnchor `json:"anchor,omitempty"`
+}
+
+// UsageAnchor is the size of the conversation as the provider counted it, and how many messages that covered.
+type UsageAnchor struct {
+	Tokens       int `json:"tokens"`
+	MessageCount int `json:"message_count"`
+}
+
+// ContextBudget is where a model's window stands against the compaction thresholds.
+type ContextBudget struct {
+	WindowTokens        int `json:"window_tokens"`
+	AutoCompactAtTokens int `json:"auto_compact_at_tokens"`
+	BlockingLimitTokens int `json:"blocking_limit_tokens"`
 }
 
 // CompactionResult is the canonical compaction outcome.

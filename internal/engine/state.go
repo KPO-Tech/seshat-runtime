@@ -7,6 +7,7 @@ import (
 
 	"github.com/KPO-Tech/seshat-runtime/internal/modes"
 	"github.com/KPO-Tech/seshat-runtime/internal/prompt"
+	compact "github.com/KPO-Tech/seshat-runtime/internal/runtime/memory"
 	contract "github.com/KPO-Tech/seshat-runtime/internal/tools/contract"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
@@ -115,11 +116,13 @@ func Terminate(reason string, stopReason string) Transition {
 // this struct keeps only the canonical transcript, tool surface, and aggregate
 // counters that must survive across turns and restores.
 type SessionState struct {
-	SessionID           types.SessionID
-	TurnID              types.TurnID
-	Messages            []types.Message
-	Tools               map[string]tool.Tool
-	DiscoveredDeferred  []string
+	SessionID          types.SessionID
+	TurnID             types.TurnID
+	Messages           []types.Message
+	Tools              map[string]tool.Tool
+	DiscoveredDeferred []string
+	// DeferredScope are the tools the main agent can find with tool_search besides the registry's deferred ones.
+	DeferredScope       []string
 	PermissionContext   *types.PermissionContext
 	DenialTracking      *types.DenialTrackingState
 	TurnNumber          int
@@ -359,6 +362,13 @@ func (s *SessionState) PendingDeferredToolNames(reg *tool.Registry) []string {
 		seen[name] = true
 		names = append(names, name)
 	}
+	for _, name := range scopedDeferredNames(reg, s.DeferredScope) {
+		if seen[name] || discovered[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
 	sort.Strings(names)
 	return names
 }
@@ -527,6 +537,10 @@ type MutableState struct {
 
 	// Usage is token usage information
 	Usage *types.TokenUsage
+
+	// UsageAnchor is the size of the conversation as the provider last counted it (see compact.UsageAnchor). Reset by
+	// compaction, which rewrites the messages it described.
+	UsageAnchor *compact.UsageAnchor
 
 	// StopReason is why the loop stopped
 	StopReason string

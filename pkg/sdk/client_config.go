@@ -105,6 +105,15 @@ type ClientConfig struct {
 	// works on any provider without needing an Anthropic key.
 	CompactSummaryModel ModelIdentifier `json:"compact_summary_model,omitempty"`
 
+	// CompactThreshold is the share of the context window at which the conversation is compacted automatically
+	// (for example 0.85). Zero uses the default. It must be below 1.
+	CompactThreshold float64 `json:"compact_threshold,omitempty"`
+
+	// CompactTarget is the share of the window the recent messages kept as they are may take after a compaction
+	// (for example 0.5): lower keeps less verbatim and leaves more room before the next one. Zero uses the default.
+	// It must be below CompactThreshold.
+	CompactTarget float64 `json:"compact_target,omitempty"`
+
 	// TrustProjectInstructions gates SESHAT.md/AGENTS.md/.seshat/instructions.md
 	// found in WorkingDir behind project trust before they are injected into
 	// the system prompt (see docs/project-trust.md). It is called with the
@@ -234,6 +243,21 @@ type ClientConfig struct {
 	PlanStore      PlanStore      `json:"-"`
 	LongTermMemory LongTermMemory `json:"-"`
 
+	// ExtractMemories makes the client read each conversation when its session closes and store what is worth
+	// remembering in LongTermMemory (preferences and corrections, procedures that worked, pitfalls). It does nothing
+	// without LongTermMemory. Off by default: it stores facts from conversations without the user asking, and costs
+	// one model call per session of three user turns or more.
+	ExtractMemories bool `json:"extract_memories,omitempty"`
+
+	// ConsolidateMemories makes the client rewrite a user's memory smaller once it holds 60 observations or more, at
+	// most once a day: duplicates merged, conflicting statements resolved in favour of the newer, obsolete ones
+	// dropped. It needs ExtractMemories and a LongTermMemory that can be rewritten (the SQLite store can). Off by
+	// default because it rewrites what was stored; a result that would lose most of it is refused.
+	ConsolidateMemories bool `json:"consolidate_memories,omitempty"`
+
+	// MemoryExtractionModel is the model that reads the conversation for ExtractMemories. Zero uses Model.
+	MemoryExtractionModel ModelIdentifier `json:"memory_extraction_model,omitempty"`
+
 	// UserID identifies the caller for PlanStore.CreateOrUpdate (submit_plan)
 	// - a host embedding this SDK for more than one user must set this per
 	// request/session so plan documents get persisted against the actual
@@ -315,6 +339,11 @@ type ClientConfig struct {
 	// curated list). Sub-agents started through the agent tools are not
 	// limited by it. Empty (the default) offers every enabled tool.
 	MainAgentTools []string `json:"main_agent_tools,omitempty"`
+
+	// MainAgentDeferredTools are tools the main agent does not have loaded but can find with tool_search and then use.
+	// Together with MainAgentTools it makes the three levels of a general agent: always loaded, found on demand, and (for
+	// everything else) not offered. Sub-agents are not affected. Empty keeps today's behaviour.
+	MainAgentDeferredTools []string `json:"main_agent_deferred_tools,omitempty"`
 }
 
 // PreToolHookConfig is a single shell hook that runs before a tool call.
@@ -331,6 +360,12 @@ type PreToolHookConfig struct {
 // backend-log-only warning.
 func SandboxAvailable() bool {
 	return bashTool.SandboxAvailable()
+}
+
+// SandboxBackend names the confinement local bash commands get on this host: "landlock", "srt" or "none". "none"
+// means commands run with the user's full rights; a host application should say so rather than show a lock.
+func SandboxBackend() string {
+	return bashTool.SandboxBackend()
 }
 
 // DefaultClientConfig returns default client configuration.

@@ -3,6 +3,7 @@ package dialog
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"charm.land/bubbles/v2/help"
@@ -358,12 +359,22 @@ func (d *OAuth) copyCodeAndOpenURL() tea.Cmd {
 		d.userCode,
 		"Code copied and URL opened",
 		func() tea.Msg {
-			if err := browser.OpenURL(d.verificationURL); err != nil {
+			if err := openWebLink(d.verificationURL); err != nil {
 				return ActionOAuthErrored{fmt.Errorf("failed to open browser: %w", err)}
 			}
 			return nil
 		},
 	)
+}
+
+// openWebLink opens a link in the browser, and only an http(s) link: the address comes from the provider's answer,
+// and the system opener also starts programs for file:, ms-msdt: and similar schemes.
+func openWebLink(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return fmt.Errorf("refusing to open %q: not an http(s) link", raw)
+	}
+	return browser.OpenURL(u.String())
 }
 
 func (m *OAuth) saveKeyAndContinue() Action {

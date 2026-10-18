@@ -98,6 +98,8 @@ type ClientConfig struct {
 
     // ── Context management ────────────────────────────────────────────────
     AutoCompact             bool // compact transcript when context window fills (default true)
+    CompactThreshold        float64 // share of the window that triggers compaction (default 0.85)
+    CompactTarget           float64 // share the recent messages kept verbatim may take afterwards (default 0.5, below the threshold)
     TurnTokenBudget         int  // if set, pause when budget is exhausted per turn
     BudgetContinuationLimit int  // max budget-continuation cycles (0 = unlimited)
     ContinuationNudgeLimit  int  // max text nudges before giving up (default 3)
@@ -121,6 +123,7 @@ type ClientConfig struct {
     DisableTitleGeneration bool // disable background session title generation (default false)
     EnableToolSearch       bool // hide deferred tools (MCP, skill) behind the tool_search tool instead of listing them all upfront (default false; ENABLE_TOOL_SEARCH env var is the fallback when this is false)
     MainAgentTools         []string // limit the main agent to exactly these tool names (sub-agents keep the whole registry); empty offers every enabled tool
+    MainAgentDeferredTools []string // tools the main agent does not load but finds with tool_search and then uses; a tool in neither list is not offered to it
 
     // ── MCP ───────────────────────────────────────────────────────────────
     MCPServers []MCPServerConfig // MCP servers to connect on startup

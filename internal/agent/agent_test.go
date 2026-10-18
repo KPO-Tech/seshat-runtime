@@ -624,7 +624,7 @@ func TestBrowseAgentToolSurfaceIsReadOnlyResearchFocused(t *testing.T) {
 		allowed[tool] = true
 	}
 
-	for _, expected := range []string{"web_search", "web_fetch", "browser_open", "read_file", "tree"} {
+	for _, expected := range []string{"web_search", "web_fetch", "browser_open", "read_file", "glob", "grep"} {
 		if !allowed[expected] {
 			t.Fatalf("expected browse agent to allow %q", expected)
 		}

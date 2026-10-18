@@ -8,14 +8,11 @@ import (
 	automationTool "github.com/KPO-Tech/seshat-runtime/internal/tools/automation"
 	bashTool "github.com/KPO-Tech/seshat-runtime/internal/tools/bash"
 	documentreaderTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/documentreader"
-	docxTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/docx"
 	editTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/edit"
-	excelTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/excel"
 	fsTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/fs"
 	globTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/glob"
 	grepTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/grep"
 	patchTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/patch"
-	pdfwriteTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/pdfwrite"
 	fileReadTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/read"
 	searchsessionTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/searchsession"
 	writeTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/write"
@@ -38,6 +35,7 @@ import (
 	twitterTool "github.com/KPO-Tech/seshat-runtime/internal/tools/social/twitter"
 	askUserQuestionTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/ask_user"
 	configTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/config"
+	contextUsageTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/context_usage"
 	fimtool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/fim"
 	goalTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/goal"
 	lspTool "github.com/KPO-Tech/seshat-runtime/internal/tools/special/lsp"
@@ -119,9 +117,6 @@ func RegisterBuiltinToolsWithConfig(reg *tool.Registry, config *Config) error {
 		searchsessionTool.NewTool(config.WorkingDir),
 		writeTool.NewWriteTool(config.WorkingDir),
 		editTool.NewEditTool(config.WorkingDir),
-		excelTool.NewTool(config.WorkingDir),
-		docxTool.NewTool(config.WorkingDir),
-		pdfwriteTool.NewTool(config.WorkingDir),
 		configTool.NewTool(config.WorkingDir),
 		repomapTool.NewTool(config.WorkingDir),
 		workflowTool.NewTool(),
@@ -192,6 +187,8 @@ func RegisterBuiltinToolsWithConfig(reg *tool.Registry, config *Config) error {
 		goalTool.NewCreateGoalTool(),
 		goalTool.NewGetGoalTool(),
 		goalTool.NewUpdateGoalTool(),
+		// Context window (the loop records the size of each request; the tool only reads it).
+		contextUsageTool.NewTool(),
 		// Agent control plane (Phase 5) — wait/list/send/close use the default async manager.
 		// spawn_agent is registered in sdk/client.go (needs the live engine instance).
 		agentsTool.NewWaitAgentTool(),

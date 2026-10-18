@@ -52,7 +52,7 @@ func NewStatusTool() *StatusTool { return &StatusTool{} }
 
 func (t *StatusTool) Definition() tool.Definition {
 	return tool.Definition{
-		Name: "git_status", DisplayName: "Git Status", Description: statusDesc,
+		Name: "git_status", SearchHint: "git status changed staged untracked files in the repository", DisplayName: "Git Status", Description: statusDesc,
 		Category: "vcs",
 		InputSchema: schema.FromMap(map[string]any{
 			"type": "object",
@@ -105,7 +105,7 @@ func NewLogTool() *LogTool { return &LogTool{} }
 
 func (t *LogTool) Definition() tool.Definition {
 	return tool.Definition{
-		Name: "git_log", DisplayName: "Git Log", Description: logDesc,
+		Name: "git_log", SearchHint: "git log commit history of the repository", DisplayName: "Git Log", Description: logDesc,
 		Category: "vcs",
 		InputSchema: schema.FromMap(map[string]any{
 			"type": "object",
@@ -164,7 +164,7 @@ func NewDiffTool() *DiffTool { return &DiffTool{} }
 
 func (t *DiffTool) Definition() tool.Definition {
 	return tool.Definition{
-		Name: "git_diff", DisplayName: "Git Diff", Description: diffDesc,
+		Name: "git_diff", SearchHint: "git diff changes between commits or working tree", DisplayName: "Git Diff", Description: diffDesc,
 		Category: "vcs",
 		InputSchema: schema.FromMap(map[string]any{
 			"type": "object",
@@ -221,7 +221,7 @@ func NewCommitTool() *CommitTool { return &CommitTool{} }
 
 func (t *CommitTool) Definition() tool.Definition {
 	return tool.Definition{
-		Name: "git_commit", DisplayName: "Git Commit", Description: commitDesc,
+		Name: "git_commit", SearchHint: "git commit stage and commit changes with a message", DisplayName: "Git Commit", Description: commitDesc,
 		Category:           "vcs",
 		IsDestructive:      false,
 		RequiresPermission: true,
@@ -283,7 +283,7 @@ func NewBranchTool() *BranchTool { return &BranchTool{} }
 
 func (t *BranchTool) Definition() tool.Definition {
 	return tool.Definition{
-		Name: "git_branch", DisplayName: "Git Branch", Description: branchDesc,
+		Name: "git_branch", SearchHint: "git branch list create switch or delete branches", DisplayName: "Git Branch", Description: branchDesc,
 		Category: "vcs",
 		InputSchema: schema.FromMap(map[string]any{
 			"type": "object",

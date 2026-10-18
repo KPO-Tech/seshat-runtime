@@ -38,6 +38,7 @@ func NewListDirectoryTool(workingDir string) *ListDirectoryTool {
 func (t *ListDirectoryTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        "list_directory",
+		SearchHint:  "list the files and folders inside a directory",
 		DisplayName: "List Directory",
 		Description: "List the files and directories inside a path. Returns name, type (file/dir/symlink), size and permissions for each entry.",
 		Category:    "filesystem",

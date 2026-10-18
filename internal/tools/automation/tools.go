@@ -19,6 +19,7 @@ func NewScheduleJobTool(cfg Config) (tool.Tool, error) {
 
 	return tool.NewBuilder(ToolNameScheduleJob).
 		WithDisplayName("ScheduleJob").
+		WithSearchHint("schedule a recurring or one-time job cron timer automation").
 		WithCategory("automation").
 		WithDescription(ToolDescScheduleJob).
 		WithInputSchema(schema.JSONSchema{
@@ -124,6 +125,7 @@ func NewListJobsTool(cfg Config) (tool.Tool, error) {
 
 	return tool.NewBuilder(ToolNameListJobs).
 		WithDisplayName("ListJobs").
+		WithSearchHint("list scheduled jobs automation").
 		WithCategory("automation").
 		WithDescription(ToolDescListJobs).
 		ReadOnly().
@@ -169,6 +171,7 @@ func NewUpdateJobTool(cfg Config) (tool.Tool, error) {
 
 	return tool.NewBuilder(ToolNameUpdateJob).
 		WithDisplayName("UpdateJob").
+		WithSearchHint("change the schedule or settings of a scheduled job").
 		WithCategory("automation").
 		WithDescription(ToolDescUpdateJob).
 		WithInputSchema(schema.JSONSchema{
@@ -243,6 +246,7 @@ func NewDeleteJobTool(cfg Config) (tool.Tool, error) {
 
 	return tool.NewBuilder(ToolNameDeleteJob).
 		WithDisplayName("DeleteJob").
+		WithSearchHint("delete a scheduled job").
 		WithCategory("automation").
 		WithDescription(ToolDescDeleteJob).
 		Destructive().
@@ -284,6 +288,7 @@ func NewPauseJobTool(cfg Config) (tool.Tool, error) {
 
 	return tool.NewBuilder(ToolNamePauseJob).
 		WithDisplayName("PauseJob").
+		WithSearchHint("pause a scheduled job").
 		WithCategory("automation").
 		WithDescription(ToolDescPauseJob).
 		WithInputSchema(schema.JSONSchema{
@@ -325,6 +330,7 @@ func NewResumeJobTool(cfg Config) (tool.Tool, error) {
 
 	return tool.NewBuilder(ToolNameResumeJob).
 		WithDisplayName("ResumeJob").
+		WithSearchHint("resume a paused scheduled job").
 		WithCategory("automation").
 		WithDescription(ToolDescResumeJob).
 		WithInputSchema(schema.JSONSchema{
@@ -366,6 +372,7 @@ func NewRunJobNowTool(cfg Config) (tool.Tool, error) {
 
 	return tool.NewBuilder(ToolNameRunJobNow).
 		WithDisplayName("RunJobNow").
+		WithSearchHint("run a scheduled job immediately").
 		WithCategory("automation").
 		WithDescription(ToolDescRunJobNow).
 		WithInputSchema(schema.JSONSchema{

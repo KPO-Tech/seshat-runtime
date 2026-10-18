@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/textsafe"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
 	"github.com/KPO-Tech/seshat-runtime/internal/workspace"
 )
@@ -66,6 +67,15 @@ func NewSecurityValidator() *SecurityValidator { return &SecurityValidator{} }
 // ValidateCommand checks a command against hardcoded dangerous patterns.
 // Returns a SecurityViolation (never nil when dangerous) or nil when safe.
 func (v *SecurityValidator) ValidateCommand(command string) *SecurityViolation {
+	// A command whose visible text differs from its real text cannot be approved by reading it.
+	if r, found := textsafe.DeceptiveRune(command); found {
+		return &SecurityViolation{
+			Command:   command,
+			Violation: "hidden-character",
+			Severity:  SeverityCritical,
+			Reason:    fmt.Sprintf("the command contains an invisible or direction-changing character (U+%04X) that can make it read differently from what it does", r),
+		}
+	}
 	parsed := NewParser().ParseCommand(command)
 	for _, seg := range parsed.Segments {
 		if viol := validateSegmentCommand(seg.Text); viol != nil {

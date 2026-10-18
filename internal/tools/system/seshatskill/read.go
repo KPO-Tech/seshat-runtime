@@ -22,6 +22,7 @@ func NewReadTool() *ReadTool { return &ReadTool{} }
 func (t *ReadTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        "seshat_read_skill",
+		SearchHint:  "read the full instructions of a skill by name",
 		DisplayName: "Read Skill",
 		Description: "Read the full content of a Seshat skill by name, including skill.md and the bundled files present in that skill directory. Use this before modifying a skill or when looking for an existing pattern to reuse.",
 		InputSchema: schema.FromMap(map[string]any{

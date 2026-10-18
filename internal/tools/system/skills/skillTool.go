@@ -298,28 +298,9 @@ Important:
 - Do not invoke a skill that is already running`
 }
 
+// FormatSkillsList renders the skill index within DefaultCatalogBudgetChars.
 func FormatSkillsList(skills []Skill) string {
-	if len(skills) == 0 {
-		return "No skills available"
-	}
-	var result string
-	for _, skill := range skills {
-		if skill.IsHidden {
-			continue
-		}
-		line := "- " + skill.Name + ": " + skill.Description
-		if skill.WhenToUse != "" {
-			line += " (use when: " + skill.WhenToUse + ")"
-		}
-		if len(skill.Triggers) > 0 {
-			line += " [auto-activates when user says: " + strings.Join(skill.Triggers, " / ") + "]"
-		}
-		result += line + "\n"
-	}
-	if result == "" {
-		return "No skills available"
-	}
-	return result
+	return FormatSkillsListWithin(skills, DefaultCatalogBudgetChars)
 }
 
 func GetPromptWithSkills(skillsList string) string {

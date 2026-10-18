@@ -43,6 +43,7 @@ func NewImageGenTool(generator image.Generation) *ImageGenTool {
 func (t *ImageGenTool) Definition() tool.Definition {
 	return tool.Definition{
 		Name:        imageGenToolName,
+		SearchHint:  "generate an image from a text prompt picture drawing",
 		DisplayName: "Generate Image",
 		Description: imageGenDesc,
 		Category:    "creative",

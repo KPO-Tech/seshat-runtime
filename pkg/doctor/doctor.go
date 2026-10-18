@@ -155,6 +155,7 @@ func Run(ctx context.Context, opts Options) Report {
 	checkCommand(add, "tools", "git", "git", "--version")
 	checkCommand(add, "tools", "uv", "uv", "--version")
 	checkDocling(add, cfg)
+	checkSandbox(add)
 
 	return report
 }
@@ -233,6 +234,20 @@ func checkCommand(add func(string, string, Status, string, string), section, nam
 		return
 	}
 	add(section, name, StatusOK, fmt.Sprintf("%s (%s)", strings.TrimSpace(string(out)), path), "")
+}
+
+// checkSandbox says what confines the commands of the bash tool. "none" is a warning, not a pass: such commands run
+// with the user's full rights.
+func checkSandbox(add func(string, string, Status, string, string)) {
+	switch backend := sdk.SandboxBackend(); backend {
+	case "landlock":
+		add("tools", "sandbox", StatusOK, "commands are confined by Landlock (write only in the working folder)", "")
+	case "srt":
+		add("tools", "sandbox", StatusOK, "commands are confined by srt (write only in the working folder and the temp folder, limited network)", "")
+	default:
+		add("tools", "sandbox", StatusWarn, "commands are NOT confined: they run with your full rights",
+			"Install srt (npm i -g @anthropic-ai/sandbox-runtime; Windows support is alpha) or use Docker. Linux with Landlock is confined automatically.")
+	}
 }
 
 func checkDocling(add func(string, string, Status, string, string), cfg config.Config) {

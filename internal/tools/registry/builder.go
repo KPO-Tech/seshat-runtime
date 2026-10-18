@@ -67,6 +67,12 @@ func (b *Builder) WithDisplayName(displayName string) *Builder {
 	return b
 }
 
+// WithSearchHint sets the keywords tool_search matches when the tool is deferred.
+func (b *Builder) WithSearchHint(hint string) *Builder {
+	b.definition.SearchHint = hint
+	return b
+}
+
 // WithCategory sets the category
 func (b *Builder) WithCategory(category string) *Builder {
 	b.definition.Category = category

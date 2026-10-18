@@ -98,7 +98,7 @@ func (t *ToolSearchTool) Call(ctx context.Context, input contract.CallInput, _ t
 		return contract.NewErrorResult(fmt.Errorf("tool registry not available")), nil
 	}
 
-	deferred := t.registry.ListDeferred()
+	deferred := withScopedTools(ctx, t.registry, t.registry.ListDeferred())
 	if len(deferred) == 0 {
 		res := contract.NewTextResult("No deferred tools available. All registered tools are already loaded.")
 		return res, nil
@@ -166,8 +166,8 @@ func (t *ToolSearchTool) getOrBuildEngine(tools []contract.Tool) *BM25Engine {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.engine != nil && len(t.indexed) == len(tools) {
-		// Quick size check — rebuild if count changed (tool registered/unregistered).
+	if t.engine != nil && sameToolNames(t.indexed, tools) {
+		// Rebuild when the set changed: a tool registered or unregistered, or another scope (see WithScope).
 		return t.engine
 	}
 
@@ -179,6 +179,19 @@ func (t *ToolSearchTool) getOrBuildEngine(tools []contract.Tool) *BM25Engine {
 	t.engine = NewBM25Engine(texts)
 	t.indexed = tools
 	return t.engine
+}
+
+// sameToolNames reports whether both lists hold the same tools in the same order.
+func sameToolNames(a, b []contract.Tool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Definition().Name != b[i].Definition().Name {
+			return false
+		}
+	}
+	return true
 }
 
 // ─── select: shortcut ────────────────────────────────────────────────────────

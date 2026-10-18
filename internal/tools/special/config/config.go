@@ -88,6 +88,7 @@ func (t *Tool) Call(
 		"workspace_root":    workspaceRoot,
 		"sandbox_enabled":   toolCtx.EnableSandbox,
 		"sandbox_available": bashTool.SandboxAvailable(),
+		"sandbox_backend":   bashTool.SandboxBackend(),
 		"default_shell":     bashTool.DetectShell(),
 		"commands": map[string]any{
 			"always_denied_fragments": cmdPolicy.DenyFragments(),
