@@ -13,6 +13,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **`sdk.EnterpriseAgentTools()` and `sdk.EnterpriseAgentDeferredTools()` give a host the tool profile of a general agent in a company setting.** They are the lists the desktop application needs for `ClientConfig.MainAgentTools` and `MainAgentDeferredTools` (with `EnableToolSearch`): 38 tools loaded at every request, the rest findable with `tool_search`, MCP tools deferred by themselves. Measured on a default client: 35.5k tokens of tool definitions for every registered tool against 19.4k for the profile (about 45% less); the heaviest loaded definitions are bash, agent, grep, read_file and ask_user_question (4 to 6 KB each). Tests guard the lists against stale names and the size against growth.
 
+### Fixed
+
+- **`ClientConfig.EnableToolSearch` now also gives the model the `tool_search` tool.** The option hides the deferred tools from the model, but the tool that finds them followed only the `ENABLE_TOOL_SEARCH` environment variable, so a host that set the option (and `MainAgentDeferredTools`) offered a model that could not reach the tools it had hidden. Found by building a session with the desktop profile: its tool list had no `tool_search`.
+
 ## [1.10.3] - 2026-10-18
 
 ### Added
