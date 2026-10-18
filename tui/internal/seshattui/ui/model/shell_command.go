@@ -219,13 +219,11 @@ func (msg shellInteractiveDoneMsg) warning() tea.Cmd {
 	return util.ReportWarn("Command ended: " + msg.err.Error())
 }
 
-// submitPrompt sends what the user typed: to the shell when it starts with "!" or ":!", to memory for "/memory", to the agent otherwise.
+// submitPrompt sends what the user typed: to the shell when it starts with "!" or ":!", to the agent otherwise.
 func (m *UI) submitPrompt(value string, attachments []message.Attachment) tea.Cmd {
-	for _, run := range []func(string) (tea.Cmd, bool){m.runShellInput, m.runMemoryInput} {
-		if cmd, handled := run(value); handled {
-			m.historyReset()
-			return tea.Batch(cmd, m.loadPromptHistory())
-		}
+	if cmd, handled := m.runShellInput(value); handled {
+		m.historyReset()
+		return tea.Batch(cmd, m.loadPromptHistory())
 	}
 	m.randomizePlaceholders()
 	m.historyReset()

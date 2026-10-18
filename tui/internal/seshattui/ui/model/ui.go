@@ -1890,28 +1890,9 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 		))
 
 	case dialog.ActionRunCustomCommand:
-		if len(msg.Arguments) > 0 && msg.Args == nil {
-			m.dialog.CloseFrontDialog()
-			argsDialog := dialog.NewArguments(
-				m.com,
-				"Custom Command Arguments",
-				"",
-				msg.Arguments,
-				msg, // Pass the action as the result
-			)
-			m.dialog.OpenDialog(argsDialog)
-			break
-		}
-		content := msg.Content
-		if msg.Args != nil {
-			content = substituteArgs(content, msg.Args)
-		}
-		// If this is a skill command, format it using the skill's FormatInvocation method
-		if msg.Skill != nil {
-			content = msg.Skill.FormatInvocation()
-		}
-		cmds = append(cmds, m.sendMessage(content))
-		m.dialog.CloseFrontDialog()
+		cmds = append(cmds, m.runCustomCommand(msg))
+	case dialog.ActionMemory:
+		cmds = append(cmds, m.handleMemoryAction(msg))
 	case dialog.ActionAttachSkill:
 		m.dialog.CloseFrontDialog()
 		cmds = append(cmds, m.attachSkill(msg.ID, msg.Name))
