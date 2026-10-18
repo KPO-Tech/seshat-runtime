@@ -17,7 +17,7 @@ func (m *UI) maybeOpenCompletions(keyName, curValue string) []tea.Cmd {
 	if m.completionsOpen {
 		return nil
 	}
-	curIdx := len(curValue)
+	curIdx := min(m.cursorOffset(), len(curValue))
 	atWordStart := curIdx == 0 || isWhitespace(curValue[curIdx-1])
 	var cmds []tea.Cmd
 	switch {
@@ -93,7 +93,7 @@ func (m *UI) runCommandCompletion(payload any) tea.Cmd {
 	if start := m.completionsStartIndex; start <= len(value) {
 		end := min(start+len(m.textareaWord()), len(value))
 		m.textarea.SetValue(value[:start] + value[end:])
-		m.textarea.MoveToEnd()
+		m.setCursorOffset(start)
 	}
 	cmds := []tea.Cmd{m.handleTextareaHeightChange(prevHeight)}
 	if action, ok := payload.(dialog.Action); ok {
