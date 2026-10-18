@@ -118,6 +118,21 @@ func (s *Store) LoadCanonicalMessages(sessionID types.SessionID) ([]types.Messag
 	return canonicalMessages(entries), nil
 }
 
+// LoadHistory restores the whole conversation of a session: the messages compactions archived, oldest first, and the
+// canonical messages the model still sees.
+func (s *Store) LoadHistory(sessionID types.SessionID) (archived, current []types.Message, err error) {
+	entries, err := s.LoadTranscript(sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, e := range entries {
+		if m, ok := types.ArchivedMessageFromTranscriptEntry(e); ok {
+			archived = append(archived, m)
+		}
+	}
+	return archived, canonicalMessages(entries), nil
+}
+
 // SaveCanonicalMessages replaces the transcript with the canonical message list.
 func (s *Store) SaveCanonicalMessages(sessionID types.SessionID, messages []types.Message) error {
 	return s.ReplaceTranscript(sessionID, canonicalTranscriptEntries(messages))

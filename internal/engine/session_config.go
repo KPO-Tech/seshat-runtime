@@ -113,6 +113,29 @@ func (s *Session) GetMessages() []types.Message {
 	return s.state.CloneMessages()
 }
 
+// SessionHistory is the whole conversation of a session: Archived holds the messages compactions took out of what the
+// model sees, oldest first, and Current holds the messages the model sees now.
+type SessionHistory struct {
+	Archived []types.Message `json:"archived"`
+	Current  []types.Message `json:"current"`
+}
+
+// History returns the whole conversation, including what compactions archived. Without a store that keeps an
+// archive, Archived is empty and Current is GetMessages.
+func (s *Session) History() (SessionHistory, error) {
+	history := SessionHistory{Current: s.state.CloneMessages()}
+	loader, ok := s.store.(historyLoader)
+	if !ok || s.store == nil {
+		return history, nil
+	}
+	archived, _, err := loader.LoadHistory(s.state.SessionID)
+	if err != nil {
+		return SessionHistory{}, err
+	}
+	history.Archived = archived
+	return history, nil
+}
+
 func (s *Session) GetTurnNumber() int {
 	if s == nil || s.state == nil {
 		return 0
