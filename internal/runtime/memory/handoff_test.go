@@ -1,9 +1,12 @@
 package memory
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/providers"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
@@ -71,18 +74,84 @@ func TestCompactedSummaryCarriesTheHandoffAndTheUsersWords(t *testing.T) {
 	}
 }
 
-func TestKeptUserMessagesStopAtTheirBudget(t *testing.T) {
+func TestKeptUserMessagesAreClippedAndStopAtTheirBudget(t *testing.T) {
 	e := NewEngine(nil, DefaultConfig())
-	huge := strings.Repeat("old words ", keptUserMessageTokens) // far over the budget
-	dropped := []types.Message{
-		makeTextMsg("m0", types.RoleUser, huge),
-		makeTextMsg("m1", types.RoleUser, "the newest request"),
-	}
-	text := e.summaryText(dropped, "s")
+
+	// A pasted blob is carried over clipped, not whole: otherwise compaction would copy it back.
+	blob := strings.Repeat("pasted log line\n", 5_000)
+	text := e.summaryText([]types.Message{makeTextMsg("m0", types.RoleUser, blob), makeTextMsg("m1", types.RoleUser, "the newest request")}, "s")
 	if !strings.Contains(text, "the newest request") {
-		t.Error("the newest user message is kept first")
+		t.Error("the newest user message is kept")
 	}
-	if strings.Contains(text, "old words") {
-		t.Error("a message that does not fit the budget is dropped whole")
+	if len(text) > keptUserMessageChars*2+len(handoffPrefix)+500 {
+		t.Errorf("a pasted blob was carried over almost whole: summary text is %d bytes", len(text))
+	}
+
+	// Many messages: the newest are kept until the token budget is spent, the oldest are dropped.
+	var many []types.Message
+	for i := 0; i < 400; i++ {
+		many = append(many, makeTextMsg(fmt.Sprintf("u%d", i), types.RoleUser, fmt.Sprintf("request number %03d %s", i, strings.Repeat("filler ", 300))))
+	}
+	text = e.summaryText(many, "s")
+	if !strings.Contains(text, "request number 399") || strings.Contains(text, "request number 000") {
+		t.Error("the newest requests are kept and the oldest dropped once the budget is spent")
+	}
+}
+
+func TestManualCompactionSummarizesEvenWhenTheConversationIsSmall(t *testing.T) {
+	var gotModel string
+	server := fakeChatCompletionServer(t, &gotModel, "the summary of the old part")
+	client := providers.NewClientWithConfig("k", &providers.Config{Provider: types.APIProviderOpenAI, BaseURL: server.URL})
+	client.SetHTTPClient(server.Client())
+	e := NewEngine(client, DefaultConfig())
+	model := types.ModelIdentifier{Provider: types.APIProviderOpenAI, Model: "gpt-4o"}
+
+	var messages []types.Message
+	for i := 0; i < 10; i++ {
+		role := types.RoleUser
+		if i%2 == 1 {
+			role = types.RoleAssistant
+		}
+		messages = append(messages, makeTextMsg(fmt.Sprintf("m%d", i), role, strings.Repeat("a fact worth a few tokens. ", 20)))
+	}
+
+	// Automatic rules on a small conversation: trimming is enough, nothing is summarized or dropped.
+	auto, err := e.Compact(context.Background(), "", messages, model, "s", "t", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auto.UsedSummaryCompact || len(auto.Messages) != len(messages) {
+		t.Fatalf("the automatic path must leave a small conversation alone: %+v", auto)
+	}
+
+	manual, err := e.Compact(context.Background(), "", messages, model, "s", "t", &TrackingState{Manual: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !manual.UsedSummaryCompact || manual.Summary == "" {
+		t.Fatal("a manual compaction must summarize whatever the size")
+	}
+	if len(manual.Messages) >= len(messages) || manual.PostCompactTokens >= manual.PreCompactTokens {
+		t.Errorf("a manual compaction must shrink the conversation: %d -> %d messages, %d -> %d tokens",
+			len(messages), len(manual.Messages), manual.PreCompactTokens, manual.PostCompactTokens)
+	}
+}
+
+func TestPreservedTailStaysWithinTheTargetAndSkipsAGiantMessage(t *testing.T) {
+	e := NewEngine(nil, DefaultConfig())
+	messages := []types.Message{
+		makeTextMsg("m0", types.RoleUser, "start"),
+		makeTextMsg("m1", types.RoleUser, strings.Repeat("pasted log line ", 4_000)), // giant
+		makeTextMsg("m2", types.RoleAssistant, "short answer"),
+		makeTextMsg("m3", types.RoleUser, "short follow-up"),
+	}
+	// A target that fits the two short messages but not the giant one.
+	start := e.findPreservedStart(messages, 200)
+	if start != 2 {
+		t.Errorf("preserved start = %d, want 2: the tail must stay within the target instead of swallowing the giant message", start)
+	}
+	// Whatever the target, the last message is kept.
+	if got := e.findPreservedStart(messages, 1); got != 3 {
+		t.Errorf("with a tiny target the last message is still kept, got start %d", got)
 	}
 }

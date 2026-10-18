@@ -11,6 +11,11 @@ type TrackingState struct {
 	// cost context on every request (about 36,000 tokens for the whole builtin registry).
 	ExtraTokens int `json:"extra_tokens,omitempty"`
 
+	// Manual marks a compaction the user asked for. The automatic rules assume the window is nearly full: they keep
+	// half of it as it is, and skip the summary when trimming tool results is enough. A manual compaction is asked for
+	// whatever the size, so it always summarizes and keeps only the most recent fifth of the conversation.
+	Manual bool `json:"manual,omitempty"`
+
 	// Anchor is the last size the provider reported. When set, the size of the request is that figure plus an estimate
 	// of the messages added since, which is exact for everything the provider counted (tools included).
 	Anchor *UsageAnchor `json:"anchor,omitempty"`
