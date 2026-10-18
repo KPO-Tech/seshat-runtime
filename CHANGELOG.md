@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The compaction summary is written by a small model of the session's own family, chosen by rules.** A summary is reading and condensing, not reasoning, and a reasoning model spends its output budget thinking (z.ai's `glm-5.3-flash` took 200 seconds to compact where `glm-4.5` took 20). `ClientConfig.CompactModelRules` map a session's provider and model (an exact name or a prefix such as `glm-*`) to the model that writes the summary, first match wins; `CompactSummaryModel`, when set, still wins over everything. Built-in rules, switched off by `NoDefaultCompactModels`, give a z.ai session `glm-4.5-air` and an Anthropic session `claude-haiku-5-5`; a provider with no rule keeps its own model until a measurement shows a better one. A rule's model stays on the session's provider unless the rule names another (so the conversation does not go to a vendor the session did not choose), and a model chosen by a rule is skipped when its window cannot hold the request and its summary. Measured on `glm-4.5` at the exact auto-compaction threshold (107,495 tokens, thinking disabled): summary by `glm-4.5`, `glm-4.5-air` and `glm-4.7` all kept the same 8 of 12 planted facts and left 71,700 to 72,000 tokens, in 22, 16 and 21 seconds; with the built-in rule the whole compaction took 6 seconds.
+
 ### Fixed
 
 - **Compaction brings the conversation down further.** Measured on a real agent conversation sized exactly at the automatic threshold (330 messages, 107,495 tokens, `glm-4.5`, 128k window): after compaction it held 84,784 tokens, far above the 63,000 target, because the user's earlier messages carried over word for word could take 20,000 tokens, 15 % of that window, so compaction at 85 % ended near 80 % and would run again almost at once. They are now capped at 5 % of the model's effective window (still at most 20,000 tokens): 71,730 tokens after, with the same facts kept. A new live benchmark (`TestLiveAutoCompactionAtTheThreshold`, build tag `live`, `scripts/live-conv-from-hf.py` builds its conversation from real SWE-agent trajectories) measures this.

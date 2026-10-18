@@ -296,13 +296,10 @@ func (e *Engine) generateSummary(
 	sessionID types.SessionID,
 	turnID types.TurnID,
 ) (string, error) {
-	summaryModel := e.config.SummaryModel
-	if summaryModel.Model == "" {
-		// No override configured: summarize with the session's own model so
-		// compaction never needs a key for a provider the session isn't using.
-		summaryModel = model
-	}
 	prompt := e.buildSummaryPrompt(messages)
+	// See resolveSummaryModel: the configured model, a rule, or the session's own, which never needs a key for a
+	// provider the session is not using.
+	summaryModel := e.resolveSummaryModel(model, len(prompt)/4)
 
 	// A reasoning model spends part of max_tokens thinking: with the budget sized for the summary alone it can end on
 	// the limit having written only its reasoning, and the summary is empty (seen on glm-5.3-flash: stop reason

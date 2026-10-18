@@ -105,6 +105,15 @@ type ClientConfig struct {
 	// works on any provider without needing an Anthropic key.
 	CompactSummaryModel ModelIdentifier `json:"compact_summary_model,omitempty"`
 
+	// CompactModelRules choose the model that writes the compaction summary by the provider and model of the session,
+	// first match wins. They apply when CompactSummaryModel is not set and take precedence over the built-in rules. A
+	// rule's Use model without a provider stays on the session's provider.
+	CompactModelRules []CompactModelRule `json:"compact_model_rules,omitempty"`
+
+	// NoDefaultCompactModels switches off the built-in rules (glm-4.5-air for z.ai sessions, the Haiku model for
+	// Anthropic sessions), so that a session without a matching rule of its own summarizes with its own model.
+	NoDefaultCompactModels bool `json:"no_default_compact_models,omitempty"`
+
 	// CompactThreshold is the share of the context window at which the conversation is compacted automatically
 	// (for example 0.85). Zero uses the default. It must be below 1.
 	CompactThreshold float64 `json:"compact_threshold,omitempty"`
