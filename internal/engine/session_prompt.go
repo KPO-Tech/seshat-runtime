@@ -69,7 +69,7 @@ func (s *Session) buildAPIRequestForRuntimeTools(ctx context.Context, runtimeToo
 		Model:               s.config.Model,
 		WorkingDirectory:    workingDirectory,
 		DeferredToolNames:   pendingDeferred,
-		MemoryContext:       s.engine.memoryContext(s.sessionProjectID()),
+		MemoryContext:       joinMemoryContext(s.engine.memoryContext(s.sessionProjectID()), s.recallLongTermMemory(ctx)),
 		CustomSystemPrompt:  customSystemPrompt,
 		AppendSystemPrompt:  nil,
 		Stage:               stage,
