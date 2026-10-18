@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`sdk.EnterpriseAgentTools()` and `sdk.EnterpriseAgentDeferredTools()` give a host the tool profile of a general agent in a company setting.** They are the lists the desktop application needs for `ClientConfig.MainAgentTools` and `MainAgentDeferredTools` (with `EnableToolSearch`): 38 tools loaded at every request, the rest findable with `tool_search`, MCP tools deferred by themselves. Measured on a default client: 35.5k tokens of tool definitions for every registered tool against 19.4k for the profile (about 45% less); the heaviest loaded definitions are bash, agent, grep, read_file and ask_user_question (4 to 6 KB each). Tests guard the lists against stale names and the size against growth.
+
 ## [1.10.3] - 2026-10-18
 
 ### Added
