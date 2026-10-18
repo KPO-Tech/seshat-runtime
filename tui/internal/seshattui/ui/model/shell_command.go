@@ -32,10 +32,11 @@ type shellKind int
 const (
 	// shellNone: the line is a message for the agent.
 	shellNone shellKind = iota
-	// shellShared: "!cmd" runs the command and tells the agent about it with the next message.
-	shellShared
-	// shellPrivate: "!!cmd" runs the command and keeps it from the agent.
+	// shellPrivate: "!cmd" runs the command and shows its output in the command panel. The agent does not see it unless the user
+	// shares it.
 	shellPrivate
+	// shellShared: "!!cmd" does the same and also tells the agent about it with the next message.
+	shellShared
 	// shellInteractive: ":!cmd" gives the terminal to the command until it ends (a password prompt, a shell, an editor).
 	shellInteractive
 )
@@ -46,11 +47,11 @@ func parseShellInput(line string) (shellKind, string) {
 	var kind shellKind
 	switch {
 	case strings.HasPrefix(line, "!!"):
-		kind, line = shellPrivate, line[2:]
+		kind, line = shellShared, line[2:]
 	case strings.HasPrefix(line, ":!"):
 		kind, line = shellInteractive, line[2:]
 	case strings.HasPrefix(line, "!"):
-		kind, line = shellShared, line[1:]
+		kind, line = shellPrivate, line[1:]
 	default:
 		return shellNone, ""
 	}
@@ -61,7 +62,7 @@ func parseShellInput(line string) (shellKind, string) {
 	return kind, line
 }
 
-// shellDoneMsg reports a command run with "!" that ended.
+// shellDoneMsg reports a command run from the prompt that ended.
 type shellDoneMsg struct {
 	id       string
 	command  string
@@ -126,10 +127,8 @@ func (m *UI) runShellInput(line string) (tea.Cmd, bool) {
 	m.shellSeq++
 	id := fmt.Sprintf("shell-%d", m.shellSeq)
 	shared := kind == shellShared
-	item := chat.NewShellOutputItem(m.com.Styles, id, command, shared)
-	m.shellItems[id] = item
-	m.chat.AppendMessages(item)
-	m.chat.ScrollToBottom()
+	m.shellPanel.add(&shellRun{id: id, command: command, running: true, shared: shared})
+	m.updateLayoutAndSize()
 
 	cwd := m.com.Workspace.WorkingDir()
 	return func() tea.Msg {
@@ -157,6 +156,9 @@ func (m *UI) runShellInput(line string) (tea.Cmd, bool) {
 
 // handleShellDone shows the result and, for a shared command, keeps it for the next message to the agent.
 func (m *UI) handleShellDone(msg shellDoneMsg) {
+	if run := m.shellPanel.find(msg.id); run != nil {
+		run.output, run.exitCode, run.running = msg.output, msg.exitCode, false
+	}
 	if item, ok := m.shellItems[msg.id]; ok {
 		item.SetResult(msg.output, msg.exitCode)
 		delete(m.shellItems, msg.id)

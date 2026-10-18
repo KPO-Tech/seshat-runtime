@@ -177,6 +177,7 @@ type UI struct {
 
 	// Commands run from the prompt with "!": the items still running, the shared ones the agent has not been told about yet, and a counter for their IDs.
 	shellItems   map[string]*chat.ShellOutputItem
+	shellPanel   shellPanel
 	pendingShell []chat.ShellRun
 	shellSeq     int
 
@@ -961,36 +962,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
-		// Otherwise handle mouse wheel for chat.
-		switch m.state {
-		case uiChat:
-			switch msg.Button {
-			case tea.MouseWheelUp:
-				if cmd := m.chat.ScrollByAndAnimate(-MouseScrollThreshold); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-				if !m.chat.SelectedItemInView() {
-					m.chat.SelectPrev()
-					if cmd := m.chat.ScrollToSelectedAndAnimate(); cmd != nil {
-						cmds = append(cmds, cmd)
-					}
-				}
-			case tea.MouseWheelDown:
-				if cmd := m.chat.ScrollByAndAnimate(MouseScrollThreshold); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-				if !m.chat.SelectedItemInView() {
-					if m.chat.AtBottom() {
-						m.chat.SelectLast()
-					} else {
-						m.chat.SelectNext()
-					}
-					if cmd := m.chat.ScrollToSelectedAndAnimate(); cmd != nil {
-						cmds = append(cmds, cmd)
-					}
-				}
-			}
-		}
+		cmds = append(cmds, m.handleWheel(msg))
 	case anim.StepMsg:
 		if m.state == uiChat {
 			if cmd := m.chat.Animate(msg); cmd != nil {
@@ -1693,19 +1665,12 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 		m.status.ToggleHelp()
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionExternalEditor:
-		if m.isAgentBusy() {
-			cmds = append(cmds, util.ReportWarn("Agent is working, please wait..."))
-			break
-		}
-		cmds = append(cmds, m.openEditor(m.textarea.Value()))
-		m.dialog.CloseDialog(dialog.CommandsID)
+		cmds = append(cmds, m.openExternalEditorFromDialog())
 	case dialog.ActionToggleCompactMode:
 		cmds = append(cmds, m.toggleCompactMode())
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionTogglePills:
-		if cmd := m.togglePillsExpanded(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		cmds = append(cmds, m.togglePillsExpanded())
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionToggleThinking:
 		cmds = append(cmds, func() tea.Msg {
@@ -1891,6 +1856,8 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 
 	case dialog.ActionRunCustomCommand:
 		cmds = append(cmds, m.runCustomCommand(msg))
+	case dialog.ActionShellPanel:
+		cmds = append(cmds, m.handleShellPanelAction(msg))
 	case dialog.ActionMemory:
 		cmds = append(cmds, m.handleMemoryAction(msg))
 	case dialog.ActionAttachSkill:
@@ -2618,6 +2585,7 @@ func (m *UI) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		uv.NewStyledString(m.chatHeaderView(layout.header.Dx())).Draw(scr, layout.header)
 
 		m.chat.Draw(scr, layout.main)
+		m.drawShellPanel(scr, layout.shellPanel)
 		if layout.pills.Dy() > 0 && m.pillsView != "" {
 			uv.NewStyledString(m.pillsView).Draw(scr, layout.pills)
 		}
@@ -3177,6 +3145,7 @@ func (m *UI) generateLayout(w, h int) uiLayout {
 		}
 		uiLayout.main.Max.Y -= 1 // bottom margin
 		uiLayout.editor = editorRect
+		m.applyShellPanelLayout(&uiLayout)
 	}
 
 	return uiLayout
@@ -3210,6 +3179,9 @@ type uiLayout struct {
 
 	// session details is the area for the session details overlay in compact mode.
 	sessionDetails uv.Rectangle
+
+	// shellPanel is the area for the command panel, empty when it is hidden.
+	shellPanel uv.Rectangle
 }
 
 func (m *UI) openEditor(value string) tea.Cmd {

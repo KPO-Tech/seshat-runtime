@@ -118,6 +118,10 @@ type (
 		Args      map[string]string // Actual argument values
 		Skill     *skills.Skill     // Set when this is a skill command
 	}
+	// ActionShellPanel is a request about the command panel: Op is "toggle", "previous", "next", "share" or "clear".
+	ActionShellPanel struct {
+		Op string
+	}
 	// ActionMemory is a request about long-term memory: Op is "show", "undo" or "forget". Forget needs the name of a
 	// note, asked for in the arguments dialog when Name is empty.
 	ActionMemory struct {

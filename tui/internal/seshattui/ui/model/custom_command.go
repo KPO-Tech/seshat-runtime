@@ -3,6 +3,7 @@ package model
 import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/dialog"
+	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/util"
 )
 
 // runCustomCommand runs a command or skill chosen in the command palette. A command that takes arguments first asks for
@@ -29,5 +30,16 @@ func (m *UI) runCustomCommand(msg dialog.ActionRunCustomCommand) tea.Cmd {
 	}
 	cmd := m.sendMessage(content)
 	m.dialog.CloseFrontDialog()
+	return cmd
+}
+
+// openExternalEditorFromDialog opens the user's editor on the prompt, unless the agent is working, and closes the command
+// palette.
+func (m *UI) openExternalEditorFromDialog() tea.Cmd {
+	if m.isAgentBusy() {
+		return util.ReportWarn("Agent is working, please wait...")
+	}
+	cmd := m.openEditor(m.textarea.Value())
+	m.dialog.CloseDialog(dialog.CommandsID)
 	return cmd
 }
