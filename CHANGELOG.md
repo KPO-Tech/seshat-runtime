@@ -11,6 +11,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Memory notes can be listed and forgotten, and forgetting can be undone.** `ListMemoryNotes` returns everything memory holds about a user, `ForgetMemoryNote` removes one note with its relations after copying memory (so `RestoreMemorySnapshot` puts it back), and `Client.LongTermMemory()` gives a host the store the client uses. They need a store that can list and rewrite its entities, such as the SQLite one.
+
 - **`Client.ExtractPendingMemories` reads the sessions that were never closed.** `ExtractMemories` runs when a session closes, but a host that keeps its sessions open (the SeshatOS backend never closes one) or a crash would never trigger it. `ExtractPendingMemories(ctx, userID, PendingMemoryOptions)` reads the idle sessions (untouched for 30 minutes by default, not older than 7 days, at most 10 per call, most recent first) that were not read yet, and marks each one (`memory_extracted_at` in its metadata) once its extraction succeeded, so a session is read once and a failed one is tried again next time. A normal close marks its session too. It does nothing when `ExtractMemories` is off.
 
 ## [1.10.2] - 2026-10-18
