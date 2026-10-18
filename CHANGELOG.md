@@ -26,6 +26,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Choosing a command in the popup opened by a backslash now runs it.** The selection was handed to the dialogs, which had none open, so nothing happened. The popup now applies the command itself. Quit, from the palette or the popup, now opens the confirmation dialog like `ctrl+c` does instead of closing the app at once.
 - **`@` and `/` in the terminal app work where the cursor is, not only at the end of the prompt.** The popup opened by a trigger typed after a space looked at the last character of the whole text, and the chosen file or skill was put back by moving the cursor to the end. Both now use the cursor position, so a mention can be added in the middle of a sentence you are editing and the cursor stays right after it.
 
 ## [1.10.2] - 2026-10-18

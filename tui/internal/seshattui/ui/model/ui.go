@@ -1566,11 +1566,17 @@ func (m *UI) handleChildSessionMessage(event pubsub.Event[message.Message]) tea.
 	return tea.Sequence(cmds...)
 }
 
+// handleDialogMsg gives a message to the open dialogs and carries out the action they answer with.
 func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
+	return m.applyDialogAction(m.dialog.Update(msg))
+}
+
+// applyDialogAction carries out an action: one a dialog answered with, or one chosen elsewhere, like a command picked in the
+// popup over the prompt. A nil action does nothing.
+func (m *UI) applyDialogAction(action dialog.Action) tea.Cmd {
 	var cmds []tea.Cmd
-	action := m.dialog.Update(msg)
 	if action == nil {
-		return tea.Batch(cmds...)
+		return nil
 	}
 
 	isOnboarding := m.state == uiOnboarding

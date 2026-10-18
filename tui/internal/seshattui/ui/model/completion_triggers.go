@@ -97,7 +97,7 @@ func (m *UI) runCommandCompletion(payload any) tea.Cmd {
 	}
 	cmds := []tea.Cmd{m.handleTextareaHeightChange(prevHeight)}
 	if action, ok := payload.(dialog.Action); ok {
-		cmds = append(cmds, m.handleDialogMsg(action))
+		cmds = append(cmds, m.applyDialogAction(action))
 	} else {
 		cmds = append(cmds, util.ReportWarn("That command cannot be run from here."))
 	}
