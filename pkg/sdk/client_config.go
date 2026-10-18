@@ -249,6 +249,12 @@ type ClientConfig struct {
 	// one model call per session of three user turns or more.
 	ExtractMemories bool `json:"extract_memories,omitempty"`
 
+	// RecallMemories puts what LongTermMemory knows about the user in the system prompt of each new session: the
+	// preferences and pitfalls, and whatever shares words with the first message, about 1,500 tokens at most. Without
+	// it the agent must think of searching memory itself. It needs a LongTermMemory that can list entities (the SQLite
+	// store can). Off by default.
+	RecallMemories bool `json:"recall_memories,omitempty"`
+
 	// ConsolidateMemories makes the client rewrite a user's memory smaller once it holds 60 observations or more, at
 	// most once a day: duplicates merged, conflicting statements resolved in favour of the newer, obsolete ones
 	// dropped. It needs ExtractMemories and a LongTermMemory that can be rewritten (the SQLite store can). Off by
