@@ -239,9 +239,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		goalBackend:     goalBackend,
 	}
 
-	if memoryExtractor != nil {
-		queryConfig.OnMemoryExtracted = client.markExtractedAfterClose
-	}
+	queryConfig.OnMemoryExtracted = client.markExtractedAfterClose
 
 	// Register shell pre-tool hooks from ClientConfig.
 	if len(config.PreToolHooks) > 0 {
