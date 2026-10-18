@@ -160,6 +160,8 @@ func (m *UI) handleShellDone(msg shellDoneMsg) {
 	if item, ok := m.shellItems[msg.id]; ok {
 		item.SetResult(msg.output, msg.exitCode)
 		delete(m.shellItems, msg.id)
+		// The output made the item taller: without this the end of it stays below the screen until the next message.
+		m.chat.ScrollToBottom()
 	}
 	if msg.shared {
 		m.pendingShell = append(m.pendingShell, chat.ShellRun{Command: msg.command, Output: msg.output, ExitCode: msg.exitCode})
