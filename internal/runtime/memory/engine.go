@@ -302,34 +302,7 @@ func (e *Engine) generateSummary(
 		// compaction never needs a key for a provider the session isn't using.
 		summaryModel = model
 	}
-	prompt := e.buildSummaryPrompt(messages)
-
-	// A reasoning model spends part of max_tokens thinking: with the budget sized for the summary alone it can end on
-	// the limit having written only its reasoning, and the summary is empty (seen on glm-5.3-flash: stop reason
-	// max_tokens, one thinking block). The attempt is repeated with a larger budget before compaction is given up.
-	budget := e.config.MaxSummaryTokens
-	var lastStop string
-	for attempt := 0; attempt < summaryAttempts; attempt++ {
-		resp, err := e.apiClient.CreateMessage(ctx, types.APIRequest{
-			Model:     summaryModel,
-			Messages:  []types.Message{types.UserMessage("compact_summary_request", prompt)},
-			MaxTokens: budget,
-			// A summary does not need the model to reason first; where the provider can switch it off, it is cheaper
-			// and faster, and the budget goes to the summary. The retry below covers providers that cannot.
-			DisableThinking: true,
-		})
-		if err != nil {
-			return "", err
-		}
-		for _, block := range resp.Content {
-			if text, ok := block.(types.TextContent); ok && strings.TrimSpace(text.Text) != "" {
-				return text.Text, nil
-			}
-		}
-		lastStop = resp.StopReason
-		budget = min(budget*summaryBudgetGrowth, maxSummaryRetryTokens)
-	}
-	return "", fmt.Errorf("no summary generated for session %s turn %s (stop reason %q after %d attempts)", sessionID, turnID, lastStop, summaryAttempts)
+	return e.requestSummary(ctx, messages, summaryModel, sessionID, turnID)
 }
 
 const summaryInstructions = `You are writing a handoff for another model that will carry on this work with only your summary and the last few messages. It cannot see anything you leave out. Write, in this order:
@@ -370,23 +343,8 @@ const (
 )
 
 func (e *Engine) buildSummaryPrompt(messages []types.Message) string {
-	var builder strings.Builder
-	builder.WriteString(summaryInstructions)
-	for _, msg := range messages {
-		builder.WriteString(fmt.Sprintf("[%s] ", msg.Role))
-		for _, block := range msg.Content {
-			switch content := block.(type) {
-			case types.TextContent:
-				builder.WriteString(content.Text)
-			case types.ToolUseContent:
-				builder.WriteString(fmt.Sprintf("Tool use: %s %s ", content.Name, clipForSummary(toolInputText(content.Input), summaryToolInputChars)))
-			case types.ToolResultContent:
-				builder.WriteString(fmt.Sprintf("Tool result (%s): %s ", e.microCompactor.CalculateToolResultSummary(content), clipForSummary(content.Content, summaryToolResultChars)))
-			}
-		}
-		builder.WriteString("\n")
-	}
-	return builder.String()
+	prompt, _ := e.buildSummaryPromptWithin(messages, 1<<30)
+	return prompt
 }
 
 func toolInputText(input map[string]any) string {
