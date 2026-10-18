@@ -30,6 +30,14 @@ type SkillCompletionValue struct {
 	Description string
 }
 
+// CommandCompletionValue is a command of the palette offered by the popup that opens with a backslash. Payload is what the
+// host runs when it is chosen.
+type CommandCompletionValue struct {
+	Title    string
+	Shortcut string
+	Payload  any
+}
+
 // CompletionItem represents an item in the completions list.
 type CompletionItem struct {
 	*list.Versioned

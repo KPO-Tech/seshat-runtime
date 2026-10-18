@@ -2172,25 +2172,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 			// Handle completions if open.
 			if m.completionsOpen {
 				if msg, ok := m.completions.Update(msg); ok {
-					switch msg := msg.(type) {
-					case completions.SelectionMsg[completions.FileCompletionValue]:
-						cmds = append(cmds, m.insertFileCompletion(msg.Value.Path))
-						if !msg.KeepOpen {
-							m.closeCompletions()
-						}
-					case completions.SelectionMsg[completions.ResourceCompletionValue]:
-						cmds = append(cmds, m.insertMCPResourceCompletion(msg.Value))
-						if !msg.KeepOpen {
-							m.closeCompletions()
-						}
-					case completions.SelectionMsg[completions.SkillCompletionValue]:
-						cmds = append(cmds, m.insertSkillCompletion(msg.Value.Name))
-						if !msg.KeepOpen {
-							m.closeCompletions()
-						}
-					case completions.ClosedMsg:
-						m.completionsOpen = false
-					}
+					cmds = append(cmds, m.applyCompletionSelection(msg)...)
 					return tea.Batch(cmds...)
 				}
 			}
@@ -2303,37 +2285,16 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				if cmd != nil {
 					cmds = append(cmds, cmd)
 				}
-			case key.Matches(msg, m.keyMap.Editor.Commands) && m.textarea.Value() == "":
-				if cmd := m.openCommandsDialog(); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
 			default:
 				if handleGlobalKeys(msg) {
 					// Handle global keys first before passing to textarea.
 					break
 				}
 
-				// Check for a @ or / trigger before passing to textarea.
+				// Check for a @, / or  trigger before passing to textarea.
 				curValue := m.textarea.Value()
-				curIdx := len(curValue)
 
-				// Trigger completions on @ (files/MCP resources) or / (skills).
-				if !m.completionsOpen && (msg.String() == "@" || msg.String() == "/") {
-					// Only show if beginning of prompt or after whitespace.
-					if curIdx == 0 || (curIdx > 0 && isWhitespace(curValue[curIdx-1])) {
-						m.completionsOpen = true
-						m.completionsTrigger = msg.String()
-						m.completionsQuery = ""
-						m.completionsStartIndex = curIdx
-						m.completionsPositionStart = m.completionsPosition()
-						if m.completionsTrigger == "@" {
-							depth, limit := m.com.Config().Options.TUI.Completions.Limits()
-							cmds = append(cmds, m.completions.Open(depth, limit))
-						} else {
-							m.completions.SetSkillItems(skillCompletionValues(m.skillCommands))
-						}
-					}
-				}
+				cmds = append(cmds, m.maybeOpenCompletions(msg.String(), curValue)...)
 
 				// remove the details if they are open when user starts typing
 				if m.detailsOpen {
@@ -3894,15 +3855,7 @@ func (m *UI) openCommandsDialog() tea.Cmd {
 		return nil
 	}
 
-	var sessionID string
-	hasSession := m.session != nil
-	if hasSession {
-		sessionID = m.session.ID
-	}
-	hasTodos := hasSession && hasIncompleteTodos(m.session.Todos)
-	hasQueue := m.promptQueue > 0
-
-	commands, err := dialog.NewCommands(m.com, sessionID, hasSession, hasTodos, hasQueue, m.customCommands, m.mcpPrompts)
+	commands, err := m.newCommandsDialog()
 	if err != nil {
 		return util.ReportError(err)
 	}
@@ -4554,4 +4507,16 @@ func renderLogo(t *styles.Styles, compact, hyper bool, width int) string {
 		Width:        width,
 		Hyper:        hyper,
 	})
+}
+
+// newCommandsDialog builds the command palette for the state the session is in.
+func (m *UI) newCommandsDialog() (*dialog.Commands, error) {
+	var sessionID string
+	hasSession := m.session != nil
+	if hasSession {
+		sessionID = m.session.ID
+	}
+	hasTodos := hasSession && hasIncompleteTodos(m.session.Todos)
+	hasQueue := m.promptQueue > 0
+	return dialog.NewCommands(m.com, sessionID, hasSession, hasTodos, hasQueue, m.customCommands, m.mcpPrompts)
 }

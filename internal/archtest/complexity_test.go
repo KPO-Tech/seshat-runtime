@@ -42,7 +42,7 @@ var knownComplex = map[string]int{
 	"tui/internal/seshattui/ui/diffview/diffview.go DiffView.renderSplit":                 40,
 	"tui/internal/seshattui/ui/model/ui.go UI.Update":                                     157,
 	"tui/internal/seshattui/ui/model/ui.go UI.handleDialogMsg":                            85,
-	"tui/internal/seshattui/ui/model/ui.go UI.handleKeyPressMsg":                          148,
+	"tui/internal/seshattui/ui/model/ui.go UI.handleKeyPressMsg":                          131,
 	"tui/internal/seshattui/ui/model/ui.go UI.updateSessionMessage":                       39,
 	"tui/internal/seshattui/workspace/seshat_workspace.go SeshatWorkspace.SetConfigField": 37,
 	"tui/internal/seshattui/workspace/seshat_workspace.go buildToolPermissionParams":      32,
