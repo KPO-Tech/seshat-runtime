@@ -68,7 +68,7 @@ func (s *Session) buildAPIRequestForRuntimeTools(ctx context.Context, runtimeToo
 		Tools:               runtimeTools,
 		Model:               s.config.Model,
 		WorkingDirectory:    workingDirectory,
-		DeferredToolNames:   pendingDeferred,
+		DeferredToolNames:   deferredToolEntries(s.engine.toolRegistry, pendingDeferred),
 		MemoryContext:       joinMemoryContext(s.engine.memoryContext(s.sessionProjectID()), s.recallLongTermMemory(ctx)),
 		CustomSystemPrompt:  customSystemPrompt,
 		AppendSystemPrompt:  nil,
@@ -144,4 +144,23 @@ func withManagedInstructions(appendPrompt *string, managed string) *string {
 		joined = strings.TrimSpace(*appendPrompt) + "\n\n" + managed
 	}
 	return &joined
+}
+
+// deferredToolEntries turns the names of the deferred tools into the lines the system prompt lists: the name and, when there
+// is one, a short description of what the tool is for. The agent cannot see the tool's schema until it finds the tool with
+// tool_search, so this line is what tells it that the tool exists and when to look for it.
+func deferredToolEntries(reg *tool.Registry, names []string) []string {
+	entries := make([]string, 0, len(names))
+	for _, name := range names {
+		entry := name
+		if reg != nil {
+			if resolved, ok := reg.Resolve(name); ok && resolved != nil {
+				if short := tool.ShortDescription(resolved.Definition()); short != "" {
+					entry = name + ": " + short
+				}
+			}
+		}
+		entries = append(entries, entry)
+	}
+	return entries
 }

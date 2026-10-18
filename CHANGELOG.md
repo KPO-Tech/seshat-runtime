@@ -11,6 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The list of deferred tools in the system prompt gives each tool a one-line description.** The agent saw only the names (`git_status`, `lsp`, `repo_map`...) of the tools it must find with `tool_search`, which tells little for a name like `monitor`. Each line is now `name: what it is for`, taken from the tool's new `ShortDescription` field, else from a line written for each of the built-in deferred tools (a test requires one for every tool of the enterprise profile), else from the first sentence of its description (what an MCP tool gets). For the 54 deferred tools of the desktop profile the list costs about 900 tokens, against about 200 for the names alone, in the part of the prompt that is not cached; the profile saves about 16k.
 - **`sdk.EnterpriseAgentTools()` and `sdk.EnterpriseAgentDeferredTools()` give a host the tool profile of a general agent in a company setting.** They are the lists the desktop application needs for `ClientConfig.MainAgentTools` and `MainAgentDeferredTools` (with `EnableToolSearch`): 38 tools loaded at every request, the rest findable with `tool_search`, MCP tools deferred by themselves. Measured on a default client: 35.5k tokens of tool definitions for every registered tool against 19.4k for the profile (about 45% less); the heaviest loaded definitions are bash, agent, grep, read_file and ask_user_question (4 to 6 KB each). Tests guard the lists against stale names and the size against growth.
 
 ### Fixed
