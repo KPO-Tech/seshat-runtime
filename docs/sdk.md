@@ -99,6 +99,8 @@ type ClientConfig struct {
     // ── Context management ────────────────────────────────────────────────
     AutoCompact             bool // compact transcript when context window fills (default true)
     CompactThreshold        float64 // share of the window that triggers compaction (default 0.85)
+    CompactModelRules       []CompactModelRule // which model writes the summary, by session provider and model (built-in: glm-4.5-air for z.ai, claude-haiku-5-5 for Anthropic)
+    NoDefaultCompactModels  bool // switch the built-in rules off
     CompactTarget           float64 // share the recent messages kept verbatim may take afterwards (default 0.5, below the threshold)
     TurnTokenBudget         int  // if set, pause when budget is exhausted per turn
     BudgetContinuationLimit int  // max budget-continuation cycles (0 = unlimited)

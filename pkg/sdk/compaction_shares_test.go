@@ -30,3 +30,22 @@ func TestApplyCompactionSharesSetsAndValidates(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactModelRulesReachTheCompactionConfig(t *testing.T) {
+	cfg, err := buildCompactConfig(&ClientConfig{
+		NoDefaultCompactModels: true,
+		CompactModelRules: []CompactModelRule{
+			{Provider: "zai", Model: "glm-*", Use: ModelIdentifier{Model: "glm-4.5-air"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.NoDefaultSummaryModels || len(cfg.SummaryModelRules) != 1 {
+		t.Fatalf("rules not passed on: %+v", cfg)
+	}
+	r := cfg.SummaryModelRules[0]
+	if r.Provider != "zai" || r.Model != "glm-*" || r.Use.Model != "glm-4.5-air" {
+		t.Errorf("rule changed on the way: %+v", r)
+	}
+}

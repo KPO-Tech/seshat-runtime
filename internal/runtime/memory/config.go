@@ -15,6 +15,14 @@ type Config struct {
 	// falls back to the model passed into Compact/AutoCompact), so a session on
 	// any provider can compact without needing a key for a different one.
 	SummaryModel types.ModelIdentifier `json:"summary_model,omitempty"`
+
+	// SummaryModelRules choose the model that writes the summary by the provider and model of the session, first match
+	// wins. They apply when SummaryModel is not set, and before the built-in rules (see resolveSummaryModel).
+	SummaryModelRules []SummaryModelRule `json:"summary_model_rules,omitempty"`
+
+	// NoDefaultSummaryModels switches off the built-in rules, so that a session without a matching rule of its own
+	// summarizes with its own model.
+	NoDefaultSummaryModels bool `json:"no_default_summary_models,omitempty"`
 }
 
 // DefaultConfig returns default compaction configuration.

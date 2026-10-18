@@ -296,12 +296,9 @@ func (e *Engine) generateSummary(
 	sessionID types.SessionID,
 	turnID types.TurnID,
 ) (string, error) {
-	summaryModel := e.config.SummaryModel
-	if summaryModel.Model == "" {
-		// No override configured: summarize with the session's own model so
-		// compaction never needs a key for a provider the session isn't using.
-		summaryModel = model
-	}
+	// See resolveSummaryModel: the configured model, a rule, or the session's own, which never needs a key for a
+	// provider the session is not using.
+	summaryModel := e.resolveSummaryModel(model, len(e.buildSummaryPrompt(messages))/4)
 	return e.requestSummary(ctx, messages, summaryModel, sessionID, turnID)
 }
 
