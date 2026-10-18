@@ -410,43 +410,7 @@ func (c *Commands) previousCommandType() CommandType {
 func (c *Commands) setCommandItems(commandType CommandType) {
 	c.selected = commandType
 
-	commandItems := []list.FilterableItem{}
-	switch c.selected {
-	case SystemCommands:
-		for _, cmd := range c.defaultCommands() {
-			commandItems = append(commandItems, cmd)
-		}
-	case UserCommands:
-		for _, cmd := range c.customCommands {
-			var action Action
-			if cmd.Skill != nil {
-				action = ActionAttachSkill{ID: cmd.Skill.SkillFilePath, Name: cmd.Skill.Name}
-			} else {
-				action = ActionRunCustomCommand{
-					Content:   cmd.Content,
-					Arguments: cmd.Arguments,
-					Skill:     cmd.Skill,
-				}
-			}
-			item := NewCommandItem(c.com.Styles, "custom_"+cmd.ID, cmd.Name, "", action)
-			if cmd.Skill != nil {
-				item = item.WithDescription(cmd.Skill.Description)
-			}
-			commandItems = append(commandItems, item)
-		}
-	case MCPPrompts:
-		for _, cmd := range c.mcpPrompts {
-			action := ActionRunMCPPrompt{
-				Title:       cmd.Title,
-				Description: cmd.Description,
-				PromptID:    cmd.PromptID,
-				ClientID:    cmd.ClientID,
-				Arguments:   cmd.Arguments,
-			}
-			commandItems = append(commandItems, NewCommandItem(c.com.Styles, "mcp_"+cmd.ID, cmd.PromptID, "", action))
-		}
-	}
-
+	commandItems := c.itemsFor(commandType)
 	c.list.SetItems(commandItems...)
 	c.list.SetFilter("")
 	c.list.ScrollToTop()
@@ -617,4 +581,79 @@ func (a *Commands) StartLoading() tea.Cmd {
 // StopLoading implements [LoadingDialog].
 func (a *Commands) StopLoading() {
 	a.loading = false
+}
+
+// itemsFor builds the items of one group of commands: the system commands, the user's custom commands and skills, or the MCP prompts.
+func (c *Commands) itemsFor(commandType CommandType) []list.FilterableItem {
+	commandItems := []list.FilterableItem{}
+	switch commandType {
+	case SystemCommands:
+		for _, cmd := range c.defaultCommands() {
+			commandItems = append(commandItems, cmd)
+		}
+	case UserCommands:
+		for _, cmd := range c.customCommands {
+			var action Action
+			if cmd.Skill != nil {
+				action = ActionAttachSkill{ID: cmd.Skill.SkillFilePath, Name: cmd.Skill.Name}
+			} else {
+				action = ActionRunCustomCommand{
+					Content:   cmd.Content,
+					Arguments: cmd.Arguments,
+					Skill:     cmd.Skill,
+				}
+			}
+			item := NewCommandItem(c.com.Styles, "custom_"+cmd.ID, cmd.Name, "", action)
+			if cmd.Skill != nil {
+				item = item.WithDescription(cmd.Skill.Description)
+			}
+			commandItems = append(commandItems, item)
+		}
+	case MCPPrompts:
+		for _, cmd := range c.mcpPrompts {
+			action := ActionRunMCPPrompt{
+				Title:       cmd.Title,
+				Description: cmd.Description,
+				PromptID:    cmd.PromptID,
+				ClientID:    cmd.ClientID,
+				Arguments:   cmd.Arguments,
+			}
+			commandItems = append(commandItems, NewCommandItem(c.com.Styles, "mcp_"+cmd.ID, cmd.PromptID, "", action))
+		}
+	}
+	return commandItems
+}
+
+// CommandEntry is a command of the palette as plain data, for a list shown elsewhere (the popup over the prompt).
+type CommandEntry struct {
+	ID       string
+	Title    string
+	Shortcut string
+	Action   Action
+}
+
+// Entries returns the commands that are not skills (skills have their own popup): the system commands, then the custom
+// commands, then the MCP prompts.
+func (c *Commands) Entries() []CommandEntry {
+	var entries []CommandEntry
+	for _, group := range []CommandType{SystemCommands, UserCommands, MCPPrompts} {
+		entries = append(entries, entriesFrom(c.itemsFor(group))...)
+	}
+	return entries
+}
+
+// entriesFrom turns palette items into entries, leaving the skills out.
+func entriesFrom(items []list.FilterableItem) []CommandEntry {
+	var entries []CommandEntry
+	for _, it := range items {
+		item, ok := it.(*CommandItem)
+		if !ok {
+			continue
+		}
+		if _, isSkill := item.Action().(ActionAttachSkill); isSkill {
+			continue
+		}
+		entries = append(entries, CommandEntry{ID: item.ID(), Title: item.title, Shortcut: item.Shortcut(), Action: item.Action()})
+	}
+	return entries
 }

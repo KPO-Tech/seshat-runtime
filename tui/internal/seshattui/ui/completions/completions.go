@@ -195,6 +195,15 @@ func (c *Completions) SetSkillItems(skillItems []SkillCompletionValue) {
 	c.openWith(items)
 }
 
+// SetCommandItems sets the palette commands and opens the popup.
+func (c *Completions) SetCommandItems(values []CommandCompletionValue) {
+	items := make([]list.FilterableItem, 0, len(values))
+	for _, v := range values {
+		items = append(items, NewCompletionItem("\\"+v.Title, v.Shortcut, v, c.styles.ItemStyles))
+	}
+	c.openWith(items)
+}
+
 // openWith populates the list with items and opens the popup.
 func (c *Completions) openWith(items []list.FilterableItem) {
 	c.open = true
@@ -424,6 +433,11 @@ func (c *Completions) selectCurrent(keepOpen bool) tea.Msg {
 		}
 	case SkillCompletionValue:
 		return SelectionMsg[SkillCompletionValue]{
+			Value:    item,
+			KeepOpen: keepOpen,
+		}
+	case CommandCompletionValue:
+		return SelectionMsg[CommandCompletionValue]{
 			Value:    item,
 			KeepOpen: keepOpen,
 		}
