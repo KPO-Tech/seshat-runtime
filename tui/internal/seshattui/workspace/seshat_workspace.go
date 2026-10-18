@@ -1140,6 +1140,9 @@ func (w *SeshatWorkspace) SetMCPStore(store *config.ConfigStore) {
 
 func (w *SeshatWorkspace) WorkingDir() string { return w.workDir }
 
+// LongTermMemory implements Workspace.
+func (w *SeshatWorkspace) LongTermMemory() sdk.LongTermMemory { return w.client.LongTermMemory() }
+
 func (w *SeshatWorkspace) Resolver() config.VariableResolver {
 	return config.IdentityResolver()
 }
