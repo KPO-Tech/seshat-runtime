@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-10-18
+
 ### Added
 
 - **A backslash at the start of the prompt lists the palette commands above the prompt, like `/` does for skills.** Type `` (then a few letters to filter) and pick a command with Enter; the last entry, "All Commands…", opens the full command dialog, which the backslash used to open directly. A backslash anywhere else is left alone, since it is usually part of a Windows path.
@@ -890,7 +892,8 @@ a real ChatGPT-account session (documented in
 - `internal/tools/special/brief`: a "send message to the user" tool from the pre-rename codebase, never registered at any point in its history.
 - `internal/tools/special/config/configTool.go`: an arbitrary key/value settings store predating the current `contract.Tool` interface (incompatible signatures — could never have been registered as-is), replaced by the real `get_config` tool.
 
-[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.2...HEAD
+[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.3...HEAD
+[1.10.3]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.2...v1.10.3
 [1.10.2]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.9.0...v1.10.0
