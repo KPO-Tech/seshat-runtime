@@ -663,9 +663,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleShellDone(msg)
 
 	case shellInteractiveDoneMsg:
-		if msg.err != nil {
-			cmds = append(cmds, util.ReportWarn("Command ended: "+msg.err.Error()))
-		}
+		cmds = append(cmds, msg.warning())
 
 	case sendMessageMsg:
 		cmds = append(cmds, m.sendMessage(msg.Content, msg.Attachments...))
@@ -1042,27 +1040,9 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case creditsUpdatedMsg:
 		m.hyperCredits = &msg.credits
 	case util.InfoMsg:
-		if msg.Type == util.InfoTypeError {
-			slog.Error("Error reported", "error", msg.Msg)
-		}
-		m.status.SetInfoMsg(msg)
-		ttl := msg.TTL
-		if ttl <= 0 {
-			ttl = DefaultStatusTTL
-		}
-		cmds = append(cmds, clearInfoMsgCmd(ttl))
+		cmds = append(cmds, m.showInfoMsg(msg))
 	case app.UpdateAvailableMsg:
-		text := fmt.Sprintf("Seshat update available: v%s → v%s.", msg.CurrentVersion, msg.LatestVersion)
-		if msg.IsDevelopment {
-			text = fmt.Sprintf("This is a development version of Seshat. The latest version is v%s.", msg.LatestVersion)
-		}
-		ttl := 10 * time.Second
-		m.status.SetInfoMsg(util.InfoMsg{
-			Type: util.InfoTypeUpdate,
-			Msg:  text,
-			TTL:  ttl,
-		})
-		cmds = append(cmds, clearInfoMsgCmd(ttl))
+		cmds = append(cmds, m.showUpdateAvailable(msg))
 	case util.ClearStatusMsg:
 		m.status.ClearInfoMsg()
 	case completions.CompletionItemsLoadedMsg:
@@ -2340,15 +2320,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					return nil
 				}
 
-				if cmd, handled := m.runShellInput(value); handled {
-					m.historyReset()
-					return tea.Batch(cmd, m.loadPromptHistory())
-				}
-
-				m.randomizePlaceholders()
-				m.historyReset()
-
-				return tea.Batch(m.sendMessage(value, attachments...), m.loadPromptHistory())
+				return m.submitPrompt(value, attachments)
 			case key.Matches(msg, m.keyMap.Chat.NewSession):
 				if !m.hasSession() {
 					break

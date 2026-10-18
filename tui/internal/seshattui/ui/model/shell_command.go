@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/message"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/shell"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/chat"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/util"
@@ -208,4 +209,23 @@ func (m *UI) startEmptySession() error {
 	}
 	m.setState(uiChat, m.focus)
 	return nil
+}
+
+// warning is what to tell the user when a command that had the terminal ended with an error, or nil.
+func (msg shellInteractiveDoneMsg) warning() tea.Cmd {
+	if msg.err == nil {
+		return nil
+	}
+	return util.ReportWarn("Command ended: " + msg.err.Error())
+}
+
+// submitPrompt sends what the user typed: to the shell when it starts with "!" or ":!", to the agent otherwise.
+func (m *UI) submitPrompt(value string, attachments []message.Attachment) tea.Cmd {
+	if cmd, handled := m.runShellInput(value); handled {
+		m.historyReset()
+		return tea.Batch(cmd, m.loadPromptHistory())
+	}
+	m.randomizePlaceholders()
+	m.historyReset()
+	return tea.Batch(m.sendMessage(value, attachments...), m.loadPromptHistory())
 }
