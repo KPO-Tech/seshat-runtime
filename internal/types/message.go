@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -462,6 +463,29 @@ func MessageFromTranscriptEntry(entry TranscriptEntry) (Message, bool) {
 		Timestamp: entry.Timestamp,
 		Metadata:  messageMetadataFromTranscriptEntry(entry),
 	}, true
+}
+
+// ArchivedTranscriptEntryFromMessage is TranscriptEntryFromMessage for a message a compaction removed from the
+// conversation: the same entry, typed archived.
+func ArchivedTranscriptEntryFromMessage(message Message, turnID TurnID) TranscriptEntry {
+	entry := TranscriptEntryFromMessage(message, turnID)
+	entry.Type = EntryTypeArchived
+	return entry
+}
+
+// ArchivedMessageFromTranscriptEntry reads back a message archived by a compaction.
+func ArchivedMessageFromTranscriptEntry(entry TranscriptEntry) (Message, bool) {
+	if entry.Type != EntryTypeArchived {
+		return Message{}, false
+	}
+	entry.Type = EntryTypeMessage
+	return MessageFromTranscriptEntry(entry)
+}
+
+// IsCompactionArtifact reports whether a message is the summary or the marker a compaction wrote, which stand for the
+// messages they replaced and are not history in their own right.
+func IsCompactionArtifact(message Message) bool {
+	return (message.Metadata != nil && message.Metadata.Compaction != nil) || strings.HasPrefix(string(message.ID), "compact_")
 }
 
 func TranscriptEntriesFromMessages(messages []Message, turnID TurnID) []TranscriptEntry {

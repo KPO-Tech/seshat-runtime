@@ -59,7 +59,13 @@ func (c ConsolidatorConfig) withDefaults() ConsolidatorConfig {
 type ConsolidationReport struct {
 	EntitiesBefore, EntitiesAfter         int
 	ObservationsBefore, ObservationsAfter int
+	// SnapshotID names the copy of the memory taken before the rewrite; UndoLast, or Snapshotter.RestoreSnapshot with
+	// this id, puts it back.
+	SnapshotID string
 }
+
+// consolidationSnapshotReason labels the copy a consolidation takes, so that UndoLast can find it.
+const consolidationSnapshotReason = "before consolidation"
 
 // ErrRefusedConsolidation is returned when the model's result was refused as unsafe to apply.
 var ErrRefusedConsolidation = errors.New("consolidation result refused")
@@ -79,6 +85,25 @@ type Consolidator struct {
 // NewConsolidator creates a Consolidator.
 func NewConsolidator(store Consolidatable, caller LLMCaller, cfg ConsolidatorConfig) *Consolidator {
 	return &Consolidator{store: store, caller: caller, config: cfg.withDefaults(), last: map[string]time.Time{}}
+}
+
+// UndoLast puts the memory back as it was before the latest consolidation. It returns ErrSnapshotNotFound when the user
+// has no such copy (none was taken, or it was pruned).
+func (c *Consolidator) UndoLast(ctx context.Context, userID string) error {
+	snapshotter, ok := c.store.(Snapshotter)
+	if !ok {
+		return ErrNoSnapshotSupport
+	}
+	snapshots, err := snapshotter.ListSnapshots(ctx, userID)
+	if err != nil {
+		return err
+	}
+	for _, s := range snapshots {
+		if s.Reason == consolidationSnapshotReason {
+			return snapshotter.RestoreSnapshot(ctx, userID, s.ID)
+		}
+	}
+	return ErrSnapshotNotFound
 }
 
 // MaybeConsolidate consolidates the user's memory if it is big enough and was not consolidated recently, and does
@@ -109,6 +134,10 @@ func (c *Consolidator) markRun(userID string) {
 // Consolidate rewrites the user's memory now, if it holds at least MinObservations. It returns a nil report when it
 // is too small.
 func (c *Consolidator) Consolidate(ctx context.Context, userID string) (*ConsolidationReport, error) {
+	snapshotter, ok := c.store.(Snapshotter)
+	if !ok {
+		return nil, ErrNoSnapshotSupport
+	}
 	entities, err := c.store.ListEntities(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -129,10 +158,16 @@ func (c *Consolidator) Consolidate(ctx context.Context, userID string) (*Consoli
 	if err != nil {
 		return nil, err
 	}
+	// A copy first: the result passed the checks, but a plausible rewrite can still lose something that mattered.
+	snapshot, err := snapshotter.SaveSnapshot(ctx, userID, consolidationSnapshotReason)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot before consolidation: %w", err)
+	}
 	if err := c.store.ReplaceEntities(ctx, userID, considered, replacement, renames); err != nil {
 		return nil, err
 	}
 	report := &ConsolidationReport{
+		SnapshotID:         snapshot.ID,
 		EntitiesBefore:     len(considered),
 		EntitiesAfter:      len(replacement),
 		ObservationsBefore: countObservations(considered),

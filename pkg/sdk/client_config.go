@@ -105,6 +105,15 @@ type ClientConfig struct {
 	// works on any provider without needing an Anthropic key.
 	CompactSummaryModel ModelIdentifier `json:"compact_summary_model,omitempty"`
 
+	// CompactModelRules choose the model that writes the compaction summary by the provider and model of the session,
+	// first match wins. They apply when CompactSummaryModel is not set and take precedence over the built-in rules. A
+	// rule's Use model without a provider stays on the session's provider.
+	CompactModelRules []CompactModelRule `json:"compact_model_rules,omitempty"`
+
+	// NoDefaultCompactModels switches off the built-in rules (glm-4.5-air for z.ai sessions, the Haiku model for
+	// Anthropic sessions), so that a session without a matching rule of its own summarizes with its own model.
+	NoDefaultCompactModels bool `json:"no_default_compact_models,omitempty"`
+
 	// CompactThreshold is the share of the context window at which the conversation is compacted automatically
 	// (for example 0.85). Zero uses the default. It must be below 1.
 	CompactThreshold float64 `json:"compact_threshold,omitempty"`
@@ -249,9 +258,16 @@ type ClientConfig struct {
 	// one model call per session of three user turns or more.
 	ExtractMemories bool `json:"extract_memories,omitempty"`
 
+	// RecallMemories puts what LongTermMemory knows about the user in the system prompt of each new session: the
+	// preferences and pitfalls, and whatever shares words with the first message, about 1,500 tokens at most. Without
+	// it the agent must think of searching memory itself. It needs a LongTermMemory that can list entities (the SQLite
+	// store can). Off by default.
+	RecallMemories bool `json:"recall_memories,omitempty"`
+
 	// ConsolidateMemories makes the client rewrite a user's memory smaller once it holds 60 observations or more, at
 	// most once a day: duplicates merged, conflicting statements resolved in favour of the newer, obsolete ones
-	// dropped. It needs ExtractMemories and a LongTermMemory that can be rewritten (the SQLite store can). Off by
+	// dropped. It needs ExtractMemories and a LongTermMemory that can be rewritten and can copy itself first (the SQLite
+	// store can both); the copy is kept and ListMemorySnapshots and RestoreMemorySnapshot put it back. Off by
 	// default because it rewrites what was stored; a result that would lose most of it is refused.
 	ConsolidateMemories bool `json:"consolidate_memories,omitempty"`
 

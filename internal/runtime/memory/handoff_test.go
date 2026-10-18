@@ -155,3 +155,27 @@ func TestPreservedTailStaysWithinTheTargetAndSkipsAGiantMessage(t *testing.T) {
 		t.Errorf("with a tiny target the last message is still kept, got start %d", got)
 	}
 }
+
+func TestUserMessagesCarriedOverStayWithinAShareOfTheWindow(t *testing.T) {
+	e := NewEngine(nil, DefaultConfig())
+	small := types.ModelIdentifier{Provider: types.APIProviderZAi, Model: "glm-4.5"}       // 128k window
+	large := types.ModelIdentifier{Provider: types.APIProviderZAi, Model: "glm-5.3-flash"} // about 1M window
+	if got, window := e.keptUserTokens(small), e.EffectiveContextWindow(small); got != window/20 || got >= keptUserMessageTokens {
+		t.Errorf("a 128k window may carry %d tokens, want 5%% of %d", got, window)
+	}
+	if got := e.keptUserTokens(large); got != keptUserMessageTokens {
+		t.Errorf("a very large window is capped at %d, got %d", keptUserMessageTokens, got)
+	}
+
+	var many []types.Message
+	for i := 0; i < 200; i++ {
+		many = append(many, makeTextMsg(fmt.Sprintf("u%d", i), types.RoleUser, fmt.Sprintf("request %03d %s", i, strings.Repeat("filler ", 250))))
+	}
+	text := e.summaryTextWithin(many, "s", e.keptUserTokens(small))
+	if tokens := len(text) / 4; tokens > e.EffectiveContextWindow(small)/20+500 {
+		t.Errorf("the carried messages take about %d tokens, over the 5%% share", tokens)
+	}
+	if !strings.Contains(text, "request 199") {
+		t.Error("the newest messages are the ones kept")
+	}
+}

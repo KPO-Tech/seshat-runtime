@@ -17,6 +17,12 @@ const (
 	defaultMaxSummaryTokens             = 2_000
 	defaultMaxConsecutiveCompactFailure = 3
 
+	// summaryAttempts is how many times a summary is requested when the model returns no text, and summaryBudgetGrowth
+	// how much larger each attempt's token budget is than the last, up to maxSummaryRetryTokens.
+	summaryAttempts       = 2
+	summaryBudgetGrowth   = 4
+	maxSummaryRetryTokens = 16_000
+
 	// manualKeepDivisor: a manual compaction keeps the most recent 1/5 of the conversation as it is.
 	manualKeepDivisor       = 5
 	compactSummaryMessageID = "compact_summary"
@@ -202,7 +208,7 @@ func (e *Engine) Compact(
 		return CompactionResult{}, fmt.Errorf("failed to generate summary: %w", err)
 	}
 
-	compactedMessages := e.assembleCompacted(microCompacted, preservedStart, summary)
+	compactedMessages := e.assembleCompactedWithin(microCompacted, preservedStart, summary, e.keptUserTokens(model))
 	postCompactTokens := e.UsedTokens(systemPrompt, compactedMessages, rewritten)
 	metadata, err := e.buildCompactionMetadata("summary", preCompactTokens, postCompactTokens, targetTokens, compactedMessages)
 	if err != nil {
@@ -290,27 +296,10 @@ func (e *Engine) generateSummary(
 	sessionID types.SessionID,
 	turnID types.TurnID,
 ) (string, error) {
-	summaryModel := e.config.SummaryModel
-	if summaryModel.Model == "" {
-		// No override configured: summarize with the session's own model so
-		// compaction never needs a key for a provider the session isn't using.
-		summaryModel = model
-	}
-	prompt := e.buildSummaryPrompt(messages)
-	resp, err := e.apiClient.CreateMessage(ctx, types.APIRequest{
-		Model:     summaryModel,
-		Messages:  []types.Message{types.UserMessage("compact_summary_request", prompt)},
-		MaxTokens: e.config.MaxSummaryTokens,
-	})
-	if err != nil {
-		return "", err
-	}
-	for _, block := range resp.Content {
-		if text, ok := block.(types.TextContent); ok && strings.TrimSpace(text.Text) != "" {
-			return text.Text, nil
-		}
-	}
-	return "", fmt.Errorf("no summary generated for session %s turn %s", sessionID, turnID)
+	// See resolveSummaryModel: the configured model, a rule, or the session's own, which never needs a key for a
+	// provider the session is not using.
+	summaryModel := e.resolveSummaryModel(model, len(e.buildSummaryPrompt(messages))/4)
+	return e.requestSummary(ctx, messages, summaryModel, sessionID, turnID)
 }
 
 const summaryInstructions = `You are writing a handoff for another model that will carry on this work with only your summary and the last few messages. It cannot see anything you leave out. Write, in this order:
@@ -338,6 +327,10 @@ const (
 	// keptUserMessageChars caps each one: a pasted log or document must not be copied whole into the summary, or
 	// compaction would gain nothing.
 	keptUserMessageTokens = 20_000
+	// keptUserWindowDivisor: the user's messages carried over word for word may take at most 1/20 (5 %) of the
+	// effective window, whatever keptUserMessageTokens says. Twenty thousand tokens is 15 % of a 128k window, which
+	// leaves a compaction at 85 % ending near 80 % and running again almost at once.
+	keptUserWindowDivisor = 20
 	keptUserMessageChars  = 2_000
 
 	// handoffPrefix tells the model that resumes what the summary is.
@@ -347,23 +340,8 @@ const (
 )
 
 func (e *Engine) buildSummaryPrompt(messages []types.Message) string {
-	var builder strings.Builder
-	builder.WriteString(summaryInstructions)
-	for _, msg := range messages {
-		builder.WriteString(fmt.Sprintf("[%s] ", msg.Role))
-		for _, block := range msg.Content {
-			switch content := block.(type) {
-			case types.TextContent:
-				builder.WriteString(content.Text)
-			case types.ToolUseContent:
-				builder.WriteString(fmt.Sprintf("Tool use: %s %s ", content.Name, clipForSummary(toolInputText(content.Input), summaryToolInputChars)))
-			case types.ToolResultContent:
-				builder.WriteString(fmt.Sprintf("Tool result (%s): %s ", e.microCompactor.CalculateToolResultSummary(content), clipForSummary(content.Content, summaryToolResultChars)))
-			}
-		}
-		builder.WriteString("\n")
-	}
-	return builder.String()
+	prompt, _ := e.buildSummaryPromptWithin(messages, 1<<30)
+	return prompt
 }
 
 func toolInputText(input map[string]any) string {
@@ -393,9 +371,19 @@ func (e *Engine) buildPostCompactMessages(messages []types.Message, summary stri
 // assembleCompacted builds the transcript that replaces messages: a summary (with the user's earlier messages kept
 // word for word), a marker, then the preserved tail from preservedStart on.
 func (e *Engine) assembleCompacted(messages []types.Message, preservedStart int, summary string) []types.Message {
+	return e.assembleCompactedWithin(messages, preservedStart, summary, keptUserMessageTokens)
+}
+
+// keptUserTokens is how many tokens of the user's earlier messages a compaction for model may carry over.
+func (e *Engine) keptUserTokens(model types.ModelIdentifier) int {
+	return min(keptUserMessageTokens, e.EffectiveContextWindow(model)/keptUserWindowDivisor)
+}
+
+// assembleCompactedWithin is assembleCompacted with the budget for the user's messages given.
+func (e *Engine) assembleCompactedWithin(messages []types.Message, preservedStart int, summary string, userTokens int) []types.Message {
 	compacted := make([]types.Message, 0, len(messages)-preservedStart+2)
 
-	summaryMessage := types.SystemMessage(compactSummaryMessageID, e.summaryText(messages[:preservedStart], summary))
+	summaryMessage := types.SystemMessage(compactSummaryMessageID, e.summaryTextWithin(messages[:preservedStart], summary, userTokens))
 	summaryMessage.Metadata = &types.MessageMetadata{TurnID: "compact"}
 	compacted = append(compacted, summaryMessage)
 
@@ -412,8 +400,13 @@ func (e *Engine) assembleCompacted(messages []types.Message, preservedStart int,
 // summaryText is the hand-off prefix, the summary, and the user's messages from the dropped part, newest kept first
 // within keptUserMessageTokens, written oldest first.
 func (e *Engine) summaryText(dropped []types.Message, summary string) string {
+	return e.summaryTextWithin(dropped, summary, keptUserMessageTokens)
+}
+
+// summaryTextWithin is summaryText with the token budget for the user's messages given.
+func (e *Engine) summaryTextWithin(dropped []types.Message, summary string, userTokens int) string {
 	var kept []string
-	budget := keptUserMessageTokens
+	budget := userTokens
 	for i := len(dropped) - 1; i >= 0; i-- {
 		text, ok := userText(dropped[i])
 		if !ok {

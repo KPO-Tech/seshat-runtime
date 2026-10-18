@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	compact "github.com/KPO-Tech/seshat-runtime/internal/runtime/memory"
 	contextusage "github.com/KPO-Tech/seshat-runtime/internal/tools/special/context_usage"
@@ -144,4 +145,28 @@ func (l *Loop) emitCompacted(ctx context.Context, req RunRequest, pre, post int)
 		TurnID:          req.TurnID,
 		CompactionEvent: &types.CompactionRuntimeEvent{PreCompactTokens: pre, PostCompactTokens: post},
 	})
+}
+
+// emergencyTrimmer is what a compaction strategy offers to shrink a conversation that is over the hard limit without
+// asking a model: tool results are trimmed and the oldest messages dropped. It reports false when nothing could be
+// dropped. The default Engine has it.
+type emergencyTrimmer interface {
+	EmergencyTrim(systemPrompt string, messages []types.Message, model types.ModelIdentifier, tracking *compact.TrackingState) (compact.CompactionResult, bool)
+}
+
+// emergencyTrim shrinks the conversation when a summary could not be written and the request is over the hard limit.
+// It reports whether it changed anything.
+func (l *Loop) emergencyTrim(ctx context.Context, state *MutableState, req RunRequest) bool {
+	trimmer, ok := l.compactor.(emergencyTrimmer)
+	if !ok {
+		return false
+	}
+	result, trimmed := trimmer.EmergencyTrim(req.SystemPrompt, state.Messages, req.Model, compactionTracking(state, req))
+	if !trimmed {
+		return false
+	}
+	slog.Warn("the conversation was trimmed without a summary to fit the model", "session_id", req.SessionID,
+		"pre_tokens", result.PreCompactTokens, "post_tokens", result.PostCompactTokens)
+	l.applyCompaction(ctx, state, req, result)
+	return true
 }
