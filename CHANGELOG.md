@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-10-18
+
 ### Changed
 
 - **The skill list in the `skill` tool is capped at 8,000 characters.** Before, every skill added its description, when-to-use and triggers to every request with no limit. Now each description is cut at 1,024 characters, and a list over the budget degrades by levels: descriptions only, then descriptions shortened evenly, then names only, then as many names as fit with a count of the rest. A shortened list says so. Lists within the budget are unchanged.
@@ -847,7 +849,9 @@ a real ChatGPT-account session (documented in
 - `internal/tools/special/brief`: a "send message to the user" tool from the pre-rename codebase, never registered at any point in its history.
 - `internal/tools/special/config/configTool.go`: an arbitrary key/value settings store predating the current `contract.Tool` interface (incompatible signatures — could never have been registered as-is), replaced by the real `get_config` tool.
 
-[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.9.0...HEAD
+[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.1...HEAD
+[1.10.1]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.0...v1.10.1
+[1.10.0]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.8.1...v1.9.0
 [1.8.1]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.8.0...v1.8.1
 [1.8.0]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.7.0...v1.8.0
