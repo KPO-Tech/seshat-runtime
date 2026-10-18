@@ -41,3 +41,14 @@ func TestMemoryRecallIsOffUnlessAskedForAndListable(t *testing.T) {
 		t.Error("recall must be on when asked for with a listable store")
 	}
 }
+
+func TestMemorySnapshotsNeedAStoreThatCanTakeThem(t *testing.T) {
+	// A store that is not a Snapshotter is refused with a clear error, not a panic.
+	var plain LongTermMemory
+	if _, err := ListMemorySnapshots(t.Context(), plain, "u"); err == nil {
+		t.Error("a nil store cannot list snapshots")
+	}
+	if err := RestoreMemorySnapshot(t.Context(), plain, "u", "id"); err == nil {
+		t.Error("a nil store cannot restore")
+	}
+}
