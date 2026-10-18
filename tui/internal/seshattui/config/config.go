@@ -281,6 +281,8 @@ type Options struct {
 	Debug                bool        `json:"debug,omitempty" jsonschema:"description=Enable debug logging,default=false"`
 	DebugLSP             bool        `json:"debug_lsp,omitempty" jsonschema:"description=Enable debug logging for LSP servers,default=false"`
 	DisableAutoSummarize bool        `json:"disable_auto_summarize,omitempty" jsonschema:"description=Disable automatic conversation summarization,default=false"`
+	// MemoryEnabled turns on long-term memory: notes are extracted from conversations and recalled into new ones. Off until the user opts in; takes effect at the next start.
+	MemoryEnabled *bool `json:"memory_enabled,omitempty" jsonschema:"description=Learn from conversations: store preferences and lessons and recall them in later sessions. Takes effect at the next start,default=false"`
 	// DataDirectory is where Seshat keeps per-project state such as
 	// the SQLite database and workspace overrides. Relative paths are
 	// resolved against the working directory; absolute paths are used
