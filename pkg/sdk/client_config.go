@@ -249,6 +249,12 @@ type ClientConfig struct {
 	// one model call per session of three user turns or more.
 	ExtractMemories bool `json:"extract_memories,omitempty"`
 
+	// ConsolidateMemories makes the client rewrite a user's memory smaller once it holds 60 observations or more, at
+	// most once a day: duplicates merged, conflicting statements resolved in favour of the newer, obsolete ones
+	// dropped. It needs ExtractMemories and a LongTermMemory that can be rewritten (the SQLite store can). Off by
+	// default because it rewrites what was stored; a result that would lose most of it is refused.
+	ConsolidateMemories bool `json:"consolidate_memories,omitempty"`
+
 	// MemoryExtractionModel is the model that reads the conversation for ExtractMemories. Zero uses Model.
 	MemoryExtractionModel ModelIdentifier `json:"memory_extraction_model,omitempty"`
 

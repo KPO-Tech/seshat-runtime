@@ -8,9 +8,9 @@ import (
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
-// memoryExtractionTimeout bounds one extraction, which runs after the session is closed and must not hang on a slow
+// memoryExtractionTimeout bounds one extraction and the consolidation that may follow it, which run after the session is closed and must not hang on a slow
 // provider.
-const memoryExtractionTimeout = 90 * time.Second
+const memoryExtractionTimeout = 4 * time.Minute
 
 // defaultMemoryUser is the owner of memories when no authenticated user is known (a single-user terminal session), as
 // the memory tools do.

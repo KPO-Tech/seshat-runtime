@@ -57,9 +57,24 @@ func DefaultExtractorConfig() ExtractorConfig {
 // Extraction is designed to be asynchronous and best-effort: any error is
 // logged at DEBUG level and not surfaced to the user.
 type Extractor struct {
-	store  Store
-	caller LLMCaller
-	config ExtractorConfig
+	store        Store
+	caller       LLMCaller
+	config       ExtractorConfig
+	consolidator *Consolidator
+}
+
+// SetConsolidator makes the extractor consolidate the user's memory after each extraction, when the consolidator
+// finds it due. Nil (the default) never consolidates.
+func (e *Extractor) SetConsolidator(c *Consolidator) { e.consolidator = c }
+
+// consolidate runs the second phase, best effort, with its own deadline: the extraction's may be spent.
+func (e *Extractor) consolidate(ctx context.Context, userID string) {
+	if e.consolidator == nil {
+		return
+	}
+	if _, err := e.consolidator.MaybeConsolidate(ctx, userID); err != nil {
+		slog.Debug("memory consolidation failed", "user", userID, "error", err)
+	}
 }
 
 // NewExtractor creates an Extractor. Zero-value config fields are replaced with
@@ -92,6 +107,8 @@ func (e *Extractor) Extract(ctx context.Context, userID string, messages []types
 	if countUserTurns(messages) < e.config.MinTurns {
 		return nil
 	}
+	// Whatever this extraction finds, memory may have grown enough to consolidate.
+	defer e.consolidate(ctx, userID)
 
 	transcript := BuildTranscript(messages, e.config.MaxTranscriptChars)
 	if strings.TrimSpace(transcript) == "" {
