@@ -9,14 +9,16 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/KPO-Tech/seshat-runtime/pkg/sdk"
+	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/commands"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/chat"
+	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/dialog"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/ui/util"
 )
 
 // memoryUser is the owner of the memories the terminal app keeps: there is one user on a machine.
 const memoryUser = "local"
 
-// memoryAction is what a "/memory" line asks for.
+// memoryAction is what a memory request asks for.
 type memoryAction int
 
 const (
@@ -26,37 +28,40 @@ const (
 	memoryUndo
 )
 
-// parseMemoryInput recognises "/memory", "/memory forget NAME" and "/memory undo".
-func parseMemoryInput(line string) (memoryAction, string) {
-	fields := strings.Fields(strings.TrimSpace(line))
-	if len(fields) == 0 || fields[0] != "/memory" {
-		return memoryNone, ""
+// handleMemoryAction carries out a memory request from the command palette. Forgetting asks for the note's name first.
+func (m *UI) handleMemoryAction(msg dialog.ActionMemory) tea.Cmd {
+	if msg.Op == "forget" && msg.Name == "" {
+		m.dialog.CloseFrontDialog()
+		m.dialog.OpenDialog(dialog.NewArguments(
+			m.com,
+			"Forget a Memory Note",
+			"The name of the note, as Memory: Show Notes lists it. Memory is copied first, so Memory: Undo Last Change puts it back.",
+			[]commands.Argument{{ID: "name", Title: "Note name", Required: true}},
+			msg,
+		))
+		return nil
 	}
-	switch {
-	case len(fields) == 1:
-		return memoryList, ""
-	case fields[1] == "undo" && len(fields) == 2:
-		return memoryUndo, ""
-	case fields[1] == "forget" && len(fields) > 2:
-		return memoryForget, strings.Join(fields[2:], " ")
+	m.dialog.CloseFrontDialog()
+	switch msg.Op {
+	case "forget":
+		return m.runMemory(memoryForget, msg.Name, "Memory: forget "+msg.Name)
+	case "undo":
+		return m.runMemory(memoryUndo, "", "Memory: undo last change")
 	}
-	return memoryNone, ""
+	return m.runMemory(memoryList, "", "Memory: notes")
 }
 
-// runMemoryInput handles a "/memory" line. It reports whether the line was one.
-func (m *UI) runMemoryInput(line string) (tea.Cmd, bool) {
-	action, name := parseMemoryInput(line)
-	if action == memoryNone {
-		return nil, false
-	}
+// runMemory carries out a memory action and shows the answer in the chat. The answer is shown to the user only: it is never
+// sent to the agent.
+func (m *UI) runMemory(action memoryAction, name, label string) tea.Cmd {
 	if !m.hasSession() {
 		if err := m.startEmptySession(); err != nil {
-			return util.ReportError(err), true
+			return util.ReportError(err)
 		}
 	}
 	m.shellSeq++
 	id := fmt.Sprintf("shell-%d", m.shellSeq)
-	item := chat.NewShellOutputItem(m.com.Styles, id, strings.TrimSpace(line), true)
+	item := chat.NewShellOutputItem(m.com.Styles, id, label, true)
 	m.shellItems[id] = item
 	m.chat.AppendMessages(item)
 	m.chat.ScrollToBottom()
@@ -70,9 +75,9 @@ func (m *UI) runMemoryInput(line string) (tea.Cmd, bool) {
 		if err != nil {
 			text, code = err.Error(), 1
 		}
-		// shared is false: the answer is shown to the user and never added to the agent's context.
-		return shellDoneMsg{id: id, command: line, output: text, exitCode: code}
-	}, true
+		// shared is false: the answer is not added to the agent's context.
+		return shellDoneMsg{id: id, command: label, output: text, exitCode: code}
+	}
 }
 
 // memoryReply carries out a "/memory" action and returns the text to show.

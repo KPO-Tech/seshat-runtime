@@ -10,31 +10,6 @@ import (
 	longtermStore "github.com/KPO-Tech/seshat-runtime/internal/memory/longterm"
 )
 
-func TestParseMemoryInput(t *testing.T) {
-	cases := []struct {
-		in     string
-		action memoryAction
-		name   string
-	}{
-		{"/memory", memoryList, ""},
-		{"  /memory  ", memoryList, ""},
-		{"/memory undo", memoryUndo, ""},
-		{"/memory forget editor", memoryForget, "editor"},
-		{"/memory forget reply language", memoryForget, "reply language"},
-		{"/memory forget", memoryNone, ""},
-		{"/memory undo now", memoryNone, ""},
-		{"/memoryx", memoryNone, ""},
-		{"memory", memoryNone, ""},
-		{"/help", memoryNone, ""},
-	}
-	for _, c := range cases {
-		action, name := parseMemoryInput(c.in)
-		if action != c.action || name != c.name {
-			t.Errorf("parseMemoryInput(%q) = (%d, %q), want (%d, %q)", c.in, action, name, c.action, c.name)
-		}
-	}
-}
-
 func TestMemoryReplyListsForgetsAndUndoes(t *testing.T) {
 	ctx := context.Background()
 	database, err := dbpkg.Open(ctx, dbpkg.DefaultSQLiteConfig(filepath.Join(t.TempDir(), "m.db")))

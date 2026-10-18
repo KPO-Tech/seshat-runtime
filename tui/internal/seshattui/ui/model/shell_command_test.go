@@ -16,9 +16,9 @@ func TestParseShellInput(t *testing.T) {
 		kind    shellKind
 		command string
 	}{
-		{"!pip install rich", shellShared, "pip install rich"},
-		{"  !ls -la  ", shellShared, "ls -la"},
-		{"!!cat secrets.txt", shellPrivate, "cat secrets.txt"},
+		{"!pip install rich", shellPrivate, "pip install rich"},
+		{"  !ls -la  ", shellPrivate, "ls -la"},
+		{"!!cat error.log", shellShared, "cat error.log"},
 		{":!sudo su", shellInteractive, "sudo su"},
 		{"!", shellNone, ""},
 		{"!!", shellNone, ""},

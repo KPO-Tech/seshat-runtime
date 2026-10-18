@@ -218,6 +218,9 @@ func (a *Arguments) HandleMsg(msg tea.Msg) Action {
 				case ActionRunMCPPrompt:
 					action.Args = args
 					return action
+				case ActionMemory:
+					action.Name = strings.TrimSpace(args["name"])
+					return action
 				}
 			}
 			a.focusInput(a.focused + 1)
