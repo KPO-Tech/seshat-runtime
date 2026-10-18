@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A catalog of 230 providers and about 7,900 models, embedded and refreshable (`internal/catalog`).** It is the models.dev data that opencode builds its provider list from, trimmed to what an agent can use (text output, tool calls): the base URL and API key variable of each provider, and for each model its context window, output limit, image and audio input, reasoning, cost and status. The snapshot embedded in the binary (150 KB compressed, rebuilt with `scripts/build-catalog-snapshot.js`) is the floor: nothing needs the network. `catalog.Refresh` fetches the public catalog into a cache directory and `catalog.Load` merges it over the embedded one. The merge is a security rule: a provider that is in the embedded snapshot keeps its base URL, API key variable and protocol whatever a fetched catalog says, so a catalog cannot send a key somewhere else; a provider that only the fetched catalog has is added as `Unverified`, and its URL must be confirmed by the user before a key is sent. Our own model catalog still wins over it, and an output limit equal to the context window is treated as unknown. Nothing uses it yet: the next changes read model data from it and offer its OpenAI-compatible providers.
+
 ## [1.10.4] - 2026-10-18
 
 ### Added
