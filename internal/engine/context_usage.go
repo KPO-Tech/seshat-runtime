@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	compact "github.com/KPO-Tech/seshat-runtime/internal/runtime/memory"
 	contextusage "github.com/KPO-Tech/seshat-runtime/internal/tools/special/context_usage"
@@ -24,6 +25,46 @@ type usageReporter interface {
 	UsedTokens(systemPrompt string, messages []types.Message, tracking *compact.TrackingState) int
 	Budget(model types.ModelIdentifier) compact.ContextBudget
 	ShouldCompact(systemPrompt string, messages []types.Message, model types.ModelIdentifier, tracking *compact.TrackingState) bool
+}
+
+// observationMasker is what a compaction strategy offers to clear old tool results before summarizing. The default
+// Engine has it.
+type observationMasker interface {
+	MaskObservations(messages []types.Message) ([]types.Message, compact.MaskResult)
+}
+
+// maskAtPercent is how close to the automatic compaction threshold, in percent, the conversation must be for old tool
+// results to be cleared. Masking runs well before summarizing: it is cheaper and loses less.
+const maskAtPercent = 70
+
+// maybeMaskObservations clears old tool results once the conversation nears the compaction threshold. The messages are
+// changed in place, so the result holds from then on (a cleared result is small and is not cleared again) instead of
+// flipping back and forth as the size crosses the line.
+func (l *Loop) maybeMaskObservations(state *MutableState, req RunRequest) {
+	if !l.config.AutoCompact {
+		return
+	}
+	reporter, ok := l.compactor.(usageReporter)
+	masker, canMask := l.compactor.(observationMasker)
+	if !ok || !canMask {
+		return
+	}
+	budget := reporter.Budget(req.Model)
+	if budget.AutoCompactAtTokens <= 0 {
+		return
+	}
+	used := reporter.UsedTokens(req.SystemPrompt, state.Messages, compactionTracking(state, req))
+	if used*100 < budget.AutoCompactAtTokens*maskAtPercent {
+		return
+	}
+	masked, result := masker.MaskObservations(state.Messages)
+	if result.Cleared == 0 {
+		return
+	}
+	state.Messages = masked
+	// The provider's figure described the messages as they were before.
+	state.UsageAnchor = nil
+	slog.Info("old tool results cleared to save context", "session_id", req.SessionID, "results", result.Cleared, "freed_chars", result.FreedChars)
 }
 
 // toolDefinitionTokens estimates what the tool definitions of a request cost, to be added to the messages' size.

@@ -322,6 +322,7 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) RunResult {
 		l.prepareMessagesForIteration(state)
 		l.resolveToolsets(ctx, &req)
 
+		l.maybeMaskObservations(state, req)
 		if err := l.maybeAutoCompact(ctx, state, req); err != nil {
 			// Record error in monitoring
 			if l.monitoring != nil {

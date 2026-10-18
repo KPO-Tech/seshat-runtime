@@ -9,6 +9,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Compaction follows what the 2026 research and the vendors converged on.** Three changes, each from a source read on 2026-10-18. (1) *Iterative summary* (Factory's evaluation, December 2025: a persistent structured summary updated by merging beat regenerating it, 3.70 against 3.44 and 3.35): a second compaction now starts from the previous summary and updates it section by section, instead of summarizing it again as an ordinary message, and every one of the six sections must be filled or say "none". (2) *File trail kept by the runtime*: that evaluation found every method poor at remembering which files were touched (2.2 to 2.5 out of 5) and suggests tracking them in the harness, so the files read, modified and created are listed from the tool calls themselves (failed calls left out, a modified file superseding a read one) and appended to the summary, and the user's earlier messages and the trail carry over from compaction to compaction. (3) *Observation masking* ("The Complexity Trap": clearing old tool results about halves an agent's cost and solves as many tasks as summarizing with a model): once the conversation passes 70 % of the automatic compaction threshold, the large results of old tool calls are replaced by their tool name, size and first 160 characters, in batches of at least 20,000 characters so the provider's cache stays valid in between, keeping the six most recent whole; the model's own words and the user's messages are never touched.
+
+### Fixed
+
+- **Trimming a message for a summary request no longer trims the conversation itself.** `PrepareMessageForAPI` wrote into the content slice it shares with the caller's message, so a compaction that failed left the session's tool results trimmed anyway.
+- **Manual compaction now compacts, and automatic compaction keeps a smaller tail.** Found by running it against a real model: asked on a small conversation, `Session.Compact` did nothing (3,965 tokens before and after), because it reused the automatic rules, which assume a nearly full window. A manual compaction now always summarizes and keeps the most recent fifth. It was also growing a conversation with a long pasted log (8,249 tokens became 4,098 on the first try) because the kept tail was "at least" the target, so one giant message swallowed everything before it; the tail now stays within the target and keeps at least the last message, for automatic compaction too. The user's earlier messages carried over word for word are clipped to 2,000 characters each. `Compact` returns `ErrCompactionWouldNotShrink`, changing nothing, when summarizing would leave the conversation no smaller.
+
 ## [1.10.1] - 2026-10-18
 
 ### Changed
@@ -17,7 +26,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **Manual compaction now compacts, and automatic compaction keeps a smaller tail.** Found by running it against a real model: asked on a small conversation, `Session.Compact` did nothing (3,965 tokens before and after), because it reused the automatic rules, which assume a nearly full window. A manual compaction now always summarizes and keeps the most recent fifth. It was also growing a conversation with a long pasted log (8,249 tokens became 4,098 on the first try) because the kept tail was "at least" the target, so one giant message swallowed everything before it; the tail now stays within the target and keeps at least the last message, for automatic compaction too. The user's earlier messages carried over word for word are clipped to 2,000 characters each. `Compact` returns `ErrCompactionWouldNotShrink`, changing nothing, when summarizing would leave the conversation no smaller.
 - **The browse agent no longer lists five tools that do not exist** (`tree`, `wikipedia`, `scholarly_search`, `web_map`, `web_crawl`). Its allowlist now holds only registered tools, and a test fails if a name matches none.
 - **MCP tools reached the model with no parameters.** The schema an MCP server sends for a tool is a whole JSON schema, but it was nested a second time as the `properties` of a new one, so the model saw `{"properties":{"properties":{}}}` and had to guess every argument name. The server's schema is now converted as is, with its properties and required list.
 

@@ -17,6 +17,12 @@ const (
 	defaultMaxSummaryTokens             = 2_000
 	defaultMaxConsecutiveCompactFailure = 3
 
+	// summaryAttempts is how many times a summary is requested when the model returns no text, and summaryBudgetGrowth
+	// how much larger each attempt's token budget is than the last, up to maxSummaryRetryTokens.
+	summaryAttempts       = 2
+	summaryBudgetGrowth   = 4
+	maxSummaryRetryTokens = 16_000
+
 	// manualKeepDivisor: a manual compaction keeps the most recent 1/5 of the conversation as it is.
 	manualKeepDivisor       = 5
 	compactSummaryMessageID = "compact_summary"
@@ -134,6 +140,12 @@ func (e *Engine) UsedTokens(systemPrompt string, messages []types.Message, track
 		used += tracking.ExtraTokens
 	}
 	return used
+}
+
+// MaskObservations clears the large results of old tool calls (see MaskOldObservations). It is the first step of the
+// ladder: it costs no model call, and often frees enough that the conversation is never summarized.
+func (e *Engine) MaskObservations(messages []types.Message) ([]types.Message, MaskResult) {
+	return MaskOldObservations(messages)
 }
 
 // Budget reports the window of a model and the two thresholds that matter to a host showing a context gauge. A nil
@@ -297,36 +309,31 @@ func (e *Engine) generateSummary(
 		summaryModel = model
 	}
 	prompt := e.buildSummaryPrompt(messages)
-	resp, err := e.apiClient.CreateMessage(ctx, types.APIRequest{
-		Model:     summaryModel,
-		Messages:  []types.Message{types.UserMessage("compact_summary_request", prompt)},
-		MaxTokens: e.config.MaxSummaryTokens,
-	})
-	if err != nil {
-		return "", err
-	}
-	for _, block := range resp.Content {
-		if text, ok := block.(types.TextContent); ok && strings.TrimSpace(text.Text) != "" {
-			return text.Text, nil
+
+	// A reasoning model spends part of max_tokens thinking: with the budget sized for the summary alone it can end on
+	// the limit having written only its reasoning, and the summary is empty (seen on glm-5.3-flash: stop reason
+	// max_tokens, one thinking block). The attempt is repeated with a larger budget before compaction is given up.
+	budget := e.config.MaxSummaryTokens
+	var lastStop string
+	for attempt := 0; attempt < summaryAttempts; attempt++ {
+		resp, err := e.apiClient.CreateMessage(ctx, types.APIRequest{
+			Model:     summaryModel,
+			Messages:  []types.Message{types.UserMessage("compact_summary_request", prompt)},
+			MaxTokens: budget,
+		})
+		if err != nil {
+			return "", err
 		}
+		for _, block := range resp.Content {
+			if text, ok := block.(types.TextContent); ok && strings.TrimSpace(text.Text) != "" {
+				return text.Text, nil
+			}
+		}
+		lastStop = resp.StopReason
+		budget = min(budget*summaryBudgetGrowth, maxSummaryRetryTokens)
 	}
-	return "", fmt.Errorf("no summary generated for session %s turn %s", sessionID, turnID)
+	return "", fmt.Errorf("no summary generated for session %s turn %s (stop reason %q after %d attempts)", sessionID, turnID, lastStop, summaryAttempts)
 }
-
-const summaryInstructions = `You are writing a handoff for another model that will carry on this work with only your summary and the last few messages. It cannot see anything you leave out. Write, in this order:
-
-1. What the user asked for: the goal, and any change of direction since.
-2. Decisions made, and the reason for each.
-3. What has been done: files changed, commands run, results that still matter.
-4. Where things stand now, and what remains, as concrete next steps.
-5. Facts to keep exactly: paths, names, ids, numbers, error messages, URLs.
-6. The user's preferences and constraints.
-
-Be concise and specific. Do not invent anything that is not in the conversation.
-
-Conversation:
-
-`
 
 const (
 	// summaryToolInputChars and summaryToolResultChars bound how much of a tool call the summarizer is shown: enough
@@ -345,26 +352,6 @@ const (
 		"below is the summary it wrote, then the user's earlier messages word for word. " +
 		"Build on the work already done and do not repeat it."
 )
-
-func (e *Engine) buildSummaryPrompt(messages []types.Message) string {
-	var builder strings.Builder
-	builder.WriteString(summaryInstructions)
-	for _, msg := range messages {
-		builder.WriteString(fmt.Sprintf("[%s] ", msg.Role))
-		for _, block := range msg.Content {
-			switch content := block.(type) {
-			case types.TextContent:
-				builder.WriteString(content.Text)
-			case types.ToolUseContent:
-				builder.WriteString(fmt.Sprintf("Tool use: %s %s ", content.Name, clipForSummary(toolInputText(content.Input), summaryToolInputChars)))
-			case types.ToolResultContent:
-				builder.WriteString(fmt.Sprintf("Tool result (%s): %s ", e.microCompactor.CalculateToolResultSummary(content), clipForSummary(content.Content, summaryToolResultChars)))
-			}
-		}
-		builder.WriteString("\n")
-	}
-	return builder.String()
-}
 
 func toolInputText(input map[string]any) string {
 	if len(input) == 0 {
@@ -407,39 +394,6 @@ func (e *Engine) assembleCompacted(messages []types.Message, preservedStart int,
 	compacted = append(compacted, marker)
 	compacted = append(compacted, types.CloneMessages(messages[preservedStart:])...)
 	return compacted
-}
-
-// summaryText is the hand-off prefix, the summary, and the user's messages from the dropped part, newest kept first
-// within keptUserMessageTokens, written oldest first.
-func (e *Engine) summaryText(dropped []types.Message, summary string) string {
-	var kept []string
-	budget := keptUserMessageTokens
-	for i := len(dropped) - 1; i >= 0; i-- {
-		text, ok := userText(dropped[i])
-		if !ok {
-			continue
-		}
-		text = clipForSummary(text, keptUserMessageChars)
-		cost := len(text)/4 + 10
-		if cost > budget {
-			break
-		}
-		budget -= cost
-		kept = append(kept, text)
-	}
-
-	var b strings.Builder
-	b.WriteString(handoffPrefix)
-	b.WriteString("\n\nSummary:\n\n")
-	b.WriteString(summary)
-	if len(kept) > 0 {
-		b.WriteString("\n\nThe user's earlier messages, word for word:\n")
-		for i := len(kept) - 1; i >= 0; i-- {
-			b.WriteString("\n---\n")
-			b.WriteString(kept[i])
-		}
-	}
-	return b.String()
 }
 
 // userText returns the text of a message the user wrote. Compaction artifacts, which are system messages, and tool
