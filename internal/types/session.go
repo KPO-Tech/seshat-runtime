@@ -168,6 +168,11 @@ const (
 	EntryTypeCompact EntryType = "compact"
 	EntryTypeSystem  EntryType = "system"
 	EntryTypeControl EntryType = "control"
+
+	// EntryTypeArchived marks a message that a compaction took out of the conversation the model sees. It stays in the
+	// transcript, so the full history can still be read, but it is not part of the canonical messages that are sent to
+	// the model or restored as the session.
+	EntryTypeArchived EntryType = "archived"
 )
 
 // NewSessionID creates a new session ID (wrapper for clarity)

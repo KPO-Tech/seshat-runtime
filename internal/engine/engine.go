@@ -33,6 +33,12 @@ type sessionRestorer interface {
 	RestoreSessionState(sessionID types.SessionID) (*types.SessionMetadata, []types.Message, error)
 }
 
+// historyLoader is an optional capability of a SessionStore: reading back the messages that compactions archived.
+// state.Store satisfies it.
+type historyLoader interface {
+	LoadHistory(sessionID types.SessionID) (archived, current []types.Message, err error)
+}
+
 // Engine orchestrates query sessions.
 type Engine struct {
 	mu                   sync.RWMutex // protects apiClient and loop.apiClient swaps
