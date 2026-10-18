@@ -129,7 +129,7 @@ func TestSessionSubmitMessagePersistsDiscoveredDeferredTools(t *testing.T) {
 				t.Fatal("deferred tool should not be present on the initial session turn")
 			}
 			assertProviderToolNames(t, req.ProviderTools, toolsearch.ToolSearchToolName)
-			if !strings.Contains(req.SystemPrompt, "<available-deferred-tools>\ndeferred\n</available-deferred-tools>") {
+			if !strings.Contains(req.SystemPrompt, "<available-deferred-tools>\ndeferred: deferred tool\n</available-deferred-tools>") {
 				t.Fatalf("expected initial system prompt to advertise deferred tool, got %q", req.SystemPrompt)
 			}
 			return &types.APIResponse{
@@ -146,7 +146,7 @@ func TestSessionSubmitMessagePersistsDiscoveredDeferredTools(t *testing.T) {
 				t.Fatalf("deferred tool should be present after ToolSearch discovery, got tools %v", toolMapNames(req.Tools))
 			}
 			assertProviderToolNames(t, req.ProviderTools, "deferred", toolsearch.ToolSearchToolName)
-			if strings.Contains(req.SystemPrompt, "<available-deferred-tools>\ndeferred\n</available-deferred-tools>") {
+			if strings.Contains(req.SystemPrompt, "<available-deferred-tools>\ndeferred: deferred tool\n</available-deferred-tools>") {
 				t.Fatalf("expected refreshed system prompt to remove deferred tool from pending list, got %q", req.SystemPrompt)
 			}
 			return &types.APIResponse{

@@ -230,7 +230,7 @@ func buildPromptVariables(input FetchSystemPromptPartsInput) map[string]string {
 	contextVars["mcp_client_count"] = fmt.Sprintf("%d", len(input.MCPClients))
 	contextVars["additional_working_directories"] = formatStringList(input.AdditionalWorkingDirectories)
 	contextVars["stable_tool_names"] = formatStringList(toolNames)
-	contextVars["available_deferred_tools"] = formatStringList(input.DeferredToolNames)
+	contextVars["available_deferred_tools"] = strings.Join(input.DeferredToolNames, "\n")
 	contextVars["prompt_cache_boundary"] = "the dynamic system prompt boundary"
 	contextVars["git_root"] = ""
 	contextVars["git_branch"] = ""

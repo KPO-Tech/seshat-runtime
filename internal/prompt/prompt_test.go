@@ -127,7 +127,7 @@ func TestBuildPromptVariablesIncludesDeferredToolNames(t *testing.T) {
 	}
 
 	vars := buildPromptVariables(input)
-	if got := vars["available_deferred_tools"]; got != "Deploy, Release" {
+	if got := vars["available_deferred_tools"]; got != "Deploy\nRelease" {
 		t.Fatalf("expected deferred tool names in prompt variables, got %q", got)
 	}
 }

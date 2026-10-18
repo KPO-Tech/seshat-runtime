@@ -19,6 +19,11 @@ type Definition struct {
 	// Description explains what the tool does
 	Description string `json:"description"`
 
+	// ShortDescription is one line saying what the tool is for, shown next to its name in the list of deferred tools of the
+	// system prompt, where the tool itself is not loaded. When empty, registry.ShortDescription falls back to a line written
+	// for the tool, then to the first sentence of Description.
+	ShortDescription string `json:"short_description,omitempty"`
+
 	// Prompt provides detailed guidance on when and how to use the tool
 	// This is used by the AI to understand the tool's usage patterns
 	Prompt string `json:"prompt,omitempty"`

@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"encoding/json"
+	"github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"slices"
 	"testing"
 )
@@ -74,5 +75,38 @@ func TestEnterpriseAgentProfileNamesExist(t *testing.T) {
 		if _, ok := client.registry.Get(name); !ok {
 			t.Errorf("%q is in the enterprise profile but is not a registered tool", name)
 		}
+	}
+}
+
+// TestEveryDeferredToolHasAWrittenShortDescription: the names of the deferred tools are listed in the system prompt with a
+// line each, and a tool the agent has to find should not depend on the first sentence of a long description.
+func TestEveryDeferredToolHasAWrittenShortDescription(t *testing.T) {
+	for _, name := range EnterpriseAgentDeferredTools() {
+		if !registry.HasBuiltinShortDescription(name) {
+			t.Errorf("%q is deferred but has no line in the short description catalog", name)
+		}
+	}
+}
+
+// TestDeferredToolListStaysSmall measures what listing the deferred tools with a line each costs in the system prompt of every
+// request: it must stay a small fraction of the roughly 16k tokens the profile saves.
+func TestDeferredToolListStaysSmall(t *testing.T) {
+	client, err := NewClient(&ClientConfig{PersistSessions: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	total, entries := 0, 0
+	for _, name := range EnterpriseAgentDeferredTools() {
+		line := name
+		if registered, ok := client.registry.Get(name); ok {
+			line = name + ": " + registry.ShortDescription(registered.Definition())
+		}
+		total += len(line) + 1
+		entries++
+	}
+	t.Logf("%d deferred tools listed with a line each: %d bytes (about %d tokens); names alone were about 207", entries, total, total/4)
+	if total > 6000 {
+		t.Fatalf("the list takes %d bytes, want at most 6000 (about 1,500 tokens)", total)
 	}
 }
