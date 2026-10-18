@@ -54,6 +54,7 @@ type Client struct {
 	untitledCounter atomic.Int64
 	taskStorePath   string
 	goalBackend     *coregoal.SQLiteBackend
+	memoryExtractor engine.MemoryExtractor
 }
 
 type promptAwareTool interface {
@@ -130,7 +131,8 @@ func NewClient(config *ClientConfig) (*Client, error) {
 
 	// Engine config
 	queryConfig := buildEngineConfig(config)
-	queryConfig.MemoryExtractor = newMemoryExtractor(config, apiClient)
+	memoryExtractor := newMemoryExtractor(config, apiClient)
+	queryConfig.MemoryExtractor = memoryExtractor
 	queryConfig.MemoryRecaller = newMemoryRecaller(config)
 	queryConfig.ManagedInstructions = managedInstructionsText(config.ManagedPolicy)
 	queryConfig.BrowserManager = browserManager
@@ -221,20 +223,23 @@ func NewClient(config *ClientConfig) (*Client, error) {
 	}
 
 	client := &Client{
-		queryEngine:   queryEngine,
-		orchestrator:  orchestrator,
-		registry:      reg,
-		store:         store,
-		config:        config,
-		memoryInitErr: memInitErr,
-		mcpResult:     mcpResult,
-		ownedStore:    ownedStore,
-		browser:       browserManager,
-		artifacts:     artifactStore,
-		reaper:        reaper,
-		taskStorePath: config.SessionSQLitePath,
-		goalBackend:   goalBackend,
+		queryEngine:     queryEngine,
+		orchestrator:    orchestrator,
+		registry:        reg,
+		store:           store,
+		config:          config,
+		memoryInitErr:   memInitErr,
+		memoryExtractor: memoryExtractor,
+		mcpResult:       mcpResult,
+		ownedStore:      ownedStore,
+		browser:         browserManager,
+		artifacts:       artifactStore,
+		reaper:          reaper,
+		taskStorePath:   config.SessionSQLitePath,
+		goalBackend:     goalBackend,
 	}
+
+	queryConfig.OnMemoryExtracted = client.markExtractedAfterClose
 
 	// Register shell pre-tool hooks from ClientConfig.
 	if len(config.PreToolHooks) > 0 {

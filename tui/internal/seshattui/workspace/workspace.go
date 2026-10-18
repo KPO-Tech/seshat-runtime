@@ -20,6 +20,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/catwalk/pkg/catwalk"
 	"github.com/KPO-Tech/seshat-runtime/pkg/doctor"
+	"github.com/KPO-Tech/seshat-runtime/pkg/sdk"
 	mcptools "github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/agent/tools/mcp"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/config"
 	"github.com/KPO-Tech/seshat-runtime/tui/internal/seshattui/history"
@@ -159,6 +160,8 @@ type Workspace interface {
 	// Config (read-only data)
 	Config() *config.Config
 	WorkingDir() string
+	// LongTermMemory is the store long-term memory is kept in, or nil when there is none.
+	LongTermMemory() sdk.LongTermMemory
 	Resolver() config.VariableResolver
 	DoctorReport(ctx context.Context) doctor.Report
 

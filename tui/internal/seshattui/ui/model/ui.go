@@ -175,6 +175,12 @@ type UI struct {
 	// keeps track of read files while we don't have a session id
 	sessionFileReads []string
 
+	// Commands run from the prompt with "!": the items still running, the shared ones the agent has not been told about yet, and a counter for their IDs.
+	shellItems   map[string]*chat.ShellOutputItem
+	shellPanel   shellPanel
+	pendingShell []chat.ShellRun
+	shellSeq     int
+
 	// initialSessionID is set when loading a specific session on startup.
 	initialSessionID string
 	// continueLastSession is set to continue the most recent session on startup.
@@ -357,6 +363,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	header := newHeader(com)
 
 	ui := &UI{
+		shellItems:          make(map[string]*chat.ShellOutputItem),
 		com:                 com,
 		dialog:              dialog.NewOverlay(),
 		keyMap:              keyMap,
@@ -652,6 +659,12 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			paths = append(paths, f.LatestVersion.Path)
 		}
 		cmds = append(cmds, m.startLSPs(paths))
+
+	case shellDoneMsg:
+		m.handleShellDone(msg)
+
+	case shellInteractiveDoneMsg:
+		cmds = append(cmds, msg.warning())
 
 	case sendMessageMsg:
 		cmds = append(cmds, m.sendMessage(msg.Content, msg.Attachments...))
@@ -949,36 +962,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
-		// Otherwise handle mouse wheel for chat.
-		switch m.state {
-		case uiChat:
-			switch msg.Button {
-			case tea.MouseWheelUp:
-				if cmd := m.chat.ScrollByAndAnimate(-MouseScrollThreshold); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-				if !m.chat.SelectedItemInView() {
-					m.chat.SelectPrev()
-					if cmd := m.chat.ScrollToSelectedAndAnimate(); cmd != nil {
-						cmds = append(cmds, cmd)
-					}
-				}
-			case tea.MouseWheelDown:
-				if cmd := m.chat.ScrollByAndAnimate(MouseScrollThreshold); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-				if !m.chat.SelectedItemInView() {
-					if m.chat.AtBottom() {
-						m.chat.SelectLast()
-					} else {
-						m.chat.SelectNext()
-					}
-					if cmd := m.chat.ScrollToSelectedAndAnimate(); cmd != nil {
-						cmds = append(cmds, cmd)
-					}
-				}
-			}
-		}
+		cmds = append(cmds, m.handleWheel(msg))
 	case anim.StepMsg:
 		if m.state == uiChat {
 			if cmd := m.chat.Animate(msg); cmd != nil {
@@ -1028,27 +1012,9 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case creditsUpdatedMsg:
 		m.hyperCredits = &msg.credits
 	case util.InfoMsg:
-		if msg.Type == util.InfoTypeError {
-			slog.Error("Error reported", "error", msg.Msg)
-		}
-		m.status.SetInfoMsg(msg)
-		ttl := msg.TTL
-		if ttl <= 0 {
-			ttl = DefaultStatusTTL
-		}
-		cmds = append(cmds, clearInfoMsgCmd(ttl))
+		cmds = append(cmds, m.showInfoMsg(msg))
 	case app.UpdateAvailableMsg:
-		text := fmt.Sprintf("Seshat update available: v%s → v%s.", msg.CurrentVersion, msg.LatestVersion)
-		if msg.IsDevelopment {
-			text = fmt.Sprintf("This is a development version of Seshat. The latest version is v%s.", msg.LatestVersion)
-		}
-		ttl := 10 * time.Second
-		m.status.SetInfoMsg(util.InfoMsg{
-			Type: util.InfoTypeUpdate,
-			Msg:  text,
-			TTL:  ttl,
-		})
-		cmds = append(cmds, clearInfoMsgCmd(ttl))
+		cmds = append(cmds, m.showUpdateAvailable(msg))
 	case util.ClearStatusMsg:
 		m.status.ClearInfoMsg()
 	case completions.CompletionItemsLoadedMsg:
@@ -1600,11 +1566,17 @@ func (m *UI) handleChildSessionMessage(event pubsub.Event[message.Message]) tea.
 	return tea.Sequence(cmds...)
 }
 
+// handleDialogMsg gives a message to the open dialogs and carries out the action they answer with.
 func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
+	return m.applyDialogAction(m.dialog.Update(msg))
+}
+
+// applyDialogAction carries out an action: one a dialog answered with, or one chosen elsewhere, like a command picked in the
+// popup over the prompt. A nil action does nothing.
+func (m *UI) applyDialogAction(action dialog.Action) tea.Cmd {
 	var cmds []tea.Cmd
-	action := m.dialog.Update(msg)
 	if action == nil {
-		return tea.Batch(cmds...)
+		return nil
 	}
 
 	isOnboarding := m.state == uiOnboarding
@@ -1699,19 +1671,12 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 		m.status.ToggleHelp()
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionExternalEditor:
-		if m.isAgentBusy() {
-			cmds = append(cmds, util.ReportWarn("Agent is working, please wait..."))
-			break
-		}
-		cmds = append(cmds, m.openEditor(m.textarea.Value()))
-		m.dialog.CloseDialog(dialog.CommandsID)
+		cmds = append(cmds, m.openExternalEditorFromDialog())
 	case dialog.ActionToggleCompactMode:
 		cmds = append(cmds, m.toggleCompactMode())
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionTogglePills:
-		if cmd := m.togglePillsExpanded(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		cmds = append(cmds, m.togglePillsExpanded())
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionToggleThinking:
 		cmds = append(cmds, func() tea.Msg {
@@ -1738,26 +1703,11 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 			return util.NewInfoMsg("Thinking mode " + status)
 		})
 		m.dialog.CloseDialog(dialog.CommandsID)
+	case dialog.ActionToggleMemory:
+		cmds = append(cmds, m.toggleMemoryCmd())
+		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionToggleTransparentBackground:
-		cmds = append(cmds, func() tea.Msg {
-			cfg := m.com.Config()
-			if cfg == nil {
-				return util.ReportError(errors.New("configuration not found"))()
-			}
-
-			isTransparent := cfg.Options != nil && cfg.Options.TUI.Transparent != nil && *cfg.Options.TUI.Transparent
-			newValue := !isTransparent
-			if err := m.com.Workspace.SetConfigField(config.ScopeGlobal, "options.tui.transparent", newValue); err != nil {
-				return util.ReportError(err)()
-			}
-			m.isTransparent = newValue
-
-			status := "disabled"
-			if newValue {
-				status = "enabled"
-			}
-			return util.NewInfoMsg("Transparent background " + status)
-		})
+		cmds = append(cmds, m.toggleTransparentCmd())
 		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionQuit:
 		m.cancelCtx()
@@ -1911,28 +1861,11 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 		))
 
 	case dialog.ActionRunCustomCommand:
-		if len(msg.Arguments) > 0 && msg.Args == nil {
-			m.dialog.CloseFrontDialog()
-			argsDialog := dialog.NewArguments(
-				m.com,
-				"Custom Command Arguments",
-				"",
-				msg.Arguments,
-				msg, // Pass the action as the result
-			)
-			m.dialog.OpenDialog(argsDialog)
-			break
-		}
-		content := msg.Content
-		if msg.Args != nil {
-			content = substituteArgs(content, msg.Args)
-		}
-		// If this is a skill command, format it using the skill's FormatInvocation method
-		if msg.Skill != nil {
-			content = msg.Skill.FormatInvocation()
-		}
-		cmds = append(cmds, m.sendMessage(content))
-		m.dialog.CloseFrontDialog()
+		cmds = append(cmds, m.runCustomCommand(msg))
+	case dialog.ActionShellPanel:
+		cmds = append(cmds, m.handleShellPanelAction(msg))
+	case dialog.ActionMemory:
+		cmds = append(cmds, m.handleMemoryAction(msg))
 	case dialog.ActionAttachSkill:
 		m.dialog.CloseFrontDialog()
 		cmds = append(cmds, m.attachSkill(msg.ID, msg.Name))
@@ -2245,25 +2178,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 			// Handle completions if open.
 			if m.completionsOpen {
 				if msg, ok := m.completions.Update(msg); ok {
-					switch msg := msg.(type) {
-					case completions.SelectionMsg[completions.FileCompletionValue]:
-						cmds = append(cmds, m.insertFileCompletion(msg.Value.Path))
-						if !msg.KeepOpen {
-							m.closeCompletions()
-						}
-					case completions.SelectionMsg[completions.ResourceCompletionValue]:
-						cmds = append(cmds, m.insertMCPResourceCompletion(msg.Value))
-						if !msg.KeepOpen {
-							m.closeCompletions()
-						}
-					case completions.SelectionMsg[completions.SkillCompletionValue]:
-						cmds = append(cmds, m.insertSkillCompletion(msg.Value.Name))
-						if !msg.KeepOpen {
-							m.closeCompletions()
-						}
-					case completions.ClosedMsg:
-						m.completionsOpen = false
-					}
+					cmds = append(cmds, m.applyCompletionSelection(msg)...)
 					return tea.Batch(cmds...)
 				}
 			}
@@ -2326,10 +2241,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					return nil
 				}
 
-				m.randomizePlaceholders()
-				m.historyReset()
-
-				return tea.Batch(m.sendMessage(value, attachments...), m.loadPromptHistory())
+				return m.submitPrompt(value, attachments)
 			case key.Matches(msg, m.keyMap.Chat.NewSession):
 				if !m.hasSession() {
 					break
@@ -2379,37 +2291,16 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				if cmd != nil {
 					cmds = append(cmds, cmd)
 				}
-			case key.Matches(msg, m.keyMap.Editor.Commands) && m.textarea.Value() == "":
-				if cmd := m.openCommandsDialog(); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
 			default:
 				if handleGlobalKeys(msg) {
 					// Handle global keys first before passing to textarea.
 					break
 				}
 
-				// Check for a @ or / trigger before passing to textarea.
+				// Check for a @, / or  trigger before passing to textarea.
 				curValue := m.textarea.Value()
-				curIdx := len(curValue)
 
-				// Trigger completions on @ (files/MCP resources) or / (skills).
-				if !m.completionsOpen && (msg.String() == "@" || msg.String() == "/") {
-					// Only show if beginning of prompt or after whitespace.
-					if curIdx == 0 || (curIdx > 0 && isWhitespace(curValue[curIdx-1])) {
-						m.completionsOpen = true
-						m.completionsTrigger = msg.String()
-						m.completionsQuery = ""
-						m.completionsStartIndex = curIdx
-						m.completionsPositionStart = m.completionsPosition()
-						if m.completionsTrigger == "@" {
-							depth, limit := m.com.Config().Options.TUI.Completions.Limits()
-							cmds = append(cmds, m.completions.Open(depth, limit))
-						} else {
-							m.completions.SetSkillItems(skillCompletionValues(m.skillCommands))
-						}
-					}
-				}
+				cmds = append(cmds, m.maybeOpenCompletions(msg.String(), curValue)...)
 
 				// remove the details if they are open when user starts typing
 				if m.detailsOpen {
@@ -2428,8 +2319,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				// items are still loading async, and skills are unaffected either
 				// way since the query is empty on that keystroke.
 				if m.completionsOpen && msg.String() != m.completionsTrigger {
-					newValue := m.textarea.Value()
-					newIdx := len(newValue)
+					newIdx := m.cursorOffset()
 
 					// Close completions if cursor moved before start.
 					if newIdx <= m.completionsStartIndex {
@@ -2661,6 +2551,7 @@ func (m *UI) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		uv.NewStyledString(m.chatHeaderView(layout.header.Dx())).Draw(scr, layout.header)
 
 		m.chat.Draw(scr, layout.main)
+		m.drawShellPanel(scr, layout.shellPanel)
 		if layout.pills.Dy() > 0 && m.pillsView != "" {
 			uv.NewStyledString(m.pillsView).Draw(scr, layout.pills)
 		}
@@ -3220,6 +3111,7 @@ func (m *UI) generateLayout(w, h int) uiLayout {
 		}
 		uiLayout.main.Max.Y -= 1 // bottom margin
 		uiLayout.editor = editorRect
+		m.applyShellPanelLayout(&uiLayout)
 	}
 
 	return uiLayout
@@ -3253,6 +3145,9 @@ type uiLayout struct {
 
 	// session details is the area for the session details overlay in compact mode.
 	sessionDetails uv.Rectangle
+
+	// shellPanel is the area for the command panel, empty when it is hidden.
+	shellPanel uv.Rectangle
 }
 
 func (m *UI) openEditor(value string) tea.Cmd {
@@ -3379,7 +3274,7 @@ func (m *UI) insertCompletionText(text string) bool {
 	endIdx := min(m.completionsStartIndex+len(word), len(value))
 	newValue := value[:m.completionsStartIndex] + text + value[endIdx:]
 	m.textarea.SetValue(newValue)
-	m.textarea.MoveToEnd()
+	m.setCursorOffset(m.completionsStartIndex + len(text))
 	m.textarea.InsertRune(' ')
 	return true
 }
@@ -3735,6 +3630,11 @@ func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.
 		return util.ReportError(fmt.Errorf("coder agent is not initialized"))
 	}
 
+	// Commands the user ran with "!" since the last message go in front of it, so the agent can use their output.
+	if block := m.takeShellContext(); block != "" {
+		content = block + "\n\n" + content
+	}
+
 	var cmds []tea.Cmd
 	if !m.hasSession() {
 		newSession, err := m.com.Workspace.CreateSession(context.Background(), "New Session")
@@ -3960,15 +3860,7 @@ func (m *UI) openCommandsDialog() tea.Cmd {
 		return nil
 	}
 
-	var sessionID string
-	hasSession := m.session != nil
-	if hasSession {
-		sessionID = m.session.ID
-	}
-	hasTodos := hasSession && hasIncompleteTodos(m.session.Todos)
-	hasQueue := m.promptQueue > 0
-
-	commands, err := dialog.NewCommands(m.com, sessionID, hasSession, hasTodos, hasQueue, m.customCommands, m.mcpPrompts)
+	commands, err := m.newCommandsDialog()
 	if err != nil {
 		return util.ReportError(err)
 	}
@@ -4620,4 +4512,16 @@ func renderLogo(t *styles.Styles, compact, hyper bool, width int) string {
 		Width:        width,
 		Hyper:        hyper,
 	})
+}
+
+// newCommandsDialog builds the command palette for the state the session is in.
+func (m *UI) newCommandsDialog() (*dialog.Commands, error) {
+	var sessionID string
+	hasSession := m.session != nil
+	if hasSession {
+		sessionID = m.session.ID
+	}
+	hasTodos := hasSession && hasIncompleteTodos(m.session.Todos)
+	hasQueue := m.promptQueue > 0
+	return dialog.NewCommands(m.com, sessionID, hasSession, hasTodos, hasQueue, m.customCommands, m.mcpPrompts)
 }

@@ -51,6 +51,9 @@ func runSeshatTUI(ctx context.Context, options runtimeOptions, initialSessionID 
 		ws.SetMCPConfig(mcpStore.Config().MCP)
 		ws.SetMCPStore(mcpStore)
 		applyCapabilityToolConfig(&options, mcpStore.Config())
+		if o := mcpStore.Config().Options; o != nil && o.MemoryEnabled != nil {
+			options.MemoryEnabled = *o.MemoryEnabled
+		}
 		options.MCPServers = seshatMCPToSDK(mcpStore)
 		go mcptools.Initialize(ctx, nil, mcpStore)
 	} else if mcps := tuiconfig.LoadMCPConfig(options.WorkingDir); len(mcps) > 0 {
@@ -70,6 +73,7 @@ func runSeshatTUI(ctx context.Context, options runtimeOptions, initialSessionID 
 		return err
 	}
 	ws.SetSDKClient(client)
+	catchUpMemories(client, options.MemoryEnabled)
 
 	// Probe env vars, credentials DB, and Ollama in the background so the
 	// TUI starts immediately while provider detection completes concurrently.

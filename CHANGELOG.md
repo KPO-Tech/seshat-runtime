@@ -9,6 +9,28 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.3] - 2026-10-18
+
+### Added
+
+- **A backslash at the start of the prompt lists the palette commands above the prompt, like `/` does for skills.** Type `` (then a few letters to filter) and pick a command with Enter; the last entry, "All Commands…", opens the full command dialog, which the backslash used to open directly. A backslash anywhere else is left alone, since it is usually part of a Windows path.
+
+- **The terminal app shows what memory holds and lets you forget it, from the command palette.** "Memory: Show Notes" lists the notes, "Memory: Forget a Note" asks for a name and removes that note, and "Memory: Undo Last Change" goes back to the copy taken before the last change (a forget or a consolidation). The answer is shown to you and never sent to the agent.
+
+- **Run a shell command from the prompt of the terminal app, without starting the agent, with its output in a panel.** `!pip install rich` runs the command and shows its output in a panel next to the chat (at the right on a wide screen, under it on a narrow one), scrollable with the mouse wheel; nothing of it goes in the conversation, so it is not stored in the transcript, compacted, read by memory or paid for in tokens. The command palette has Command Panel entries to show or hide it, to move between the last 20 commands, to clear it, and to share the output with the agent (it is then placed, cut to its start and end if long, in front of the next message). `!!cmd` runs a command and shares its output without that step. `:!cmd` gives the real terminal to the command until it ends, which is what a password prompt, `sudo su`, `ssh` or an editor needs: the program is suspended meanwhile and the password never goes through it. A `!` command is captured with no keyboard input, stopped after 5 minutes, keeps the first megabyte of its output, and keeps no state between commands (a `cd` does not carry over).
+- **The terminal app can learn from conversations, on request.** `options.memory_enabled` in the app config (or `SESHAT_MEMORY_ENABLED`, and `SESHAT_MEMORY_CONSOLIDATE` to let memory be rewritten smaller) turns on extraction, recall and, at each start, the catch-up of earlier sessions that were left open. It is off until the user chooses; the command palette has "Toggle Learning From Conversations", which applies from the next start.
+- **Memory notes can be listed and forgotten, and forgetting can be undone.** `ListMemoryNotes` returns everything memory holds about a user, `ForgetMemoryNote` removes one note with its relations after copying memory (so `RestoreMemorySnapshot` puts it back), and `Client.LongTermMemory()` gives a host the store the client uses. They need a store that can list and rewrite its entities, such as the SQLite one.
+- **Memory notes can be listed and forgotten, and forgetting can be undone.** `ListMemoryNotes` returns everything memory holds about a user, `ForgetMemoryNote` removes one note with its relations after copying memory (so `RestoreMemorySnapshot` puts it back), and `Client.LongTermMemory()` gives a host the store the client uses. They need a store that can list and rewrite its entities, such as the SQLite one.
+- **Run a shell command from the prompt of the terminal app, without starting the agent.** `!pip install rich` runs the command, shows its output in the chat, and tells the agent about it with your next message (the output is placed in front of that message, cut to its start and end if long, so you do not copy errors by hand). `!!cmd` runs it without telling the agent. `:!cmd` gives the real terminal to the command until it ends, which is what a password prompt, `sudo su`, `ssh` or an editor needs: the program is suspended meanwhile and the password never goes through it. A `!` command is captured with no keyboard input, stopped after 5 minutes, and keeps no state between commands (a `cd` does not carry over).
+- **The terminal app can learn from conversations, on request.** `options.memory_enabled` in the app config (or `SESHAT_MEMORY_ENABLED`, and `SESHAT_MEMORY_CONSOLIDATE` to let memory be rewritten smaller) turns on extraction, recall and, at each start, the catch-up of earlier sessions that were left open. It is off until the user chooses; the command palette has "Toggle Learning From Conversations", which applies from the next start.
+
+- **`Client.ExtractPendingMemories` reads the sessions that were never closed.** `ExtractMemories` runs when a session closes, but a host that keeps its sessions open (the SeshatOS backend never closes one) or a crash would never trigger it. `ExtractPendingMemories(ctx, userID, PendingMemoryOptions)` reads the idle sessions (untouched for 30 minutes by default, not older than 7 days, at most 10 per call, most recent first) that were not read yet, and marks each one (`memory_extracted_at` in its metadata) once its extraction succeeded, so a session is read once and a failed one is tried again next time. A normal close marks its session too. It does nothing when `ExtractMemories` is off.
+
+### Fixed
+
+- **Choosing a command in the popup opened by a backslash now runs it.** The selection was handed to the dialogs, which had none open, so nothing happened. The popup now applies the command itself. Quit, from the palette or the popup, now opens the confirmation dialog like `ctrl+c` does instead of closing the app at once.
+- **`@` and `/` in the terminal app work where the cursor is, not only at the end of the prompt.** The popup opened by a trigger typed after a space looked at the last character of the whole text, and the chosen file or skill was put back by moving the cursor to the end. Both now use the cursor position, so a mention can be added in the middle of a sentence you are editing and the cursor stays right after it.
+
 ## [1.10.2] - 2026-10-18
 
 ### Added
@@ -870,7 +892,8 @@ a real ChatGPT-account session (documented in
 - `internal/tools/special/brief`: a "send message to the user" tool from the pre-rename codebase, never registered at any point in its history.
 - `internal/tools/special/config/configTool.go`: an arbitrary key/value settings store predating the current `contract.Tool` interface (incompatible signatures — could never have been registered as-is), replaced by the real `get_config` tool.
 
-[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.2...HEAD
+[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.3...HEAD
+[1.10.3]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.2...v1.10.3
 [1.10.2]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.9.0...v1.10.0
