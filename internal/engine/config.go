@@ -102,6 +102,9 @@ type Config struct {
 	// MemoryRecaller, when set, puts what long-term memory knows about the user in the system prompt of each new
 	// session. Nil (the default) puts nothing: the agent can still search memory with its tools.
 	MemoryRecaller MemoryRecaller `json:"-"`
+	// OnMemoryExtracted, when set, is called after the memory of a closed session was extracted, so the host can record
+	// that the session was read.
+	OnMemoryExtracted func(sessionID types.SessionID) `json:"-"`
 
 	// DisableStreaming opts out of server-sent-event streaming. Streaming is
 	// enabled by default; set this to true only when the provider or test

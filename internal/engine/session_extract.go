@@ -42,11 +42,16 @@ func (s *Session) extractMemories(messages []types.Message) {
 		user = defaultMemoryUser
 	}
 	sessionID := s.state.SessionID
+	onDone := s.engine.config.OnMemoryExtracted
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), memoryExtractionTimeout)
 		defer cancel()
 		if err := extractor.Extract(ctx, user, messages); err != nil {
 			slog.Warn("memory extraction failed", "session_id", sessionID, "error", err)
+			return
+		}
+		if onDone != nil {
+			onDone(sessionID)
 		}
 	}()
 }
