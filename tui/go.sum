@@ -16,6 +16,8 @@ github.com/KPO-Tech/seshat-runtime v1.10.1 h1:G32tjbO48ujCqlB+5mAAXIONHSuAQlTEGL
 github.com/KPO-Tech/seshat-runtime v1.10.1/go.mod h1:fdOdE6BO3PjB8CNoUVOkaguf3wiBMkXXSSvdRsNBJk4=
 github.com/KPO-Tech/seshat-runtime v1.10.3 h1:oEVpxwmNVCrokU83qRvIyCQecb5w8pFzBPzh6e3uvJw=
 github.com/KPO-Tech/seshat-runtime v1.10.3/go.mod h1:fdOdE6BO3PjB8CNoUVOkaguf3wiBMkXXSSvdRsNBJk4=
+github.com/KPO-Tech/seshat-runtime v1.10.4 h1:Pey4i3Bjtn4jG6Iog5oJyzoxRmvgyDQIxVW2xH4RNn0=
+github.com/KPO-Tech/seshat-runtime v1.10.4/go.mod h1:fdOdE6BO3PjB8CNoUVOkaguf3wiBMkXXSSvdRsNBJk4=
 github.com/Knetic/govaluate v3.0.0+incompatible h1:7o6+MAPhYTCF0+fdvoz1xDedhRb4f6s9Tn1Tt7/WTEg=
 github.com/Knetic/govaluate v3.0.0+incompatible/go.mod h1:r7JcOSlj0wfOMncg0iLm8Leh48TZaKVeNIfJntJ2wa0=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
