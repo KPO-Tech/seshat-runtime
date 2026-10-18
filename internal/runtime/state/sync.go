@@ -25,7 +25,63 @@ func (s *Store) SyncTranscriptMessages(
 		return s.AppendTranscriptEntries(sessionID, types.TranscriptEntriesFromMessages(delta, ""))
 	}
 
+	if dropped := droppedByCompaction(previousMessages, currentMessages); len(dropped) > 0 {
+		return s.replaceKeepingArchive(sessionID, dropped, currentMessages)
+	}
+
 	return s.ReplaceTranscript(sessionID, types.TranscriptEntriesFromMessages(currentMessages, ""))
+}
+
+// droppedByCompaction returns the messages a compaction took out of the conversation: those of the previous
+// transcript that are no longer in the current one, when the current one carries a compaction. A rewrite that is not a
+// compaction (a rewind, an interrupted turn) drops nothing here, and the transcript is replaced as before. The summary
+// and marker of an earlier compaction are not history and are not returned.
+func droppedByCompaction(previous, current []types.Message) []types.Message {
+	if types.CompactionMetadataFromMessages(current) == nil {
+		return nil
+	}
+	kept := make(map[types.MessageID]bool, len(current))
+	for _, m := range current {
+		if m.ID == "" {
+			return nil // without ids, what was dropped cannot be told
+		}
+		kept[m.ID] = true
+	}
+	var dropped []types.Message
+	for _, m := range previous {
+		if m.ID == "" {
+			return nil
+		}
+		if kept[m.ID] || types.IsCompactionArtifact(m) {
+			continue
+		}
+		dropped = append(dropped, m)
+	}
+	return dropped
+}
+
+// replaceKeepingArchive writes the compacted transcript after the messages archived by this and earlier compactions,
+// so nothing the user said or saw is lost to a compaction.
+func (s *Store) replaceKeepingArchive(sessionID types.SessionID, dropped, current []types.Message) error {
+	existing, err := s.LoadTranscript(sessionID)
+	if err != nil {
+		return err
+	}
+	var entries []types.TranscriptEntry
+	archived := map[types.MessageID]bool{}
+	for _, e := range existing {
+		if e.Type == types.EntryTypeArchived {
+			entries = append(entries, e)
+			archived[e.ID] = true
+		}
+	}
+	for _, m := range dropped {
+		if !archived[m.ID] {
+			entries = append(entries, types.ArchivedTranscriptEntryFromMessage(m, ""))
+		}
+	}
+	entries = append(entries, types.TranscriptEntriesFromMessages(current, "")...)
+	return s.ReplaceTranscript(sessionID, entries)
 }
 
 // hasMessagePrefix returns true only when the previous in-memory transcript is a
