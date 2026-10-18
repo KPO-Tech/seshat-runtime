@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Compaction no longer fails on reasoning models.** Found by running it against `glm-5.3-flash` on z.ai: the summary request had a budget of 2,000 tokens, a reasoning model spent all of it thinking (stop reason `max_tokens`, a thinking block and no text), the summary came back empty, and after three such failures the circuit breaker stopped compaction for good. The request is now repeated once with a four times larger budget (up to 16,000) before it is given up, and the error says the stop reason.
+- **Trimming a message for a summary request no longer trims the conversation itself.** `PrepareMessageForAPI` wrote into the content slice it shares with the caller's message, so a compaction that failed left the session's tool results trimmed anyway.
+- **Manual compaction now compacts, and automatic compaction keeps a smaller tail.** Found by running it against a real model: asked on a small conversation, `Session.Compact` did nothing (3,965 tokens before and after), because it reused the automatic rules, which assume a nearly full window. A manual compaction now always summarizes and keeps the most recent fifth. It was also growing a conversation with a long pasted log (8,249 tokens became 4,098 on the first try) because the kept tail was "at least" the target, so one giant message swallowed everything before it; the tail now stays within the target and keeps at least the last message, for automatic compaction too. The user's earlier messages carried over word for word are clipped to 2,000 characters each. `Compact` returns `ErrCompactionWouldNotShrink`, changing nothing, when summarizing would leave the conversation no smaller.
+
 ## [1.10.1] - 2026-10-18
 
 ### Changed
@@ -17,7 +23,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **Manual compaction now compacts, and automatic compaction keeps a smaller tail.** Found by running it against a real model: asked on a small conversation, `Session.Compact` did nothing (3,965 tokens before and after), because it reused the automatic rules, which assume a nearly full window. A manual compaction now always summarizes and keeps the most recent fifth. It was also growing a conversation with a long pasted log (8,249 tokens became 4,098 on the first try) because the kept tail was "at least" the target, so one giant message swallowed everything before it; the tail now stays within the target and keeps at least the last message, for automatic compaction too. The user's earlier messages carried over word for word are clipped to 2,000 characters each. `Compact` returns `ErrCompactionWouldNotShrink`, changing nothing, when summarizing would leave the conversation no smaller.
 - **The browse agent no longer lists five tools that do not exist** (`tree`, `wikipedia`, `scholarly_search`, `web_map`, `web_crawl`). Its allowlist now holds only registered tools, and a test fails if a name matches none.
 - **MCP tools reached the model with no parameters.** The schema an MCP server sends for a tool is a whole JSON schema, but it was nested a second time as the `properties` of a new one, so the model saw `{"properties":{"properties":{}}}` and had to guess every argument name. The server's schema is now converted as is, with its properties and required list.
 

@@ -46,12 +46,15 @@ func (p *MessagePreparer) PrepareMessages(
 
 // PrepareMessageForAPI prepares a single message for the API
 func (p *MessagePreparer) PrepareMessageForAPI(msg types.Message) types.Message {
-	// Trim tool results if needed
-	for i, block := range msg.Content {
+	// Trim tool results if needed. msg is a copy, but its Content slice is shared with the caller's message: write
+	// into a copy of it, or trimming for one request would also trim the conversation the caller keeps.
+	content := append([]types.ContentBlock(nil), msg.Content...)
+	for i, block := range content {
 		if result, ok := block.(types.ToolResultContent); ok {
-			msg.Content[i] = p.microCompactor.TrimToolResult(result)
+			content[i] = p.microCompactor.TrimToolResult(result)
 		}
 	}
+	msg.Content = content
 
 	return msg
 }
