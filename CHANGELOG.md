@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.2] - 2026-10-18
+
 ### Added
 
 - **The compaction summary is written by a small model of the session's own family, chosen by rules.** A summary is reading and condensing, not reasoning, and a reasoning model spends its output budget thinking (z.ai's `glm-5.3-flash` took 200 seconds to compact where `glm-4.5` took 20). `ClientConfig.CompactModelRules` map a session's provider and model (an exact name or a prefix such as `glm-*`) to the model that writes the summary, first match wins; `CompactSummaryModel`, when set, still wins over everything. Built-in rules, switched off by `NoDefaultCompactModels`, give a z.ai session `glm-4.5-air` and an Anthropic session `claude-haiku-5-5`; a provider with no rule keeps its own model until a measurement shows a better one. A rule's model stays on the session's provider unless the rule names another (so the conversation does not go to a vendor the session did not choose), and a model chosen by a rule is skipped when its window cannot hold the request and its summary. Measured on `glm-4.5` at the exact auto-compaction threshold (107,495 tokens, thinking disabled): summary by `glm-4.5`, `glm-4.5-air` and `glm-4.7` all kept the same 8 of 12 planted facts and left 71,700 to 72,000 tokens, in 22, 16 and 21 seconds; with the built-in rule the whole compaction took 6 seconds.
@@ -868,7 +870,8 @@ a real ChatGPT-account session (documented in
 - `internal/tools/special/brief`: a "send message to the user" tool from the pre-rename codebase, never registered at any point in its history.
 - `internal/tools/special/config/configTool.go`: an arbitrary key/value settings store predating the current `contract.Tool` interface (incompatible signatures — could never have been registered as-is), replaced by the real `get_config` tool.
 
-[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.1...HEAD
+[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.2...HEAD
+[1.10.2]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.0...v1.10.1
 [1.10.0]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.9.0...v1.10.0
 [1.9.0]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.8.1...v1.9.0
