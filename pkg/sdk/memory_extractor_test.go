@@ -28,3 +28,16 @@ func TestMemoryExtractionIsOffUnlessAskedForAndStorable(t *testing.T) {
 		}
 	}
 }
+
+func TestMemoryRecallIsOffUnlessAskedForAndListable(t *testing.T) {
+	var store longterm.Store = longterm.NewSQLiteStore(nil)
+	if newMemoryRecaller(&ClientConfig{LongTermMemory: store}) != nil {
+		t.Error("recall must be off by default")
+	}
+	if newMemoryRecaller(&ClientConfig{RecallMemories: true}) != nil {
+		t.Error("recall needs a store")
+	}
+	if newMemoryRecaller(&ClientConfig{RecallMemories: true, LongTermMemory: store}) == nil {
+		t.Error("recall must be on when asked for with a listable store")
+	}
+}
