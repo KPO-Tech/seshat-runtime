@@ -2313,8 +2313,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				// items are still loading async, and skills are unaffected either
 				// way since the query is empty on that keystroke.
 				if m.completionsOpen && msg.String() != m.completionsTrigger {
-					newValue := m.textarea.Value()
-					newIdx := len(newValue)
+					newIdx := m.cursorOffset()
 
 					// Close completions if cursor moved before start.
 					if newIdx <= m.completionsStartIndex {
@@ -3269,7 +3268,7 @@ func (m *UI) insertCompletionText(text string) bool {
 	endIdx := min(m.completionsStartIndex+len(word), len(value))
 	newValue := value[:m.completionsStartIndex] + text + value[endIdx:]
 	m.textarea.SetValue(newValue)
-	m.textarea.MoveToEnd()
+	m.setCursorOffset(m.completionsStartIndex + len(text))
 	m.textarea.InsertRune(' ')
 	return true
 }
