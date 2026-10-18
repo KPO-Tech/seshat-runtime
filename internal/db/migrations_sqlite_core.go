@@ -104,7 +104,34 @@ func sqliteCoreMigrations() []schemaMigration {
 			Scope: migrationScopeCoreSQLite,
 			Run:   migrateSQLiteAutomationJobLimits,
 		},
+		{
+			ID:    "20261018_018_memory_snapshots",
+			Scope: migrationScopeCoreSQLite,
+			Run:   migrateSQLiteMemorySnapshots,
+		},
 	}
+}
+
+// migrateSQLiteMemorySnapshots adds the table that holds a copy of a user's long-term memory taken before it is
+// rewritten, so that a consolidation can be undone.
+func migrateSQLiteMemorySnapshots(ctx context.Context, db *DB) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS memory_snapshots (
+			id              TEXT    PRIMARY KEY,
+			user_id         TEXT    NOT NULL,
+			created_at_unix INTEGER NOT NULL,
+			reason          TEXT    NOT NULL DEFAULT '',
+			entities_json   TEXT    NOT NULL,
+			relations_json  TEXT    NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_memory_snapshots_user ON memory_snapshots(user_id, created_at_unix)`,
+	}
+	for _, stmt := range statements {
+		if err := db.gormDB.WithContext(ctx).Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func migrateSQLiteRuntimeSessionTables(ctx context.Context, db *DB) error {

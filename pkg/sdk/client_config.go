@@ -257,7 +257,8 @@ type ClientConfig struct {
 
 	// ConsolidateMemories makes the client rewrite a user's memory smaller once it holds 60 observations or more, at
 	// most once a day: duplicates merged, conflicting statements resolved in favour of the newer, obsolete ones
-	// dropped. It needs ExtractMemories and a LongTermMemory that can be rewritten (the SQLite store can). Off by
+	// dropped. It needs ExtractMemories and a LongTermMemory that can be rewritten and can copy itself first (the SQLite
+	// store can both); the copy is kept and ListMemorySnapshots and RestoreMemorySnapshot put it back. Off by
 	// default because it rewrites what was stored; a result that would lose most of it is refused.
 	ConsolidateMemories bool `json:"consolidate_memories,omitempty"`
 

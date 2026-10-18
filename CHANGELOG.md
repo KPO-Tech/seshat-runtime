@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **A memory consolidation can be undone.** Consolidation rewrites a user's memory on a model's judgement; the refusal thresholds stop the worst results, but a plausible rewrite that dropped something that mattered would have been gone for good. Memory (entities and relations) is now copied before it is rewritten, into a new `memory_snapshots` table (migration `20261018_018`), ten copies kept per user. `sdk.ListMemorySnapshots` and `sdk.RestoreMemorySnapshot` put a copy back (the memory it replaces is copied first, so a restore can be undone too), and `Consolidator.UndoLast` undoes the latest consolidation. Consolidation refuses to run, before it calls a model, with a store that cannot take a copy: the new `Snapshotter` interface is what a host with its own store implements to allow it.
+
 ### Fixed
 
 - **The summary request fits the window of the model that writes it, and survives a rejection.** A compaction sent everything it dropped to the summarizing model without checking it against that model's window (which can be smaller than the session's once a cheaper model writes the summary, or exceeded after a conversation jumps past the threshold). The request is now sized to the model's window less room for the summary, leaving out the oldest messages first and saying how many; if a provider still rejects it as too long (matched on the wording of the error, since there is no common code), it is sent again at 70 %, 50 % and 35 % of its size, the approach opencode takes. A reply that does not follow the six numbered sections is sent back once with a reminder, and used as it is if it still does not, because a summary a little off beats a compaction that fails. Checked live on `glm-4.5` at the exact auto-compaction threshold: 107,495 tokens down to 71,821, same facts kept.
