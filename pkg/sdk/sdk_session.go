@@ -170,6 +170,10 @@ type CompactionOutcome struct {
 // ErrNothingToCompact is returned by Compact when the conversation is too short to shrink.
 var ErrNothingToCompact = engine.ErrNothingToCompact
 
+// ErrCompactionWouldNotShrink is returned by Compact when summarizing would leave the conversation no smaller, as with
+// a small conversation. Nothing was changed.
+var ErrCompactionWouldNotShrink = engine.ErrCompactionWouldNotShrink
+
 // Compact summarizes the older part of the conversation now, instead of waiting for the automatic threshold, and
 // keeps the most recent messages as they are. It refuses while a turn is running. The host receives
 // context.compacting and then context.compacted events. It returns an error on a nil session.

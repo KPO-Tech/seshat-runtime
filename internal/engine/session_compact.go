@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	compact "github.com/KPO-Tech/seshat-runtime/internal/runtime/memory"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
@@ -15,6 +16,10 @@ const minMessagesToCompact = 4
 
 // ErrNothingToCompact is returned by Session.Compact when the conversation is too short to shrink.
 var ErrNothingToCompact = errors.New("the conversation is too short to compact")
+
+// ErrCompactionWouldNotShrink is returned by Session.Compact when summarizing would leave the conversation no smaller,
+// which happens when it is small. The conversation is left as it is.
+var ErrCompactionWouldNotShrink = errors.New("compacting would not make the conversation smaller")
 
 // manualCompactor is what a compaction strategy offers to compact on demand. The default Engine has it.
 type manualCompactor interface {
@@ -55,7 +60,7 @@ func (s *Session) Compact(ctx context.Context) (CompactionOutcome, error) {
 	if err != nil {
 		return CompactionOutcome{}, fmt.Errorf("failed to build the request to size: %w", err)
 	}
-	tracking := &compact.TrackingState{ExtraTokens: toolDefinitionTokens(apiReq.Tools)}
+	tracking := &compact.TrackingState{ExtraTokens: toolDefinitionTokens(apiReq.Tools), Manual: true}
 
 	s.emitRuntimeEvent(types.RuntimeEvent{
 		Type:      types.RuntimeEventTypeCompacting,
@@ -65,6 +70,11 @@ func (s *Session) Compact(ctx context.Context) (CompactionOutcome, error) {
 	result, err := compactor.Compact(ctx, apiReq.SystemPrompt, previous, s.config.Model, s.state.SessionID, s.state.TurnID, tracking)
 	if err != nil {
 		return CompactionOutcome{}, fmt.Errorf("compaction failed: %w", err)
+	}
+	slog.Debug("manual compaction", "session_id", s.state.SessionID, "messages_before", len(previous), "messages_after", len(result.Messages),
+		"pre_tokens", result.PreCompactTokens, "post_tokens", result.PostCompactTokens, "summary_chars", len(result.Summary))
+	if result.PostCompactTokens >= result.PreCompactTokens {
+		return CompactionOutcome{PreTokens: result.PreCompactTokens, PostTokens: result.PostCompactTokens}, ErrCompactionWouldNotShrink
 	}
 	s.state.ReplaceMessages(result.Messages)
 	if err := s.persistSessionState(previous); err != nil {
