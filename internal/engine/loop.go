@@ -790,7 +790,6 @@ func (l *Loop) maybeAutoCompact(ctx context.Context, state *MutableState, req Ru
 		return nil
 	}
 
-	hookDenied := false
 	if preResult := l.executeHookWithResult(ctx, types.HookEventPreCompact, map[string]any{
 		"session_id": req.SessionID,
 		"turn_id":    req.TurnID,
@@ -801,59 +800,77 @@ func (l *Loop) maybeAutoCompact(ctx context.Context, state *MutableState, req Ru
 		// the blocking-limit check below (M1): a denied compaction must not
 		// let an oversized request reach the provider silently.
 		appendSystemNoteFromHook(state, types.HookEventPreCompact, preResult.Message)
-		hookDenied = true
+	} else {
+		l.runAutoCompact(ctx, state, req)
 	}
 
-	if !hookDenied {
-		l.emitCompacting(ctx, state, req)
-		result, err := l.compactor.AutoCompact(
-			ctx,
-			req.SystemPrompt,
-			state.Messages,
-			req.Model,
-			req.SessionID,
-			req.TurnID,
-			compactionTracking(state, req),
-		)
-		if err != nil {
-			state.AutoCompactFailureCount = result.ConsecutiveFailures
-			return fmt.Errorf("auto-compact failed: %w", err)
-		}
-		state.AutoCompactFailureCount = result.ConsecutiveFailures
-		if result.DidCompact {
-			state.Messages = result.Messages
-			state.Compacted = true
-			state.CompactPreTokens = result.PreCompactTokens
-			state.CompactPostTokens = result.PostCompactTokens
-			// Compaction rewrote Messages, so any previously recorded Codex
-			// continuation reference no longer describes a valid prefix of it -
-			// see recordPreviousResponse/buildAPIRequest.
-			state.PreviousResponseID = ""
-			state.PreviousResponseMessageCount = 0
-			// The provider's figure described the messages that were just replaced.
-			state.UsageAnchor = nil
-			l.emitCompacted(ctx, req, result.PreCompactTokens, result.PostCompactTokens)
-		}
-		// Post-compact notification, like every other *_complete hook in this
-		// file: fire-and-forget, not stop-capable (there is nothing left to gate
-		// once compaction already ran).
-		l.executeHook(ctx, types.HookEventPostCompact, map[string]any{
-			"session_id":  req.SessionID,
-			"turn_id":     req.TurnID,
-			"did_compact": result.DidCompact,
-			"pre_tokens":  result.PreCompactTokens,
-			"post_tokens": result.PostCompactTokens,
-		})
-	}
+	return l.enforceBlockingLimit(ctx, state, req)
+}
 
-	// Even after compaction, the request may still not fit (e.g. a single
-	// huge tool result, or compaction itself failing to shrink enough).
-	// Fail locally with a typed error instead of letting the provider reject
-	// an oversized request (M1 in TODO.md).
-	if err := l.compactor.CheckBlockingLimit(req.SystemPrompt, state.Messages, req.Model, compactionTracking(state, req)); err != nil {
+// runAutoCompact compacts if the strategy finds it due. It never fails the turn: a summary that cannot be written
+// (a model that returns nothing, a provider that is down) is logged and counted toward the circuit breaker, and the
+// turn goes on with the conversation as it is. Only a request that then exceeds the hard limit is a problem, and
+// enforceBlockingLimit deals with that.
+func (l *Loop) runAutoCompact(ctx context.Context, state *MutableState, req RunRequest) {
+	l.emitCompacting(ctx, state, req)
+	result, err := l.compactor.AutoCompact(
+		ctx,
+		req.SystemPrompt,
+		state.Messages,
+		req.Model,
+		req.SessionID,
+		req.TurnID,
+		compactionTracking(state, req),
+	)
+	state.AutoCompactFailureCount = result.ConsecutiveFailures
+	if err != nil {
+		slog.Warn("auto-compact failed; the turn goes on without it", "session_id", req.SessionID, "failures", result.ConsecutiveFailures, "error", err)
+		return
+	}
+	if result.DidCompact {
+		l.applyCompaction(ctx, state, req, result)
+	}
+	// Post-compact notification, like every other *_complete hook in this
+	// file: fire-and-forget, not stop-capable (there is nothing left to gate
+	// once compaction already ran).
+	l.executeHook(ctx, types.HookEventPostCompact, map[string]any{
+		"session_id":  req.SessionID,
+		"turn_id":     req.TurnID,
+		"did_compact": result.DidCompact,
+		"pre_tokens":  result.PreCompactTokens,
+		"post_tokens": result.PostCompactTokens,
+	})
+}
+
+// applyCompaction replaces the conversation with a compacted one and tells the host.
+func (l *Loop) applyCompaction(ctx context.Context, state *MutableState, req RunRequest, result compact.CompactionResult) {
+	state.Messages = result.Messages
+	state.Compacted = true
+	state.CompactPreTokens = result.PreCompactTokens
+	state.CompactPostTokens = result.PostCompactTokens
+	// Compaction rewrote Messages, so any previously recorded Codex
+	// continuation reference no longer describes a valid prefix of it -
+	// see recordPreviousResponse/buildAPIRequest.
+	state.PreviousResponseID = ""
+	state.PreviousResponseMessageCount = 0
+	// The provider's figure described the messages that were just replaced.
+	state.UsageAnchor = nil
+	l.emitCompacted(ctx, req, result.PreCompactTokens, result.PostCompactTokens)
+}
+
+// enforceBlockingLimit refuses a request that cannot fit the model, after compaction. Even after compaction the request
+// may not fit (a single huge tool result, a summary that failed): the loop then trims the conversation without a
+// model (see emergencyTrimmer) and only fails, locally and with a typed error instead of letting the provider reject
+// an oversized request (M1 in TODO.md), when nothing can be dropped.
+func (l *Loop) enforceBlockingLimit(ctx context.Context, state *MutableState, req RunRequest) error {
+	err := l.compactor.CheckBlockingLimit(req.SystemPrompt, state.Messages, req.Model, compactionTracking(state, req))
+	if err == nil {
+		return nil
+	}
+	if !l.emergencyTrim(ctx, state, req) {
 		return err
 	}
-	return nil
+	return l.compactor.CheckBlockingLimit(req.SystemPrompt, state.Messages, req.Model, compactionTracking(state, req))
 }
 
 // buildChunkCallback returns a combined callback that forwards each streaming
