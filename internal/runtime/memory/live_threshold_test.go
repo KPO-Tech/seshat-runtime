@@ -90,7 +90,13 @@ var needleText = []string{
 
 func TestLiveAutoCompactionAtTheThreshold(t *testing.T) {
 	client, model := liveClientAndModel(t)
-	e := NewEngine(client, DefaultConfig())
+	cfg := DefaultConfig()
+	// SESHAT_LIVE_SUMMARY_MODEL picks the model that writes the summary, on the session's provider: the session runs
+	// on SESHAT_LIVE_MODEL, so the two can be compared.
+	if m := os.Getenv("SESHAT_LIVE_SUMMARY_MODEL"); m != "" {
+		cfg.SummaryModel = types.ModelIdentifier{Provider: model.Provider, Model: m}
+	}
+	e := NewEngine(client, cfg)
 	source := loadConversation(t)
 	threshold := e.AutoCompactThresholdTokens(model)
 
