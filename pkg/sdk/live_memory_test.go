@@ -4,7 +4,8 @@
 //
 //	OPENROUTER_API_KEY=... go test -tags live ./pkg/sdk/ -run TestLive -v -timeout 30m
 //
-// SESHAT_LIVE_MODEL picks the model (default: a free one). They print what the model said and stored, because the
+// SESHAT_LIVE_PROVIDER picks the provider: "openrouter" (default, OPENROUTER_API_KEY) or "zai" (ZHIPUAI_API_KEY, paid:
+// use it sparingly). SESHAT_LIVE_MODEL picks the model (default: a free OpenRouter one, or glm-5.3-flash for zai). They print what the model said and stored, because the
 // point is to read it: a pass only says the safety rules held, not that the memory was any good.
 package sdk
 
@@ -23,20 +24,45 @@ import (
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
+func liveProviderName() types.APIProvider {
+	if os.Getenv("SESHAT_LIVE_PROVIDER") == "zai" {
+		return types.APIProviderZAi
+	}
+	return types.APIProviderOpenRouter
+}
+
 func liveModel() string {
 	if m := os.Getenv("SESHAT_LIVE_MODEL"); m != "" {
 		return m
 	}
-	return "google/gemma-4-31b-it:free"
+	if liveProviderName() == types.APIProviderZAi {
+		return "glm-5.3-flash"
+	}
+	return "nvidia/nemotron-3-super-120b-a12b:free"
+}
+
+func liveBaseURL() string {
+	if liveProviderName() == types.APIProviderZAi {
+		return "https://api.z.ai/api/paas/v4"
+	}
+	return "https://openrouter.ai/api/v1"
 }
 
 func liveKey(t *testing.T) string {
 	t.Helper()
-	key := os.Getenv("OPENROUTER_API_KEY")
+	name := "OPENROUTER_API_KEY"
+	if liveProviderName() == types.APIProviderZAi {
+		name = "ZHIPUAI_API_KEY"
+	}
+	key := os.Getenv(name)
 	if key == "" {
-		t.Skip("OPENROUTER_API_KEY is not set")
+		t.Skip(name + " is not set")
 	}
 	return key
+}
+
+func liveModelID() ModelIdentifier {
+	return ModelIdentifier{Provider: liveProviderName(), Model: liveModel()}
 }
 
 func liveStore(t *testing.T) *longterm.SQLiteStore {
@@ -52,8 +78,8 @@ func liveStore(t *testing.T) *longterm.SQLiteStore {
 func liveProvider(t *testing.T) *providers.Client {
 	t.Helper()
 	return providers.NewClientWithConfig(liveKey(t), &providers.Config{
-		Provider: types.APIProviderOpenRouter,
-		BaseURL:  "https://openrouter.ai/api/v1",
+		Provider: liveProviderName(),
+		BaseURL:  liveBaseURL(),
 		APIKey:   liveKey(t),
 	})
 }
@@ -62,7 +88,7 @@ func liveConfig(t *testing.T, mutate func(*ClientConfig)) *ClientConfig {
 	t.Helper()
 	cfg := DefaultClientConfig()
 	cfg.APIKey = liveKey(t)
-	cfg.Model = ModelIdentifier{Provider: types.APIProviderOpenRouter, Model: liveModel()}
+	cfg.Model = liveModelID()
 	cfg.MaxTokens = 1500
 	cfg.WorkingDir = t.TempDir()
 	cfg.PersistSessions = false
@@ -361,7 +387,7 @@ func TestLiveConsolidation(t *testing.T) {
 	t.Logf("before:")
 	dumpGraph(t, store, "u")
 	c := longterm.NewConsolidator(store, liveProvider(t), longterm.ConsolidatorConfig{
-		MinObservations: 10, Model: ModelIdentifier{Provider: types.APIProviderOpenRouter, Model: liveModel()}, MinKeepRatio: 0.2,
+		MinObservations: 10, Model: liveModelID(), MinKeepRatio: 0.2,
 	})
 	report, err := c.Consolidate(ctx, "u")
 	if err != nil {
