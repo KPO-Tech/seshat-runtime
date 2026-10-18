@@ -175,6 +175,11 @@ type UI struct {
 	// keeps track of read files while we don't have a session id
 	sessionFileReads []string
 
+	// Commands run from the prompt with "!": the items still running, the shared ones the agent has not been told about yet, and a counter for their IDs.
+	shellItems   map[string]*chat.ShellOutputItem
+	pendingShell []chat.ShellRun
+	shellSeq     int
+
 	// initialSessionID is set when loading a specific session on startup.
 	initialSessionID string
 	// continueLastSession is set to continue the most recent session on startup.
@@ -357,6 +362,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	header := newHeader(com)
 
 	ui := &UI{
+		shellItems:          make(map[string]*chat.ShellOutputItem),
 		com:                 com,
 		dialog:              dialog.NewOverlay(),
 		keyMap:              keyMap,
@@ -652,6 +658,12 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			paths = append(paths, f.LatestVersion.Path)
 		}
 		cmds = append(cmds, m.startLSPs(paths))
+
+	case shellDoneMsg:
+		m.handleShellDone(msg)
+
+	case shellInteractiveDoneMsg:
+		cmds = append(cmds, msg.warning())
 
 	case sendMessageMsg:
 		cmds = append(cmds, m.sendMessage(msg.Content, msg.Attachments...))
@@ -1028,27 +1040,9 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case creditsUpdatedMsg:
 		m.hyperCredits = &msg.credits
 	case util.InfoMsg:
-		if msg.Type == util.InfoTypeError {
-			slog.Error("Error reported", "error", msg.Msg)
-		}
-		m.status.SetInfoMsg(msg)
-		ttl := msg.TTL
-		if ttl <= 0 {
-			ttl = DefaultStatusTTL
-		}
-		cmds = append(cmds, clearInfoMsgCmd(ttl))
+		cmds = append(cmds, m.showInfoMsg(msg))
 	case app.UpdateAvailableMsg:
-		text := fmt.Sprintf("Seshat update available: v%s → v%s.", msg.CurrentVersion, msg.LatestVersion)
-		if msg.IsDevelopment {
-			text = fmt.Sprintf("This is a development version of Seshat. The latest version is v%s.", msg.LatestVersion)
-		}
-		ttl := 10 * time.Second
-		m.status.SetInfoMsg(util.InfoMsg{
-			Type: util.InfoTypeUpdate,
-			Msg:  text,
-			TTL:  ttl,
-		})
-		cmds = append(cmds, clearInfoMsgCmd(ttl))
+		cmds = append(cmds, m.showUpdateAvailable(msg))
 	case util.ClearStatusMsg:
 		m.status.ClearInfoMsg()
 	case completions.CompletionItemsLoadedMsg:
@@ -2311,10 +2305,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					return nil
 				}
 
-				m.randomizePlaceholders()
-				m.historyReset()
-
-				return tea.Batch(m.sendMessage(value, attachments...), m.loadPromptHistory())
+				return m.submitPrompt(value, attachments)
 			case key.Matches(msg, m.keyMap.Chat.NewSession):
 				if !m.hasSession() {
 					break
@@ -3718,6 +3709,11 @@ func (m *UI) attachSkill(skillID, name string) tea.Cmd {
 func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.Cmd {
 	if !m.com.Workspace.AgentIsReady() {
 		return util.ReportError(fmt.Errorf("coder agent is not initialized"))
+	}
+
+	// Commands the user ran with "!" since the last message go in front of it, so the agent can use their output.
+	if block := m.takeShellContext(); block != "" {
+		content = block + "\n\n" + content
 	}
 
 	var cmds []tea.Cmd
