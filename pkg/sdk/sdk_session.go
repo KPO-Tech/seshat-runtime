@@ -79,6 +79,16 @@ func (s *Session) GetMessages() []Message {
 	return s.session.GetMessages()
 }
 
+// SessionHistory is the whole conversation of a session: Archived holds the messages that compactions took out of what
+// the model sees, oldest first, and Current holds the messages the model sees now.
+type SessionHistory = engine.SessionHistory
+
+// History returns the whole conversation, including the messages that compactions archived. GetMessages returns only
+// what the model sees. Without a session store that keeps an archive, Archived is empty.
+func (s *Session) History() (SessionHistory, error) {
+	return s.session.History()
+}
+
 // Close ends the session: it cancels a turn that is running, persists the memory of the session and releases what it holds (the browser session, the event queues). It is idempotent.
 func (s *Session) Close() error {
 	return s.session.Close()
