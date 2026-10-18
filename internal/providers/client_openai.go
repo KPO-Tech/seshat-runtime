@@ -43,6 +43,10 @@ func (c *Client) buildOpenAIRequestBody(req types.APIRequest) (io.Reader, error)
 	if req.OutputSchema != nil {
 		body["response_format"] = req.OutputSchema.OpenAIResponseFormat()
 	}
+	if req.DisableThinking && req.Model.Provider == types.APIProviderZAi {
+		// z.ai: the GLM-4.5 and later models think unless told not to.
+		body["thinking"] = map[string]any{"type": "disabled"}
+	}
 	data, err := json.Marshal(body)
 	if err != nil {
 		return nil, err

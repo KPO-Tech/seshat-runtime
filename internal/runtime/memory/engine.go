@@ -17,6 +17,12 @@ const (
 	defaultMaxSummaryTokens             = 2_000
 	defaultMaxConsecutiveCompactFailure = 3
 
+	// summaryAttempts is how many times a summary is requested when the model returns no text, and summaryBudgetGrowth
+	// how much larger each attempt's token budget is than the last, up to maxSummaryRetryTokens.
+	summaryAttempts       = 2
+	summaryBudgetGrowth   = 4
+	maxSummaryRetryTokens = 16_000
+
 	// manualKeepDivisor: a manual compaction keeps the most recent 1/5 of the conversation as it is.
 	manualKeepDivisor       = 5
 	compactSummaryMessageID = "compact_summary"
@@ -202,7 +208,7 @@ func (e *Engine) Compact(
 		return CompactionResult{}, fmt.Errorf("failed to generate summary: %w", err)
 	}
 
-	compactedMessages := e.assembleCompacted(microCompacted, preservedStart, summary)
+	compactedMessages := e.assembleCompactedWithin(microCompacted, preservedStart, summary, e.keptUserTokens(model))
 	postCompactTokens := e.UsedTokens(systemPrompt, compactedMessages, rewritten)
 	metadata, err := e.buildCompactionMetadata("summary", preCompactTokens, postCompactTokens, targetTokens, compactedMessages)
 	if err != nil {
@@ -297,20 +303,33 @@ func (e *Engine) generateSummary(
 		summaryModel = model
 	}
 	prompt := e.buildSummaryPrompt(messages)
-	resp, err := e.apiClient.CreateMessage(ctx, types.APIRequest{
-		Model:     summaryModel,
-		Messages:  []types.Message{types.UserMessage("compact_summary_request", prompt)},
-		MaxTokens: e.config.MaxSummaryTokens,
-	})
-	if err != nil {
-		return "", err
-	}
-	for _, block := range resp.Content {
-		if text, ok := block.(types.TextContent); ok && strings.TrimSpace(text.Text) != "" {
-			return text.Text, nil
+
+	// A reasoning model spends part of max_tokens thinking: with the budget sized for the summary alone it can end on
+	// the limit having written only its reasoning, and the summary is empty (seen on glm-5.3-flash: stop reason
+	// max_tokens, one thinking block). The attempt is repeated with a larger budget before compaction is given up.
+	budget := e.config.MaxSummaryTokens
+	var lastStop string
+	for attempt := 0; attempt < summaryAttempts; attempt++ {
+		resp, err := e.apiClient.CreateMessage(ctx, types.APIRequest{
+			Model:     summaryModel,
+			Messages:  []types.Message{types.UserMessage("compact_summary_request", prompt)},
+			MaxTokens: budget,
+			// A summary does not need the model to reason first; where the provider can switch it off, it is cheaper
+			// and faster, and the budget goes to the summary. The retry below covers providers that cannot.
+			DisableThinking: true,
+		})
+		if err != nil {
+			return "", err
 		}
+		for _, block := range resp.Content {
+			if text, ok := block.(types.TextContent); ok && strings.TrimSpace(text.Text) != "" {
+				return text.Text, nil
+			}
+		}
+		lastStop = resp.StopReason
+		budget = min(budget*summaryBudgetGrowth, maxSummaryRetryTokens)
 	}
-	return "", fmt.Errorf("no summary generated for session %s turn %s", sessionID, turnID)
+	return "", fmt.Errorf("no summary generated for session %s turn %s (stop reason %q after %d attempts)", sessionID, turnID, lastStop, summaryAttempts)
 }
 
 const summaryInstructions = `You are writing a handoff for another model that will carry on this work with only your summary and the last few messages. It cannot see anything you leave out. Write, in this order:
@@ -338,6 +357,10 @@ const (
 	// keptUserMessageChars caps each one: a pasted log or document must not be copied whole into the summary, or
 	// compaction would gain nothing.
 	keptUserMessageTokens = 20_000
+	// keptUserWindowDivisor: the user's messages carried over word for word may take at most 1/20 (5 %) of the
+	// effective window, whatever keptUserMessageTokens says. Twenty thousand tokens is 15 % of a 128k window, which
+	// leaves a compaction at 85 % ending near 80 % and running again almost at once.
+	keptUserWindowDivisor = 20
 	keptUserMessageChars  = 2_000
 
 	// handoffPrefix tells the model that resumes what the summary is.
@@ -393,9 +416,19 @@ func (e *Engine) buildPostCompactMessages(messages []types.Message, summary stri
 // assembleCompacted builds the transcript that replaces messages: a summary (with the user's earlier messages kept
 // word for word), a marker, then the preserved tail from preservedStart on.
 func (e *Engine) assembleCompacted(messages []types.Message, preservedStart int, summary string) []types.Message {
+	return e.assembleCompactedWithin(messages, preservedStart, summary, keptUserMessageTokens)
+}
+
+// keptUserTokens is how many tokens of the user's earlier messages a compaction for model may carry over.
+func (e *Engine) keptUserTokens(model types.ModelIdentifier) int {
+	return min(keptUserMessageTokens, e.EffectiveContextWindow(model)/keptUserWindowDivisor)
+}
+
+// assembleCompactedWithin is assembleCompacted with the budget for the user's messages given.
+func (e *Engine) assembleCompactedWithin(messages []types.Message, preservedStart int, summary string, userTokens int) []types.Message {
 	compacted := make([]types.Message, 0, len(messages)-preservedStart+2)
 
-	summaryMessage := types.SystemMessage(compactSummaryMessageID, e.summaryText(messages[:preservedStart], summary))
+	summaryMessage := types.SystemMessage(compactSummaryMessageID, e.summaryTextWithin(messages[:preservedStart], summary, userTokens))
 	summaryMessage.Metadata = &types.MessageMetadata{TurnID: "compact"}
 	compacted = append(compacted, summaryMessage)
 
@@ -412,8 +445,13 @@ func (e *Engine) assembleCompacted(messages []types.Message, preservedStart int,
 // summaryText is the hand-off prefix, the summary, and the user's messages from the dropped part, newest kept first
 // within keptUserMessageTokens, written oldest first.
 func (e *Engine) summaryText(dropped []types.Message, summary string) string {
+	return e.summaryTextWithin(dropped, summary, keptUserMessageTokens)
+}
+
+// summaryTextWithin is summaryText with the token budget for the user's messages given.
+func (e *Engine) summaryTextWithin(dropped []types.Message, summary string, userTokens int) string {
 	var kept []string
-	budget := keptUserMessageTokens
+	budget := userTokens
 	for i := len(dropped) - 1; i >= 0; i-- {
 		text, ok := userText(dropped[i])
 		if !ok {
