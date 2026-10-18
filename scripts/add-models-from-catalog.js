@@ -3,7 +3,8 @@
 //   spec = { "Anthropic": { "snapshot": "anthropic", "add": ["claude-opus-4-7", ...] }, ... }
 // A model that is already in the provider's list is skipped. Each added entry copies the provider's own conventions
 // (default temperature, SupportsPC, structured output, prompt caching) from its first model, and takes the limits, the
-// vision, audio and tool-call flags and the cost of cache reads from the snapshot. The snapshot is the models.dev data that
+// vision, audio and tool-call flags and the cost of cache reads from the snapshot. New models go before the provider's
+// last entry: the first model of a list is the default large model and the last the default small one. The snapshot is the models.dev data that
 // opencode bundles (packages/core/src/models-dev/snapshot.txt) or the output of https://models.dev/api.json.
 const fs = require('fs');
 const [snapPath, specPath] = process.argv.slice(2);
@@ -46,7 +47,13 @@ for (const [provider, { snapshot, add }] of Object.entries(spec)) {
     lines += `\t\t\t\t{Identifier: "${id}", ContextWindow: ${sm.limit.context}, MaxOutput: ${sm.limit.output}, DefaultTemperature: ${temp}, ${supportsPC ? 'SupportsPC: true, ' : ''}Description: "${desc}",\n\t\t\t\t\tCapabilities: model.Capabilities{${caps.join(', ')}}},\n`;
     added++;
   }
-  go = go.replace(re, (_, a, b, c) => a + b + lines + c);
+  // The order of a provider's list matters: the first model is its default large model and the last one its default small
+  // model (see the TUI's provider defaults), so new models go before the last entry, which keeps both ends where they were.
+  go = go.replace(re, (_, a, b, c) => {
+    const entries = b.split(/(?=				{Identifier:)/);
+    const last = entries.pop();
+    return a + entries.join('') + lines + last + c;
+  });
 }
 fs.writeFileSync(file, crlf ? go.split('\n').join('\r\n') : go);
 console.log('added', added, 'models');
