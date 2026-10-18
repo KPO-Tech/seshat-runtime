@@ -18,6 +18,8 @@ type manualStrategy struct {
 	fakeCompactionStrategy
 	calls    int
 	gotExtra int
+	// grows makes the compactor return a result no smaller than its input.
+	grows bool
 }
 
 func (m *manualStrategy) Compact(_ context.Context, _ string, msgs []types.Message, _ types.ModelIdentifier, _ types.SessionID, _ types.TurnID, tr *compact.TrackingState) (compact.CompactionResult, error) {
@@ -25,11 +27,15 @@ func (m *manualStrategy) Compact(_ context.Context, _ string, msgs []types.Messa
 	if tr != nil {
 		m.gotExtra = tr.ExtraTokens
 	}
+	post := 800
+	if m.grows {
+		post = 6_000
+	}
 	return compact.CompactionResult{
 		Messages:          []types.Message{types.SystemMessage("compact_summary", "summary"), msgs[len(msgs)-1]},
 		DidCompact:        true,
 		PreCompactTokens:  5_000,
-		PostCompactTokens: 800,
+		PostCompactTokens: post,
 	}, nil
 }
 
@@ -102,5 +108,15 @@ func TestSessionCompactNeedsAManualCompactor(t *testing.T) {
 	s := sessionWithMessages(t, &fakeCompactionStrategy{}, 8)
 	if _, err := s.Compact(context.Background()); err == nil {
 		t.Error("a strategy that cannot compact on demand must be reported")
+	}
+}
+
+func TestSessionCompactLeavesTheConversationWhenItWouldNotShrink(t *testing.T) {
+	s := sessionWithMessages(t, &manualStrategy{grows: true}, 8)
+	if _, err := s.Compact(context.Background()); !errors.Is(err, ErrCompactionWouldNotShrink) {
+		t.Fatalf("err = %v, want ErrCompactionWouldNotShrink", err)
+	}
+	if got := len(s.state.CloneMessages()); got != 8 {
+		t.Errorf("the conversation must be untouched, %d messages left", got)
 	}
 }
