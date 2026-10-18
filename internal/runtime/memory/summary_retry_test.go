@@ -35,7 +35,7 @@ func emptyThenTextServer(t *testing.T, emptyReplies int) (*httptest.Server, *[]i
 			_, _ = w.Write([]byte(`{"id":"r","choices":[{"message":{"role":"assistant","content":""},"finish_reason":"length"}]}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"id":"r","choices":[{"message":{"role":"assistant","content":"a real summary"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"id":"r","choices":[{"message":{"role":"assistant","content":"1. goal\n2. decisions\n3. done\n4. state\n5. facts\n6. preferences"},"finish_reason":"stop"}]}`))
 	}))
 	t.Cleanup(server.Close)
 	return server, budgets
@@ -52,7 +52,7 @@ func TestSummaryIsRequestedAgainWithALargerBudgetWhenTheModelReturnsNoText(t *te
 	e := retryEngine(server)
 	got, err := e.generateSummary(t.Context(), []types.Message{types.UserMessage("m1", "hello")},
 		types.ModelIdentifier{Provider: types.APIProviderOpenAI, Model: "gpt-4o"}, "s", "t")
-	if err != nil || got != "a real summary" {
+	if err != nil || !strings.HasPrefix(got, "1. goal") {
 		t.Fatalf("generateSummary = %q, %v; want the summary from the second attempt", got, err)
 	}
 	if len(*budgets) != 2 || (*budgets)[1] <= (*budgets)[0] {
