@@ -11,6 +11,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The terminal app can learn from conversations, on request.** `options.memory_enabled` in the app config (or `SESHAT_MEMORY_ENABLED`, and `SESHAT_MEMORY_CONSOLIDATE` to let memory be rewritten smaller) turns on extraction, recall and, at each start, the catch-up of earlier sessions that were left open. It is off until the user chooses; the command palette has "Toggle Learning From Conversations", which applies from the next start.
+
 - **`Client.ExtractPendingMemories` reads the sessions that were never closed.** `ExtractMemories` runs when a session closes, but a host that keeps its sessions open (the SeshatOS backend never closes one) or a crash would never trigger it. `ExtractPendingMemories(ctx, userID, PendingMemoryOptions)` reads the idle sessions (untouched for 30 minutes by default, not older than 7 days, at most 10 per call, most recent first) that were not read yet, and marks each one (`memory_extracted_at` in its metadata) once its extraction succeeded, so a session is read once and a failed one is tried again next time. A normal close marks its session too. It does nothing when `ExtractMemories` is off.
 
 ## [1.10.2] - 2026-10-18

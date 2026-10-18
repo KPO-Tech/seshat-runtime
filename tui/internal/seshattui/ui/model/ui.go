@@ -1738,6 +1738,22 @@ func (m *UI) handleDialogMsg(msg tea.Msg) tea.Cmd {
 			return util.NewInfoMsg("Thinking mode " + status)
 		})
 		m.dialog.CloseDialog(dialog.CommandsID)
+	case dialog.ActionToggleMemory:
+		cmds = append(cmds, func() tea.Msg {
+			cfg := m.com.Config()
+			if cfg == nil {
+				return util.ReportError(errors.New("configuration not found"))()
+			}
+			enabled := cfg.Options != nil && cfg.Options.MemoryEnabled != nil && *cfg.Options.MemoryEnabled
+			if err := m.com.Workspace.SetConfigField(config.ScopeGlobal, "options.memory_enabled", !enabled); err != nil {
+				return util.ReportError(err)()
+			}
+			if enabled {
+				return util.NewInfoMsg("Learning from conversations disabled (from the next start)")
+			}
+			return util.NewInfoMsg("Learning from conversations enabled (from the next start): preferences and lessons are kept and recalled")
+		})
+		m.dialog.CloseDialog(dialog.CommandsID)
 	case dialog.ActionToggleTransparentBackground:
 		cmds = append(cmds, func() tea.Msg {
 			cfg := m.com.Config()

@@ -42,7 +42,11 @@ type runtimeOptions struct {
 	StorageGCInterval       time.Duration
 	StorageGCLimit          int
 	StorageGCNamespaces     []string
-	Debug                   bool
+	// MemoryEnabled turns on long-term memory: notes are extracted from conversations and recalled into new ones.
+	// MemoryConsolidate also lets memory be rewritten smaller. Both are off until the user opts in.
+	MemoryEnabled     bool
+	MemoryConsolidate bool
+	Debug             bool
 
 	// RAGService is the embedded HNSW-backed RAG service.
 	// Nil when the embedding provider is not configured (RAG_EMBEDDING_URL / RAG_EMBEDDING_MODEL absent).
@@ -148,6 +152,8 @@ func loadRuntimeOptions(overrides runtimeOverrides) (runtimeOptions, error) {
 		StorageGCInterval:       parseDurationOrDefault(config.StorageGCInterval, time.Hour),
 		StorageGCLimit:          config.StorageGCLimit,
 		StorageGCNamespaces:     splitCommaList(config.StorageGCNamespaces),
+		MemoryEnabled:           config.MemoryEnabled,
+		MemoryConsolidate:       config.MemoryConsolidate,
 		Debug:                   config.Debug,
 		RAGService:              buildRAGService(config, hnswDir, ragSQLitePath),
 		Companion:               companionPtr,
@@ -237,6 +243,9 @@ func newClient(
 		ProviderConfig:           providerConfig,
 		PlanStore:                planStore,
 		LongTermMemory:           ltMemory,
+		ExtractMemories:          options.MemoryEnabled,
+		RecallMemories:           options.MemoryEnabled,
+		ConsolidateMemories:      options.MemoryEnabled && options.MemoryConsolidate,
 		MCPServers:               options.MCPServers,
 		ImageGeneration:          options.ImageGeneration,
 		TextToSpeech:             options.TextToSpeech,
