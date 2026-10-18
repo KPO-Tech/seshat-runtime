@@ -209,6 +209,11 @@ type APIRequest struct {
 	// Metadata contains additional request metadata
 	Metadata map[string]any `json:"metadata,omitempty"`
 
+	// DisableThinking asks the provider not to let the model reason before answering, for work that does not need it
+	// (a summary): reasoning spends the output budget and the time. It is honoured where the provider has a switch for
+	// it (z.ai) and ignored elsewhere, where the model's own default applies.
+	DisableThinking bool `json:"-"`
+
 	// OutputSchema, when set, constrains the model to return JSON matching the
 	// given schema. Providers with native support (OpenAI, Gemini) use their
 	// structured-output API. Other providers receive a system message injection.
