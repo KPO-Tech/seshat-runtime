@@ -99,6 +99,10 @@ type Config struct {
 	// remembering in long-term memory. Nil (the default) stores nothing automatically.
 	MemoryExtractor MemoryExtractor `json:"-"`
 
+	// MemoryRecaller, when set, puts what long-term memory knows about the user in the system prompt of each new
+	// session. Nil (the default) puts nothing: the agent can still search memory with its tools.
+	MemoryRecaller MemoryRecaller `json:"-"`
+
 	// DisableStreaming opts out of server-sent-event streaming. Streaming is
 	// enabled by default; set this to true only when the provider or test
 	// harness does not support SSE.

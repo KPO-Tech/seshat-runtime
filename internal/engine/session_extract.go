@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
@@ -48,4 +49,64 @@ func (s *Session) extractMemories(messages []types.Message) {
 			slog.Warn("memory extraction failed", "session_id", sessionID, "error", err)
 		}
 	}()
+}
+
+// MemoryRecaller turns long-term memory into the text placed in the system prompt of a new session. The default is
+// longterm.Recaller.
+type MemoryRecaller interface {
+	Recall(ctx context.Context, userID, query string) string
+}
+
+// recallLongTermMemory returns the memory block of this session. It is computed at the first request, from the first
+// thing the user said, and kept: see Session.recalled.
+func (s *Session) recallLongTermMemory(ctx context.Context) string {
+	if s == nil || s.engine == nil || s.engine.config == nil || s.engine.config.MemoryRecaller == nil {
+		return ""
+	}
+	s.mu.Lock()
+	loaded, recalled := s.recalledLoaded, s.recalled
+	s.mu.Unlock()
+	if loaded {
+		return recalled
+	}
+	s.rememberUserID(ctx)
+	user := s.userID
+	if user == "" {
+		user = defaultMemoryUser
+	}
+	recalled = s.engine.config.MemoryRecaller.Recall(ctx, user, firstUserMessageText(s.state.CloneMessages()))
+	s.mu.Lock()
+	s.recalled, s.recalledLoaded = recalled, true
+	s.mu.Unlock()
+	return recalled
+}
+
+// firstUserMessageText is the text of the first message the user wrote, which says what the session is about.
+func firstUserMessageText(messages []types.Message) string {
+	for _, m := range messages {
+		if m.Role != types.RoleUser {
+			continue
+		}
+		var parts []string
+		for _, b := range m.Content {
+			if t, ok := b.(types.TextContent); ok && t.Text != "" {
+				parts = append(parts, t.Text)
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, " ")
+		}
+	}
+	return ""
+}
+
+// joinMemoryContext puts the session memory and the long-term memory side by side, skipping an empty one.
+func joinMemoryContext(parts ...string) string {
+	var kept []string
+	for _, p := range parts {
+		if strings.TrimSpace(p) != "" {
+			kept = append(kept, strings.TrimSpace(p))
+		}
+	}
+	return strings.Join(kept, "\n\n")
 }

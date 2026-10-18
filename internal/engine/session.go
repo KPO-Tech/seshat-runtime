@@ -38,6 +38,11 @@ type Session struct {
 	// userID is the authenticated user of the latest turn, kept for what happens when the session closes.
 	userID string
 
+	// recalled is the long-term memory block of this session, computed once at the first request so the system prompt
+	// stays the same from turn to turn (a changing prompt cannot be cached by the provider).
+	recalled       string
+	recalledLoaded bool
+
 	// mu guards cancelFn and phase.
 	mu sync.Mutex
 	// cancelFn cancels the context passed to the current Loop.Run.
