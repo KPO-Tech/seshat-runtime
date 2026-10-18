@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ClientConfig.EnableToolSearch` now also gives the model the `tool_search` tool.** The option hides the deferred tools from the model, but the tool that finds them followed only the `ENABLE_TOOL_SEARCH` environment variable, so a host that set the option (and `MainAgentDeferredTools`) offered a model that could not reach the tools it had hidden. Found by building a session with the desktop profile: its tool list had no `tool_search`.
+
 ## [1.10.3] - 2026-10-18
 
 ### Added
