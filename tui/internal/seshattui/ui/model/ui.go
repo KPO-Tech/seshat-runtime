@@ -175,6 +175,11 @@ type UI struct {
 	// keeps track of read files while we don't have a session id
 	sessionFileReads []string
 
+	// Commands run from the prompt with "!": the items still running, the shared ones the agent has not been told about yet, and a counter for their IDs.
+	shellItems   map[string]*chat.ShellOutputItem
+	pendingShell []chat.ShellRun
+	shellSeq     int
+
 	// initialSessionID is set when loading a specific session on startup.
 	initialSessionID string
 	// continueLastSession is set to continue the most recent session on startup.
@@ -357,6 +362,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	header := newHeader(com)
 
 	ui := &UI{
+		shellItems:          make(map[string]*chat.ShellOutputItem),
 		com:                 com,
 		dialog:              dialog.NewOverlay(),
 		keyMap:              keyMap,
@@ -652,6 +658,14 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			paths = append(paths, f.LatestVersion.Path)
 		}
 		cmds = append(cmds, m.startLSPs(paths))
+
+	case shellDoneMsg:
+		m.handleShellDone(msg)
+
+	case shellInteractiveDoneMsg:
+		if msg.err != nil {
+			cmds = append(cmds, util.ReportWarn("Command ended: "+msg.err.Error()))
+		}
 
 	case sendMessageMsg:
 		cmds = append(cmds, m.sendMessage(msg.Content, msg.Attachments...))
@@ -2326,6 +2340,11 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					return nil
 				}
 
+				if cmd, handled := m.runShellInput(value); handled {
+					m.historyReset()
+					return tea.Batch(cmd, m.loadPromptHistory())
+				}
+
 				m.randomizePlaceholders()
 				m.historyReset()
 
@@ -3733,6 +3752,11 @@ func (m *UI) attachSkill(skillID, name string) tea.Cmd {
 func (m *UI) sendMessage(content string, attachments ...message.Attachment) tea.Cmd {
 	if !m.com.Workspace.AgentIsReady() {
 		return util.ReportError(fmt.Errorf("coder agent is not initialized"))
+	}
+
+	// Commands the user ran with "!" since the last message go in front of it, so the agent can use their output.
+	if block := m.takeShellContext(); block != "" {
+		content = block + "\n\n" + content
 	}
 
 	var cmds []tea.Cmd

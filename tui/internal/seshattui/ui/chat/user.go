@@ -64,6 +64,10 @@ func (m *UserMessageItem) RawRender(width int) string {
 	}
 
 	msgContent := strings.TrimSpace(m.message.Content().Text)
+	// The shell output the user shared sits in front of their text; the chat shows what they wrote.
+	if block, rest := StripShellContext(msgContent); block != "" {
+		msgContent = strings.TrimSpace(rest)
+	}
 
 	// Check if this is a skill invocation (loaded_skill XML)
 	if strings.HasPrefix(msgContent, "<loaded_skill>") {
