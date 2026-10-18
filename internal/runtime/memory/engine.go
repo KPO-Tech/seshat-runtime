@@ -314,6 +314,9 @@ func (e *Engine) generateSummary(
 			Model:     summaryModel,
 			Messages:  []types.Message{types.UserMessage("compact_summary_request", prompt)},
 			MaxTokens: budget,
+			// A summary does not need the model to reason first; where the provider can switch it off, it is cheaper
+			// and faster, and the budget goes to the summary. The retry below covers providers that cannot.
+			DisableThinking: true,
 		})
 		if err != nil {
 			return "", err
