@@ -92,3 +92,33 @@ func TestNewBuiltinRegistryWithConfig_EnableToolSearchReachesRegistry(t *testing
 		}
 	}
 }
+
+// TestToolSearchToolIsOfferedWhenTheClientDefersTools: EnableToolSearch hides the deferred tools, so the model must be given
+// tool_search to find them. It used to follow only the ENABLE_TOOL_SEARCH variable, which left a host that set the option
+// with hidden tools and no way to reach them.
+func TestToolSearchToolIsOfferedWhenTheClientDefersTools(t *testing.T) {
+	t.Setenv("ENABLE_TOOL_SEARCH", "")
+	surfaceNames := func(enable bool) map[string]bool {
+		t.Helper()
+		reg, err := NewBuiltinRegistryWithConfig(&Config{EnableToolSearch: enable})
+		if err != nil {
+			t.Fatalf("NewBuiltinRegistryWithConfig: %v", err)
+		}
+		surface, err := registry.NewSurfaceBuilder(reg).Build(context.Background(), registry.SurfaceBuildRequest{IncludeReadOnly: true, IncludeDestructive: true})
+		if err != nil {
+			t.Fatalf("Build: %v", err)
+		}
+		names := map[string]bool{}
+		for _, def := range surface.Tools {
+			names[def.Name] = true
+		}
+		return names
+	}
+
+	if on := surfaceNames(true); !on["tool_search"] || on["skill"] {
+		t.Fatalf("with EnableToolSearch the surface must hold tool_search and not the deferred skill tool: tool_search=%v skill=%v", on["tool_search"], on["skill"])
+	}
+	if off := surfaceNames(false); off["tool_search"] || !off["skill"] {
+		t.Fatalf("without it nothing is deferred and tool_search stays off: tool_search=%v skill=%v", off["tool_search"], off["skill"])
+	}
+}

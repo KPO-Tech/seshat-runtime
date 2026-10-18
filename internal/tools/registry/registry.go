@@ -400,6 +400,13 @@ func (r *Registry) BuildSurface(ctx *SurfaceContext) (*Surface, error) {
 	return surface, nil
 }
 
+// ToolSearchEnabled reports whether deferred tools are kept out of the model-visible surface: the client's EnableToolSearch
+// option, or the ENABLE_TOOL_SEARCH environment variable. The tool_search tool follows it, so a host that defers tools also
+// gives the model the way to find them.
+func (r *Registry) ToolSearchEnabled() bool {
+	return r != nil && r.isToolSearchSurfaceEnabled()
+}
+
 func (r *Registry) isToolSearchSurfaceEnabled() bool {
 	if r.config != nil && r.config.EnableToolSearch {
 		return true

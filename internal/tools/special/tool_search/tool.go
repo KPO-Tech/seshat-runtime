@@ -275,7 +275,11 @@ func (t *ToolSearchTool) CheckPermissions(_ context.Context, in map[string]any, 
 }
 func (t *ToolSearchTool) IsConcurrencySafe(_ map[string]any) bool { return true }
 func (t *ToolSearchTool) IsReadOnly(_ map[string]any) bool        { return true }
-func (t *ToolSearchTool) IsEnabled() bool                         { return IsToolSearchEnabledOptimistic() }
+func (t *ToolSearchTool) IsEnabled() bool {
+	// The environment variable switches the tool on, and so does the client's EnableToolSearch option, which hides the deferred
+	// tools: without this the model would be told to search for tools by a tool it does not have.
+	return IsToolSearchEnabledOptimistic() || t.registry.ToolSearchEnabled()
+}
 func (t *ToolSearchTool) FormatResult(data any) string {
 	if out, ok := data.(ToolSearchOutput); ok {
 		return formatSearchResult(out)

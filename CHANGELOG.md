@@ -9,6 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.10.4] - 2026-10-18
+
+### Added
+
+- **The list of deferred tools in the system prompt gives each tool a one-line description.** The agent saw only the names (`git_status`, `lsp`, `repo_map`...) of the tools it must find with `tool_search`, which tells little for a name like `monitor`. Each line is now `name: what it is for`, taken from the tool's new `ShortDescription` field, else from a line written for each of the built-in deferred tools (a test requires one for every tool of the enterprise profile), else from the first sentence of its description (what an MCP tool gets). For the 54 deferred tools of the desktop profile the list costs about 900 tokens, against about 200 for the names alone, in the part of the prompt that is not cached; the profile saves about 16k.
+- **`sdk.EnterpriseAgentTools()` and `sdk.EnterpriseAgentDeferredTools()` give a host the tool profile of a general agent in a company setting.** They are the lists the desktop application needs for `ClientConfig.MainAgentTools` and `MainAgentDeferredTools` (with `EnableToolSearch`): 38 tools loaded at every request, the rest findable with `tool_search`, MCP tools deferred by themselves. Measured on a default client: 35.5k tokens of tool definitions for every registered tool against 19.4k for the profile (about 45% less); the heaviest loaded definitions are bash, agent, grep, read_file and ask_user_question (4 to 6 KB each). Tests guard the lists against stale names and the size against growth.
+
+### Fixed
+
+- **`ClientConfig.EnableToolSearch` now also gives the model the `tool_search` tool.** The option hides the deferred tools from the model, but the tool that finds them followed only the `ENABLE_TOOL_SEARCH` environment variable, so a host that set the option (and `MainAgentDeferredTools`) offered a model that could not reach the tools it had hidden. Found by building a session with the desktop profile: its tool list had no `tool_search`.
+
 ## [1.10.3] - 2026-10-18
 
 ### Added
@@ -892,7 +903,8 @@ a real ChatGPT-account session (documented in
 - `internal/tools/special/brief`: a "send message to the user" tool from the pre-rename codebase, never registered at any point in its history.
 - `internal/tools/special/config/configTool.go`: an arbitrary key/value settings store predating the current `contract.Tool` interface (incompatible signatures — could never have been registered as-is), replaced by the real `get_config` tool.
 
-[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.3...HEAD
+[Unreleased]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.4...HEAD
+[1.10.4]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.3...v1.10.4
 [1.10.3]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.2...v1.10.3
 [1.10.2]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.1...v1.10.2
 [1.10.1]: https://github.com/KPO-Tech/seshat-runtime/compare/v1.10.0...v1.10.1
