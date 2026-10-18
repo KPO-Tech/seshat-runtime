@@ -16,8 +16,11 @@ const (
 	defaultManualCompactBufferTokens    = 3_000
 	defaultMaxSummaryTokens             = 2_000
 	defaultMaxConsecutiveCompactFailure = 3
-	compactSummaryMessageID             = "compact_summary"
-	compactMarkerMessageID              = "compact_marker"
+
+	// manualKeepDivisor: a manual compaction keeps the most recent 1/5 of the conversation as it is.
+	manualKeepDivisor       = 5
+	compactSummaryMessageID = "compact_summary"
+	compactMarkerMessageID  = "compact_marker"
 )
 
 // Engine performs runtime-driven conversation compaction.
@@ -164,6 +167,10 @@ func (e *Engine) Compact(
 ) (CompactionResult, error) {
 	preCompactTokens := e.UsedTokens(systemPrompt, messages, tracking)
 	targetTokens := e.TargetTokens(model)
+	manual := tracking != nil && tracking.Manual
+	if manual {
+		targetTokens = max(1, preCompactTokens/manualKeepDivisor)
+	}
 	// What replaces the messages is not covered by the provider's figure, so it is measured by estimate.
 	rewritten := &TrackingState{}
 	if tracking != nil {
@@ -172,7 +179,7 @@ func (e *Engine) Compact(
 
 	microCompacted := e.microCompact(messages)
 	postMicroTokens := e.UsedTokens(systemPrompt, microCompacted, rewritten)
-	if postMicroTokens <= targetTokens {
+	if !manual && postMicroTokens <= targetTokens {
 		return CompactionResult{
 			Messages:            microCompacted,
 			DidCompact:          true,
@@ -327,8 +334,11 @@ const (
 	summaryToolInputChars  = 300
 	summaryToolResultChars = 600
 
-	// keptUserMessageTokens caps the earlier user messages that are carried over word for word.
+	// keptUserMessageTokens caps the earlier user messages that are carried over word for word, and
+	// keptUserMessageChars caps each one: a pasted log or document must not be copied whole into the summary, or
+	// compaction would gain nothing.
 	keptUserMessageTokens = 20_000
+	keptUserMessageChars  = 2_000
 
 	// handoffPrefix tells the model that resumes what the summary is.
 	handoffPrefix = "The conversation was compacted to free context. Another model worked on this before you; " +
@@ -409,7 +419,8 @@ func (e *Engine) summaryText(dropped []types.Message, summary string) string {
 		if !ok {
 			continue
 		}
-		cost := e.preparer.CalculateMessageTokens(dropped[i])
+		text = clipForSummary(text, keptUserMessageChars)
+		cost := len(text)/4 + 10
 		if cost > budget {
 			break
 		}
@@ -459,14 +470,18 @@ func (e *Engine) findPreservedStart(messages []types.Message, targetTokens int) 
 		return 0
 	}
 
+	// Keep the most recent messages up to targetTokens, and at least the last one. A message that would take the tail
+	// past the target is not kept: with one giant message (a pasted log) in the middle, keeping "at least the target"
+	// swallowed everything before it and compaction gained nothing.
 	preservedTokens := 0
-	start := 0
+	start := len(messages)
 	for i := len(messages) - 1; i >= 0; i-- {
-		preservedTokens += e.preparer.CalculateMessageTokens(messages[i])
-		start = i
-		if preservedTokens >= targetTokens {
+		cost := e.preparer.CalculateMessageTokens(messages[i])
+		if start < len(messages) && preservedTokens+cost > targetTokens {
 			break
 		}
+		preservedTokens += cost
+		start = i
 	}
 	return adjustPreservedStartForToolPairs(messages, start)
 }
