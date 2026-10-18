@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **29 models added to the catalog, taken from the models.dev data that opencode bundles.** Anthropic (`claude-fable-5`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5`, `claude-haiku-4-5`, `claude-sonnet-4-5`), OpenAI (`gpt-5.6`, `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`), Gemini (`gemini-3.7-flash`, `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `gemini-flash-latest`, `gemini-flash-lite-latest`), MiniMax (`MiniMax-M2.7-highspeed`, `MiniMax-M2.5-highspeed`, `MiniMax-M2`) and Z.ai (`glm-5v-turbo`, `glm-5-turbo`, `glm-4.7-flash`, `glm-4.7-flashx`, `glm-4.6`, `glm-4.6v`, `glm-4.5`, `glm-4.5-air`, `glm-4.5-flash`). `glm-4.5-air` is the summary model of the default compaction rule for z.ai sessions and was not in the catalog, so its window was unknown. `scripts/add-models-from-catalog.js` generates the entries from a snapshot and a list, copying each provider's own conventions. Two tests guard the catalog: well-formed entries (no duplicate, output no larger than the context, a temperature) and the presence of the default compaction models. The limit differences between our catalog and the snapshot were left alone: see `analyse-catalogue-modeles-opencode-2026-10-19.md` in seshat-ai.
+
 ## [1.10.4] - 2026-10-18
 
 ### Added
