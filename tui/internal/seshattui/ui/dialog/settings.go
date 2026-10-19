@@ -88,6 +88,8 @@ type Settings struct {
 	providers []catwalk.Provider
 	provList  *list.FilterableList
 	provInput textinput.Model
+	// provMore is true while the "More providers" list (every provider that is not a main one) is open.
+	provMore bool
 
 	// theme sub-view state
 	themeList *list.FilterableList
@@ -364,6 +366,12 @@ func (s *Settings) handleProvKey(msg tea.KeyPressMsg) Action {
 		if item := s.provList.SelectedItem(); item != nil {
 			if pi, ok := item.(*settingsProviderItem); ok {
 				return ActionOpenProviderConfig{Provider: pi.provider}
+			}
+			if _, ok := item.(*settingsMoreItem); ok {
+				s.provMore = true
+				s.provInput.SetValue("")
+				s.rebuildProvList("")
+				return nil
 			}
 		}
 	default:
@@ -946,6 +954,7 @@ func (s *Settings) gotoView(v settingsView) {
 	case settingsViewProviders:
 		s.rebuildProviderList()
 	case settingsViewProvidersLLM:
+		s.provMore = false
 		s.provInput.SetValue("")
 		s.provInput.Focus()
 		s.rebuildProvList("")
@@ -983,6 +992,13 @@ func (s *Settings) gotoView(v settingsView) {
 }
 
 func (s *Settings) gotoParent() {
+	if s.view == settingsViewProvidersLLM && s.provMore {
+		// Back from "More providers" returns to the main providers, not to the Providers page.
+		s.provMore = false
+		s.provInput.SetValue("")
+		s.rebuildProvList("")
+		return
+	}
 	switch s.view {
 	case settingsViewProvidersLLM, settingsViewImageGeneration, settingsViewTextToSpeech, settingsViewSpeechToText, settingsViewWebSearch:
 		s.gotoView(settingsViewProviders)
@@ -1055,12 +1071,45 @@ func (s *Settings) rebuildWebSearchList() {
 	s.webSearchList.SetSelected(0)
 }
 
+// rebuildProvList fills the provider list. Without a filter it shows the main providers and one "More providers" entry that opens
+// the rest; with a filter it searches every provider, so none needs to be opened first to be found.
 func (s *Settings) rebuildProvList(filter string) {
 	if providers, err := config.Providers(s.com.Config()); err == nil {
 		s.providers = providers
 	}
-	items := make([]list.FilterableItem, 0, len(s.providers))
+	mainIDs := config.MainProviderIDs()
+	var main, more []catwalk.Provider
 	for _, p := range s.providers {
+		if mainIDs[string(p.ID)] {
+			main = append(main, p)
+		} else {
+			more = append(more, p)
+		}
+	}
+	// The catalog's providers are sorted without regard to case, the ones the user has configured first.
+	cfg := s.com.Config()
+	sort.SliceStable(more, func(i, j int) bool {
+		ci := capabilityProviderConfigured(cfg, string(more[i].ID))
+		cj := capabilityProviderConfigured(cfg, string(more[j].ID))
+		if ci != cj {
+			return ci
+		}
+		return strings.ToLower(more[i].Name) < strings.ToLower(more[j].Name)
+	})
+
+	var shown []catwalk.Provider
+	showMoreEntry := false
+	switch {
+	case s.provMore:
+		shown = more
+	case filter != "":
+		shown = append(append(shown, main...), more...)
+	default:
+		shown = main
+		showMoreEntry = len(more) > 0
+	}
+	items := make([]list.FilterableItem, 0, len(shown)+1)
+	for _, p := range shown {
 		p := p
 		items = append(items, &settingsProviderItem{
 			Versioned: list.NewVersioned(),
@@ -1068,6 +1117,9 @@ func (s *Settings) rebuildProvList(filter string) {
 			com:       s.com,
 			t:         s.com.Styles,
 		})
+	}
+	if showMoreEntry {
+		items = append(items, &settingsMoreItem{Versioned: list.NewVersioned(), count: len(more), t: s.com.Styles})
 	}
 	s.provList.SetItems(items...)
 	s.provList.SetFilter(filter)
@@ -1224,7 +1276,11 @@ func (s *Settings) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		s.provInput.SetWidth(inputW)
 		rc.AddPart(t.Dialog.InputPrompt.Render(s.provInput.View()))
 		rc.AddPart(sep)
-		rc.AddPart(t.Dialog.SecondaryText.Render("  select a provider — configure first, then choose a model"))
+		if s.provMore {
+			rc.AddPart(t.Dialog.SecondaryText.Render("  providers of the models.dev catalog, most of them not tried yet — configure first, then choose a model"))
+		} else {
+			rc.AddPart(t.Dialog.SecondaryText.Render("  select a provider — configure first, then choose a model (type to search them all)"))
+		}
 		rc.Parts = append(rc.Parts, "")
 		rc.AddPart(t.Dialog.List.Height(s.provList.Height()).Render(s.provList.Render()))
 
@@ -1315,6 +1371,9 @@ func (s *Settings) viewTitle() string {
 	case settingsViewProviders:
 		return "Settings  ›  Providers"
 	case settingsViewProvidersLLM:
+		if s.provMore {
+			return "Settings  ›  Providers  ›  LLM  ›  More"
+		}
 		return "Settings  ›  Providers  ›  LLM"
 	case settingsViewImageGeneration:
 		return "Settings  ›  Providers  ›  Image Generation"
@@ -1803,6 +1862,46 @@ func (i *settingsProviderItem) Render(width int) string {
 
 	gap := strings.Repeat(" ", max(0, lineWidth-prefixW-nameWidth-infoWidth))
 	return style.Render(prefix + nameStr + gap + infoText)
+}
+
+// settingsMoreItem is the "More providers" entry that closes the list of main providers.
+type settingsMoreItem struct {
+	*list.Versioned
+	count   int
+	focused bool
+	t       *styles.Styles
+}
+
+func (i *settingsMoreItem) Filter() string { return "" }
+func (i *settingsMoreItem) ID() string     { return "more_providers" }
+func (i *settingsMoreItem) Finished() bool { return false }
+
+func (i *settingsMoreItem) SetFocused(f bool) {
+	if i.focused == f {
+		return
+	}
+	i.focused = f
+	i.Bump()
+}
+
+func (i *settingsMoreItem) SetMatch(fuzzy.Match) {}
+
+func (i *settingsMoreItem) Render(width int) string {
+	t := i.t
+	style := t.Dialog.NormalItem
+	if i.focused {
+		style = t.Dialog.SelectedItem.
+			Background(lipgloss.Color(settingsCardSelectedBg)).
+			Foreground(t.Dialog.NormalItem.GetForeground())
+	}
+	style = style.Width(width)
+	lineWidth := width - style.GetHorizontalPadding()
+
+	const prefix = "    "
+	name := ansi.Style{}.Bold().String() + "More providers…" + ansi.Style{}.Normal().String()
+	info := t.Dialog.SecondaryText.Render(fmt.Sprintf("%d more ›", i.count)) + "  "
+	gap := strings.Repeat(" ", max(0, lineWidth-len(prefix)-lipgloss.Width("More providers…")-lipgloss.Width(info)))
+	return style.Render(prefix + name + gap + info)
 }
 
 // ─── settingsThemeItem ─────────────────────────────────────────────────────

@@ -195,3 +195,14 @@ func modelPolicyFrom(cfg *Config) internalproviders.ModelPolicy {
 	}
 	return policy
 }
+
+// MainProviderIDs returns the ids of the providers built into the runtime: the ones the terminal app lists first. Every other provider
+// of the list comes from the models.dev catalog and is offered behind "More providers", or by search.
+func MainProviderIDs() map[string]bool {
+	sdkProviders := engineconfig.AvailableProviders()
+	ids := make(map[string]bool, len(sdkProviders))
+	for _, p := range sdkProviders {
+		ids[string(p.Name)] = true
+	}
+	return ids
+}

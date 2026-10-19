@@ -411,6 +411,13 @@ func (m *Models) setProviderItems() error {
 
 	// Now add known providers from the predefined list.
 	// Providers already has Hyper at the front of the list.
+	//
+	// The picker lists the models of the providers that are configured, not those of the ~200 providers the catalog knows. When none
+	// is configured yet (or while onboarding) there is nothing to pick from, so it offers the main providers to set one up.
+	mainIDs := config.MainProviderIDs()
+	anyConfigured := slices.ContainsFunc(m.providers, func(p catwalk.Provider) bool {
+		return capabilityProviderConfigured(cfg, string(p.ID))
+	})
 	for _, provider := range m.providers {
 		providerID := string(provider.ID)
 		if addedProviders[providerID] {
@@ -419,6 +426,13 @@ func (m *Models) setProviderItems() error {
 
 		providerConfig, providerConfigured := cfg.Providers.Get(providerID)
 		if providerConfigured && providerConfig.Disable {
+			continue
+		}
+		if m.isOnboarding || !anyConfigured {
+			if !mainIDs[providerID] {
+				continue
+			}
+		} else if !capabilityProviderConfigured(cfg, providerID) {
 			continue
 		}
 
