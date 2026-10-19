@@ -175,7 +175,6 @@ func TestBuiltInProviderListsGainTheCatalogModelsWithoutLosingTheirEnds(t *testi
 		t.Fatal("the curated Anthropic list is expected to have models")
 	}
 	large, small := before.Models[0].Identifier, before.Models[len(before.Models)-1].Identifier
-	curatedDescription := before.Models[0].Description
 
 	fake := &catalog.Catalog{Source: "test", Providers: map[string]catalog.Provider{
 		"anthropic": {ID: "anthropic", Name: "Anthropic", Models: map[string]catalog.Model{
@@ -190,8 +189,8 @@ func TestBuiltInProviderListsGainTheCatalogModelsWithoutLosingTheirEnds(t *testi
 	if got.Models[0].Identifier != large || got.Models[len(got.Models)-1].Identifier != small {
 		t.Fatalf("the ends of the list moved: first %q last %q, want %q and %q (they are the default large and small models)", got.Models[0].Identifier, got.Models[len(got.Models)-1].Identifier, large, small)
 	}
-	if got.Models[0].Description != curatedDescription || got.Models[0].ContextWindow == 5 {
-		t.Fatalf("a model we list by hand must not be replaced by the catalog's data: %+v", got.Models[0])
+	if got.Models[0].Description != "Overridden name" || got.Models[0].ContextWindow != 5 {
+		t.Fatalf("a default model takes its data from the catalog: %+v", got.Models[0])
 	}
 	var future, retired bool
 	for _, m := range got.Models {
@@ -308,5 +307,26 @@ func TestContextWindowUsesTheInputLimitWhenItIsBelowTheWindow(t *testing.T) {
 	cw := types.GetContextWindow(types.ModelIdentifier{Provider: "cap-prov", Model: "input-capped"})
 	if cw.MaxTokens != 272000 {
 		t.Fatalf("MaxTokens = %d, want the input limit 272000", cw.MaxTokens)
+	}
+}
+
+// The registry names only each provider's default large and small model; everything else about them comes from the catalog, so both
+// must exist there or they would be listed with no limits.
+func TestRegistryDefaultsExistInTheCatalog(t *testing.T) {
+	for provider, info := range curatedProvidersInfo() {
+		catalogID, native := "", false
+		for id, p := range nativeProviders {
+			if p == provider {
+				catalogID, native = id, true
+			}
+		}
+		if !native || len(info.Models) == 0 {
+			continue
+		}
+		for _, m := range []ModelInfo{info.Models[0], info.Models[len(info.Models)-1]} {
+			if _, ok := Catalog().Model(catalogID, m.Identifier); !ok {
+				t.Errorf("%s: default model %q is not in the catalog", provider, m.Identifier)
+			}
+		}
 	}
 }
