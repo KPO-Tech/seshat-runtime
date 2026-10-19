@@ -324,7 +324,7 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 			continue
 		}
 		models := make([]ModelInfo, 0, len(eligible))
-		for _, m := range rankModels(eligible) {
+		for _, m := range rankModels(catalogID, eligible) {
 			models = append(models, catalogModelInfo(provider, info, m))
 		}
 		info.Models = models
@@ -333,14 +333,85 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 	return out
 }
 
+// familyDefaults is our own choice of default models, by family of the catalog (never by model id, so a new version of the family is
+// picked up by the next catalog). For each provider the families are tried in order and the newest stable model of the first one the
+// provider has is taken. A provider not in the table, or whose families are not found, falls back to pickByPrice. The families are
+// the "family" field of models.dev.
+var familyDefaults = map[string]struct{ Large, Small []string }{
+	"anthropic":  {[]string{"claude-sonnet"}, []string{"claude-haiku"}},
+	"openai":     {[]string{"gpt-sol", "gpt"}, []string{"gpt-luna", "gpt-mini"}},
+	"google":     {[]string{"gemini", "gemini-pro"}, []string{"gemini-flash-lite", "gemini-flash"}},
+	"mistral":    {[]string{"mistral-large"}, []string{"mistral-small"}},
+	"openrouter": {[]string{"claude-sonnet"}, []string{"claude-haiku"}},
+	"opencode":   {[]string{"claude-sonnet"}, []string{"claude-haiku"}},
+	"deepseek":   {[]string{"deepseek-flash"}, []string{"deepseek-flash"}},
+	"zai":        {[]string{"glm"}, []string{"glm-flash"}},
+	"moonshotai": {[]string{"kimi-k3", "kimi-k2"}, []string{"kimi-k2"}},
+}
+
 // rankModels orders the models of a provider (given newest first): the default large model first, the default small one last,
 // the others between them, newest first. Nothing is hand-written: the large model is the most expensive of the newest ones (price
 // follows capability), the small one the cheapest. A provider whose models have no price gets its newest model as the large one and
 // its oldest as the small one.
-func rankModels(models []catalog.Model) []catalog.Model {
+func rankModels(catalogID string, models []catalog.Model) []catalog.Model {
 	if len(models) < 2 {
 		return models
 	}
+	large, small := pickByFamily(catalogID, models)
+	if large < 0 || small < 0 {
+		byPriceLarge, byPriceSmall := pickByPrice(models)
+		if large < 0 {
+			large = byPriceLarge
+		}
+		if small < 0 {
+			small = byPriceSmall
+		}
+	}
+	if small == large {
+		// One model for both sides: keep the large one first and take another, the last, as the small one.
+		small = len(models) - 1
+		if small == large {
+			small = 0
+		}
+	}
+	return arrange(models, large, small)
+}
+
+// arrange puts the large model first, the small one last, and the others between them in their order.
+func arrange(models []catalog.Model, large, small int) []catalog.Model {
+	out := make([]catalog.Model, 0, len(models))
+	out = append(out, models[large])
+	for i, m := range models {
+		if i != large && i != small {
+			out = append(out, m)
+		}
+	}
+	return append(out, models[small])
+}
+
+// pickByFamily applies the table of familyDefaults: the newest model of the first family listed that the provider has. It returns -1
+// for a side the table does not settle.
+func pickByFamily(catalogID string, models []catalog.Model) (large, small int) {
+	large, small = -1, -1
+	d, ok := familyDefaults[catalogID]
+	if !ok {
+		return
+	}
+	find := func(families []string) int {
+		for _, family := range families {
+			for i, m := range models { // models are newest first
+				if m.Family == family && m.Status == "" {
+					return i
+				}
+			}
+		}
+		return -1
+	}
+	return find(d.Large), find(d.Small)
+}
+
+// pickByPrice is the choice for a provider the table does not cover.
+func pickByPrice(models []catalog.Model) (large, small int) {
 	// A model still in alpha or beta is listed but is not picked as a default.
 	var stable []int
 	for i, m := range models {
@@ -356,13 +427,13 @@ func rankModels(models []catalog.Model) []catalog.Model {
 	if len(stable) > recentModelsConsidered {
 		stable = stable[:recentModelsConsidered]
 	}
-	large := stable[0]
+	large = stable[0]
 	for _, i := range stable {
 		if models[i].Cost.Output > models[large].Cost.Output {
 			large = i
 		}
 	}
-	small := -1
+	small = -1
 	for i, m := range models {
 		if i == large || m.Cost.Input <= 0 || m.Status != "" {
 			continue
@@ -377,14 +448,7 @@ func rankModels(models []catalog.Model) []catalog.Model {
 			small = 0
 		}
 	}
-	out := make([]catalog.Model, 0, len(models))
-	out = append(out, models[large])
-	for i, m := range models {
-		if i != large && i != small {
-			out = append(out, m)
-		}
-	}
-	return append(out, models[small])
+	return large, small
 }
 
 // catalogModelInfo is the registry entry of a catalog model.

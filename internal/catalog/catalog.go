@@ -55,6 +55,8 @@ type Model struct {
 	Interleaved string
 	// OpenWeights is true when the trained weights are publicly available.
 	OpenWeights bool
+	// Family groups the models of a line ("claude-sonnet", "gpt"), "" when the catalog gives none.
+	Family string
 	// Knowledge is the knowledge cutoff, "YYYY-MM" or "YYYY-MM-DD", "" when unknown.
 	Knowledge string
 	Cost      Cost

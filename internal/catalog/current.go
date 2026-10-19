@@ -112,7 +112,7 @@ func Encode(c *Catalog) ([]byte, error) {
 		for mid, m := range p.Models {
 			sm := snapshotModel{
 				Name: m.Name, Context: m.ContextWindow, MaxInput: m.MaxInput, Output: m.MaxOutput, Status: m.Status, Date: m.ReleaseDate,
-				Interleaved: m.Interleaved, Knowledge: m.Knowledge, Updated: m.LastUpdated,
+				Interleaved: m.Interleaved, Knowledge: m.Knowledge, Updated: m.LastUpdated, Family: m.Family,
 			}
 			sm.Reason = flag(m.Reasoning)
 			sm.Attachment = flag(m.Attachment)

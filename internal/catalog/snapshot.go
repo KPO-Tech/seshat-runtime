@@ -52,10 +52,12 @@ type snapshotModel struct {
 	OpenWeights int    `json:"ow,omitempty"`
 	Knowledge   string `json:"kn,omitempty"`
 	Updated     string `json:"lu,omitempty"`
+	// Added in version 3.
+	Family string `json:"fa,omitempty"`
 }
 
-// snapshotVersion is the version of the compact form this package writes. It reads versions 1 and 2.
-const snapshotVersion = 2
+// snapshotVersion is the version of the compact form this package writes. It reads versions 1 to 3.
+const snapshotVersion = 3
 
 var (
 	embeddedOnce sync.Once
@@ -89,7 +91,7 @@ func decodeSnapshot(data []byte, source string, unverified bool) (*Catalog, erro
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("parse catalog: %w", err)
 	}
-	if doc.Version != 1 && doc.Version != snapshotVersion {
+	if doc.Version < 1 || doc.Version > snapshotVersion {
 		return nil, fmt.Errorf("unsupported catalog version %d", doc.Version)
 	}
 	return fromSnapshot(doc, source, unverified), nil
@@ -106,7 +108,7 @@ func fromSnapshot(doc snapshotDoc, source string, unverified bool) *Catalog {
 			m := Model{
 				ID: mid, Name: sm.Name, ContextWindow: sm.Context, MaxInput: sm.MaxInput, MaxOutput: sm.Output, Reasoning: sm.Reason == 1,
 				Attachment: sm.Attachment == 1, StructuredOutput: sm.Structured == 1, NoTemperature: sm.NoTemp == 1, Interleaved: sm.Interleaved,
-				OpenWeights: sm.OpenWeights == 1, Knowledge: sm.Knowledge, Status: sm.Status, ReleaseDate: sm.Date, LastUpdated: sm.Updated,
+				OpenWeights: sm.OpenWeights == 1, Family: sm.Family, Knowledge: sm.Knowledge, Status: sm.Status, ReleaseDate: sm.Date, LastUpdated: sm.Updated,
 			}
 			if sm.Input != "" {
 				m.InputModalities = strings.Split(sm.Input, ",")
