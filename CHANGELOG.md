@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The model helpers understand the generic providers of the catalog.** `ResolveProviderFromString`, `StaticModels`, `GetProviderInfo`, `GetModelInfo`, `NeedsCatalogReseed` and `DefaultBaseURL` answered for any name they did not know as if it were Anthropic: `StaticModels("groq")` returned Claude's models and `DefaultBaseURL("groq")` was empty, so a host that seeds the models of a provider setting with them put the wrong models in. They now resolve a catalog provider to itself, return its models and its base URL, and `FetchModels` asks the `/models` route of a base URL that already carries its version (`.../openai/v1`) instead of `/v1/models` after it. The former built-in name `workers-ai` resolves to `cloudflare-workers-ai`. `providers.IsCatalogProvider(name)` is new.
+
 ## [1.11.1] - 2026-10-19
 
 ### Fixed

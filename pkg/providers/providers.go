@@ -122,3 +122,10 @@ func DefaultModelWithPolicy(provider internaltypes.APIProvider, policy ModelPoli
 func SmallModelWithPolicy(provider internaltypes.APIProvider, policy ModelPolicy) (string, bool) {
 	return internalproviders.SmallModelWithPolicy(provider, policy)
 }
+
+// IsCatalogProvider reports whether name is a generic provider of the models.dev catalog (an OpenAI-compatible provider the runtime does
+// not have built in), such as "groq" or "fireworks-ai". ResolveProviderFromString, StaticModels, GetModelInfo and DefaultBaseURL all
+// understand these names.
+func IsCatalogProvider(name string) bool {
+	return internalproviders.IsCatalogProvider(internaltypes.APIProvider(name))
+}
