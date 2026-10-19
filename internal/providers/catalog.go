@@ -72,7 +72,10 @@ func Catalog() *catalog.Catalog {
 
 // catalogProviderID returns the provider id this runtime uses for a catalog provider: our own for a built-in one, the catalog id
 // otherwise.
-func catalogProviderID(catalogID string) types.APIProvider {
+func catalogProviderID(catalogID string) types.APIProvider { return ProviderForCatalogID(catalogID) }
+
+// ProviderForCatalogID is catalogProviderID for hosts and tools.
+func ProviderForCatalogID(catalogID string) types.APIProvider {
 	if native, ok := nativeProviders[catalogID]; ok {
 		return native
 	}
