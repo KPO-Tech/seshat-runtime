@@ -330,3 +330,17 @@ func TestRegistryDefaultsExistInTheCatalog(t *testing.T) {
 		}
 	}
 }
+
+func TestProvidersWithoutACatalogURLAreCallableThroughTheEndpointTable(t *testing.T) {
+	for _, id := range []string{"groq", "xai", "cerebras", "togetherai", "deepinfra", "cohere"} {
+		p := types.APIProvider(id)
+		if !IsCatalogProvider(p) {
+			t.Errorf("%s is not a catalog provider", id)
+			continue
+		}
+		cfg, ok := ConfigForCatalogProvider(p)
+		if !ok || !strings.HasPrefix(cfg.BaseURL, "https://") {
+			t.Errorf("%s: config = %+v, %v", id, cfg, ok)
+		}
+	}
+}

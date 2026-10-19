@@ -67,6 +67,9 @@ var (
 func Embedded() (*Catalog, error) {
 	embeddedOnce.Do(func() {
 		embedded, embeddedErr = decodeSnapshot(snapshotFile, "embedded", false)
+		if embeddedErr == nil {
+			applyEndpointOverrides(embedded)
+		}
 	})
 	return embedded, embeddedErr
 }

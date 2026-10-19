@@ -14,6 +14,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **The AWS Bedrock, Google Vertex AI and Azure AI Foundry providers.** None had ever been tried with a real account (the Bedrock transport itself said `SigV4-not-implemented`), and the models they listed were written by hand and could not be checked. They are removed with everything that carried them: `APIProviderBedrock`, `APIProviderVertex` and `APIProviderFoundry` (and `APIProviderWorkersAI`), their transports and adapter (`internal/providers/transport`), the `provider_region`, `provider_project_id` and `provider_resource` settings with `SESHAT_PROVIDER_REGION`, `SESHAT_PROVIDER_PROJECT_ID` and `SESHAT_PROVIDER_RESOURCE`, the `--region`, `--project-id` and `--resource` flags of `seshat config`, and their model lists. A model string such as `bedrock:...` no longer names a provider. If one of them is needed again it will come back with a test against a real account.
 - **The built-in Cloudflare Workers AI provider is now a generic catalog provider** (`cloudflare-workers-ai`): the same OpenAI-compatible client, the key from `CLOUDFLARE_API_KEY`, and the account id taken from `CLOUDFLARE_ACCOUNT_ID` into the base URL the catalog gives (`https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/v1`). Setup validation names the variable when it is missing.
 
+### Added
+
+- **Groq, xAI, Cerebras, Together AI, DeepInfra and Cohere are callable.** models.dev names a vendor SDK for them and gives no URL, so a small reviewed table (`internal/catalog/overrides.go`) gives their OpenAI-compatible endpoint. It is applied to the embedded catalog only, so a refresh never moves it, and a test fails when a rebuilt snapshot starts giving a URL of its own.
+- **`scripts/check_providers.go`**: calls real providers with your own keys (`go run scripts/check_providers.go groq zai`, or no argument for every provider whose key variable is set) to see that the catalog models answer.
+
 ### Changed
 
 - **The registry no longer lists models by hand.** For each built-in provider it names only the default large and small model (the first and the last); their limits, capabilities and prices, like every other model of the provider, come from the models.dev catalog. Codex and Ollama, which the catalog does not describe, keep their own lists.
