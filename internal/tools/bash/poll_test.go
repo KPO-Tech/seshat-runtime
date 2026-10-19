@@ -17,6 +17,11 @@ import (
 // BackgroundTaskManager, so they exercise the stdin-pipe/output-file plumbing
 // pollForOutput actually runs against, not just the polling logic in isolation.
 
+// pollCeiling is the longest wait given to pollForOutput in the early-exit tests. It is far above what a loaded CI machine needs to
+// start the helper process, so the tests prove that the call returns early (a failure would take the whole ceiling) without pinning
+// a timing a slow machine could miss.
+const pollCeiling = 30 * time.Second
+
 func newTestTaskManager(t *testing.T) *BackgroundTaskManager {
 	t.Helper()
 	mgr := NewBackgroundTaskManager(t.TempDir())
@@ -91,7 +96,7 @@ func TestPollForOutput_EarlyExitsOnPrompt(t *testing.T) {
 	}
 
 	start := time.Now()
-	out, status := pollForOutput(context.Background(), mgr, task.ID, reader, 5*time.Second)
+	out, status := pollForOutput(context.Background(), mgr, task.ID, reader, pollCeiling)
 	elapsed := time.Since(start)
 
 	if !strings.Contains(out, ">") {
@@ -100,10 +105,8 @@ func TestPollForOutput_EarlyExitsOnPrompt(t *testing.T) {
 	if status != TaskStatusRunning && status != TaskStatusBackgrounded {
 		t.Errorf("expected the task to still be running (blocked on read), got status %v", status)
 	}
-	// Generous margin over the 100ms poll interval - this just needs to prove
-	// we returned long before the 5s ceiling, not pin an exact timing.
-	if elapsed > 2*time.Second {
-		t.Errorf("expected early exit on prompt detection well under 5s, took %v", elapsed)
+	if elapsed > pollCeiling*2/3 {
+		t.Errorf("expected early exit on prompt detection well under %v, took %v", pollCeiling, elapsed)
 	}
 }
 
@@ -118,7 +121,7 @@ func TestPollForOutput_ReturnsOnTaskCompletion(t *testing.T) {
 	}
 
 	start := time.Now()
-	out, status := pollForOutput(context.Background(), mgr, task.ID, reader, 5*time.Second)
+	out, status := pollForOutput(context.Background(), mgr, task.ID, reader, pollCeiling)
 	elapsed := time.Since(start)
 
 	if !strings.Contains(out, "done") {
@@ -127,8 +130,8 @@ func TestPollForOutput_ReturnsOnTaskCompletion(t *testing.T) {
 	if status != TaskStatusCompleted {
 		t.Errorf("expected TaskStatusCompleted, got %v", status)
 	}
-	if elapsed > 2*time.Second {
-		t.Errorf("expected early exit on task completion well under 5s, took %v", elapsed)
+	if elapsed > pollCeiling*2/3 {
+		t.Errorf("expected early exit on task completion well under %v, took %v", pollCeiling, elapsed)
 	}
 }
 
@@ -137,13 +140,28 @@ func TestWriteStdinTool_DrivesInteractiveProcess(t *testing.T) {
 	task := startTestHelperTask(t, mgr, "interactive")
 	t.Cleanup(func() { _ = mgr.KillTask(task.ID) })
 
-	// Let the process print its first prompt before we drive it.
-	time.Sleep(200 * time.Millisecond)
+	// Wait for the process to print its first prompt before we drive it. A fixed sleep is not enough: starting the test binary
+	// under the race detector on a loaded CI machine can take longer than any sleep we would dare to put here.
+	ready, err := NewTaskOutputReaderFrom(mgr, task.ID)
+	if err != nil {
+		t.Fatalf("NewTaskOutputReaderFrom: %v", err)
+	}
+	var seen strings.Builder
+	for deadline := time.Now().Add(15 * time.Second); !strings.Contains(seen.String(), "> "); {
+		if time.Now().After(deadline) {
+			t.Fatalf("the helper process never printed its first prompt, got %q", seen.String())
+		}
+		chunk, _ := ready.ReadOutput()
+		seen.WriteString(chunk)
+		time.Sleep(20 * time.Millisecond)
+	}
 
+	// A generous wait_ms, so a slow machine still gets the reply; the assertion below is that the call returns well before it.
+	const waitMs = 5000
 	wsTool := NewWriteStdinTool()
 	start := time.Now()
 	result, err := wsTool.Call(context.Background(), tool.CallInput{
-		Parsed: map[string]any{"task_id": task.ID, "input": "hello"},
+		Parsed: map[string]any{"task_id": task.ID, "input": "hello", "wait_ms": float64(waitMs)},
 	}, nil)
 	elapsed := time.Since(start)
 	if err != nil {
@@ -152,10 +170,9 @@ func TestWriteStdinTool_DrivesInteractiveProcess(t *testing.T) {
 	if !strings.Contains(result.Content, "got:hello") {
 		t.Errorf("expected the process to echo back our input, got:\n%s", result.Content)
 	}
-	// Default wait_ms is 500ms; early-exit on the second "> " prompt should
-	// land well under that once "got:hello" plus the next prompt are printed.
-	if elapsed > 400*time.Millisecond {
-		t.Errorf("expected early exit before the 500ms default wait_ms, took %v", elapsed)
+	// Early exit on the second "> " prompt returns as soon as "got:hello" and the next prompt are printed, long before wait_ms.
+	if elapsed > waitMs*time.Millisecond*8/10 {
+		t.Errorf("expected early exit well before the %dms wait_ms, took %v", waitMs, elapsed)
 	}
 }
 
