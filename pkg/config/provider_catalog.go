@@ -81,6 +81,19 @@ func AvailableProviders() []ProviderInfo {
 	return providers
 }
 
+// AvailableCatalogProviders returns the generic providers of the models.dev catalog, sorted by name: the OpenAI-compatible ones the
+// runtime does not have built in, about 190 of them. They are kept out of AvailableProviders so that a host that lists providers
+// does not suddenly list them all; a host that wants them offers them apart, with a search. A provider that only a downloaded
+// catalog knows has "Unverified" in its description and needs its URL confirmed before a key is sent to it.
+func AvailableCatalogProviders() []ProviderInfo {
+	raw := internalproviders.CatalogProviders()
+	out := make([]ProviderInfo, 0, len(raw))
+	for _, info := range raw {
+		out = append(out, providerInfoFromInternal(sdk.APIProvider(info.Name), info))
+	}
+	return out
+}
+
 // GetProviderInfo returns the catalogue entry of a provider, and false when the provider is unknown.
 func GetProviderInfo(provider sdk.APIProvider) (ProviderInfo, bool) {
 	info, ok := internalproviders.GetProviderInfo(provider)
@@ -149,7 +162,8 @@ func ProviderCredentialEnvVars(provider sdk.APIProvider) []string {
 	case sdk.APIProviderOllama, sdk.APIProviderBedrock, sdk.APIProviderVertex:
 		return nil
 	default:
-		return nil
+		// A generic provider of the models.dev catalog names its own variables.
+		return internalproviders.CatalogCredentialEnvVars(provider)
 	}
 }
 
@@ -264,6 +278,10 @@ func parseProvider(raw string) (sdk.APIProvider, bool) {
 	case "kimi", "moonshot":
 		return sdk.APIProviderKimi, true
 	default:
+		// A generic provider of the models.dev catalog is named by its catalog id ("groq", "siliconflow"...).
+		if id := strings.TrimSpace(strings.ToLower(raw)); internalproviders.IsCatalogProvider(sdk.APIProvider(id)) {
+			return sdk.APIProvider(id), true
+		}
 		return "", false
 	}
 }

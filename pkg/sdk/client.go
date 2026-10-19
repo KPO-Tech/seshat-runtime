@@ -113,6 +113,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		return nil, err
 	}
 
+	initCatalog(config)
 	artifactStore := initArtifactStore(config)
 	browserManager, reaper := initBrowserManager(config, artifactStore)
 	config.BrowserRemoteControlURL = strings.TrimSpace(config.BrowserRemoteControlURL)

@@ -62,6 +62,10 @@ func adapterForProvider(p types.APIProvider) providerAdapter {
 	case types.APIProviderFoundry:
 		return foundryAdapter{}
 	default:
+		// A generic provider of the models.dev catalog speaks the OpenAI chat completions protocol.
+		if IsCatalogProvider(p) {
+			return openAICompatAdapter{}
+		}
 		// anthropic, bedrock, vertex, and any unknown provider use the
 		// Anthropic Messages wire format (matches the prior switch default).
 		return anthropicAdapter{}

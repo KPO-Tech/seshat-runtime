@@ -350,6 +350,14 @@ type ClientConfig struct {
 	// too for a host that wants this field to be the single source of truth.
 	EnableToolSearch bool `json:"enable_tool_search,omitempty"`
 
+	// CatalogCacheDir, when set, is where the models.dev catalog downloaded earlier is read from, so the models and providers it
+	// added are known. Reading it never uses the network. See CatalogProviders and RefreshCatalog.
+	CatalogCacheDir string `json:"catalog_cache_dir,omitempty"`
+
+	// RefreshCatalog downloads the public models.dev catalog into CatalogCacheDir in the background when the cache is older than a
+	// day. Off by default: it is the one call to the network the catalog makes. Needs CatalogCacheDir.
+	RefreshCatalog bool `json:"refresh_catalog,omitempty"`
+
 	// MainAgentTools, when non-empty, limits the tools the main agent sees to
 	// exactly these names (e.g. a host's general-purpose agent with a short,
 	// curated list). Sub-agents started through the agent tools are not

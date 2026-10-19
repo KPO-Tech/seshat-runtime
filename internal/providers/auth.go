@@ -281,6 +281,9 @@ func providerEnvVar(provider types.APIProvider) string {
 	case types.APIProviderOpenCode:
 		return "OPENCODE_API_KEY"
 	default:
+		if env := catalogEnvVar(provider); env != "" {
+			return env
+		}
 		return "API_KEY"
 	}
 }

@@ -287,6 +287,10 @@ func DefaultConfigs() map[types.APIProvider]*Config {
 func GetProviderConfig(provider types.APIProvider) *Config {
 	config, ok := DefaultConfigs()[provider]
 	if !ok {
+		// A generic provider of the models.dev catalog has no default config of its own: its base URL comes from the embedded catalog.
+		if catalogConfig, ok := ConfigForCatalogProvider(provider); ok {
+			return catalogConfig
+		}
 		return nil
 	}
 	// Return an isolated copy so callers can inject keys or overrides safely.
@@ -392,6 +396,11 @@ func (c *Config) GetEndpoint(model string) string {
 		return ""
 
 	default:
+		// A generic provider of the models.dev catalog speaks the OpenAI chat completions protocol, whose base URL is a root
+		// like https://api.example.com/v1.
+		if IsCatalogProvider(c.Provider) {
+			return c.GetBaseURL() + "/chat/completions"
+		}
 		return c.GetBaseURL() + "/v1/messages"
 	}
 }
