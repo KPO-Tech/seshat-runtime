@@ -89,8 +89,8 @@ func (anthropicAdapter) requestEndpoint(c *Client, req types.APIRequest) string 
 }
 
 func (anthropicAdapter) applyAuthHeaders(c *Client, req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("x-api-key", c.apiKey)
+	if key := c.authKey(req.Context()); key != "" {
+		req.Header.Set("x-api-key", key)
 	}
 	req.Header.Set("anthropic-version", "2023-06-01")
 }
@@ -112,8 +112,8 @@ func (anthropicAdapter) createStreamResult(c *Client, ctx context.Context, req t
 type zAiAdapter struct{ openAICompatAdapter }
 
 func (zAiAdapter) applyAuthHeaders(c *Client, req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("x-api-key", c.apiKey)
+	if key := c.authKey(req.Context()); key != "" {
+		req.Header.Set("x-api-key", key)
 	}
 }
 
@@ -152,8 +152,8 @@ func (openAICompatAdapter) requestEndpoint(c *Client, req types.APIRequest) stri
 }
 
 func (openAICompatAdapter) applyAuthHeaders(c *Client, req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if key := c.authKey(req.Context()); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
 	}
 }
 
@@ -184,8 +184,8 @@ func (codexAdapter) requestEndpoint(c *Client, req types.APIRequest) string {
 }
 
 func (codexAdapter) applyAuthHeaders(c *Client, req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if key := c.authKey(req.Context()); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	req.Header.Set("User-Agent", "codex_cli_rs/0.1.0 (Linux; x86_64) xterm")
 	req.Header.Set("originator", "codex_cli_rs")
@@ -232,8 +232,8 @@ func (ollamaAdapter) requestEndpoint(c *Client, req types.APIRequest) string {
 }
 
 func (ollamaAdapter) applyAuthHeaders(c *Client, req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if key := c.authKey(req.Context()); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
 	}
 }
 
@@ -268,8 +268,8 @@ func (geminiAdapter) requestEndpoint(c *Client, req types.APIRequest) string {
 }
 
 func (geminiAdapter) applyAuthHeaders(c *Client, req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	if key := c.authKey(req.Context()); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	req.Header.Set("Content-Type", "application/json")
 }
