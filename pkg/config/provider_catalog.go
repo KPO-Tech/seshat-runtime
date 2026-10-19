@@ -57,12 +57,8 @@ var providerOrder = []sdk.APIProvider{
 	sdk.APIProviderOpenCode,
 	sdk.APIProviderMistral,
 	sdk.APIProviderMiniMax,
-	sdk.APIProviderWorkersAI,
 	sdk.APIProviderKimi,
 	sdk.APIProviderOllama,
-	sdk.APIProviderBedrock,
-	sdk.APIProviderVertex,
-	sdk.APIProviderFoundry,
 }
 
 // AvailableProviders returns the providers the runtime knows, in the order of the catalogue, with their models and setup fields.
@@ -153,13 +149,9 @@ func ProviderCredentialEnvVars(provider sdk.APIProvider) []string {
 		return []string{"MISTRAL_API_KEY"}
 	case sdk.APIProviderMiniMax:
 		return []string{"MINIMAX_API_KEY"}
-	case sdk.APIProviderWorkersAI:
-		return []string{"CLOUDFLARE_API_KEY"}
 	case sdk.APIProviderKimi:
 		return []string{"MOONSHOT_API_KEY", "KIMI_API_KEY"}
-	case sdk.APIProviderFoundry:
-		return []string{"ANTHROPIC_FOUNDRY_API_KEY"}
-	case sdk.APIProviderOllama, sdk.APIProviderBedrock, sdk.APIProviderVertex:
+	case sdk.APIProviderOllama:
 		return nil
 	default:
 		// A generic provider of the models.dev catalog names its own variables.
@@ -175,39 +167,10 @@ func ResolveAPIKey(config Config, provider sdk.APIProvider) string {
 	return strings.TrimSpace(config.APIKey)
 }
 
-// ValidateProviderSetup checks that config holds what provider needs: an API key for most providers, a region for Bedrock, a project id and a region for Vertex, a key and an account id for Workers AI, a key and a base URL or resource id for Foundry, and nothing for Ollama. The error names what is missing.
+// ValidateProviderSetup checks that config holds what provider needs: an API key for most providers, the environment variables that complete the base URL of a generic catalog provider (the account id of Cloudflare Workers AI), and nothing for Ollama. The error names what is missing.
 func ValidateProviderSetup(config Config, provider sdk.APIProvider) error {
 	switch provider {
 	case sdk.APIProviderOllama:
-		return nil
-	case sdk.APIProviderBedrock:
-		if effectiveProviderRegion(config, provider) == "" {
-			return fmt.Errorf("provider %s requires AWS region", provider)
-		}
-		return nil
-	case sdk.APIProviderVertex:
-		if effectiveProviderProjectID(config, provider) == "" {
-			return fmt.Errorf("provider %s requires project id", provider)
-		}
-		if effectiveProviderRegion(config, provider) == "" {
-			return fmt.Errorf("provider %s requires region", provider)
-		}
-		return nil
-	case sdk.APIProviderWorkersAI:
-		if ResolveAPIKey(config, provider) == "" {
-			return fmt.Errorf("provider %s requires API key", provider)
-		}
-		if effectiveProviderProjectID(config, provider) == "" {
-			return fmt.Errorf("provider %s requires account id", provider)
-		}
-		return nil
-	case sdk.APIProviderFoundry:
-		if ResolveAPIKey(config, provider) == "" {
-			return fmt.Errorf("provider %s requires API key", provider)
-		}
-		if effectiveProviderBaseURL(config, provider) == "" && effectiveProviderResource(config, provider) == "" {
-			return fmt.Errorf("provider %s requires base URL or resource id", provider)
-		}
 		return nil
 	default:
 		if len(ProviderCredentialEnvVars(provider)) == 0 {
@@ -216,31 +179,16 @@ func ValidateProviderSetup(config Config, provider sdk.APIProvider) error {
 		if ResolveAPIKey(config, provider) == "" {
 			return fmt.Errorf("provider %s requires API key", provider)
 		}
+		if missing := internalproviders.CatalogURLVariables(provider); len(missing) > 0 {
+			return fmt.Errorf("provider %s requires %s", provider, strings.Join(missing, ", "))
+		}
 		return nil
 	}
 }
 
-// ApplyRuntimeEnv exports parts of config to the environment: the runtime root and the settings of the selected provider that its client reads there (the region of Bedrock, the project and region of Vertex, the resource of Foundry, the account of Workers AI). Blank values are not exported.
+// ApplyRuntimeEnv exports the runtime root of config to the environment, where the runtime reads it. A blank value is not exported.
 func ApplyRuntimeEnv(config Config) {
 	setEnvIfPresent(runtimepath.EnvRuntimeRoot, EffectiveRuntimeRoot(config))
-
-	provider := preferredProvider(config)
-	if provider == "" {
-		return
-	}
-
-	switch provider {
-	case sdk.APIProviderBedrock:
-		setEnvIfPresent("AWS_REGION", config.ProviderRegion)
-	case sdk.APIProviderVertex:
-		setEnvIfPresent("ANTHROPIC_VERTEX_PROJECT_ID", config.ProviderProjectID)
-		setEnvIfPresent("CLOUD_ML_REGION", config.ProviderRegion)
-	case sdk.APIProviderFoundry:
-		setEnvIfPresent("ANTHROPIC_FOUNDRY_BASE_URL", config.ProviderBaseURL)
-		setEnvIfPresent("ANTHROPIC_FOUNDRY_RESOURCE", config.ProviderResource)
-	case sdk.APIProviderWorkersAI:
-		setEnvIfPresent("CLOUDFLARE_ACCOUNT_ID", config.ProviderProjectID)
-	}
 }
 
 func parseProvider(raw string) (sdk.APIProvider, bool) {
@@ -253,12 +201,6 @@ func parseProvider(raw string) (sdk.APIProvider, bool) {
 		return sdk.APIProviderCodex, true
 	case "ollama":
 		return sdk.APIProviderOllama, true
-	case "bedrock", "aws":
-		return sdk.APIProviderBedrock, true
-	case "vertex", "gcp", "google-cloud":
-		return sdk.APIProviderVertex, true
-	case "foundry", "azure":
-		return sdk.APIProviderFoundry, true
 	case "gemini", "google-ai":
 		return sdk.APIProviderGemini, true
 	case "z-ai", "z.ai", "zai":
@@ -273,8 +215,6 @@ func parseProvider(raw string) (sdk.APIProvider, bool) {
 		return sdk.APIProviderMistral, true
 	case "minimax":
 		return sdk.APIProviderMiniMax, true
-	case "workers-ai", "workers", "cloudflare":
-		return sdk.APIProviderWorkersAI, true
 	case "kimi", "moonshot":
 		return sdk.APIProviderKimi, true
 	default:
@@ -331,60 +271,12 @@ func setupFieldsForProvider(provider sdk.APIProvider) []ProviderSetupField {
 	}
 
 	switch provider {
-	case sdk.APIProviderBedrock:
-		fields = append(fields, ProviderSetupField{
-			Key:         "provider_region",
-			Label:       "AWS region",
-			Description: "Example: us-east-1",
-			EnvVar:      "AWS_REGION",
-			Required:    true,
-		})
-	case sdk.APIProviderVertex:
-		fields = append(fields,
-			ProviderSetupField{
-				Key:         "provider_project_id",
-				Label:       "Vertex project id",
-				Description: "GCP project used by Anthropic Vertex",
-				EnvVar:      "ANTHROPIC_VERTEX_PROJECT_ID",
-				Required:    true,
-			},
-			ProviderSetupField{
-				Key:         "provider_region",
-				Label:       "Vertex region",
-				Description: "Example: us-east5",
-				EnvVar:      "CLOUD_ML_REGION",
-				Required:    true,
-			},
-		)
 	case sdk.APIProviderOllama:
 		fields = append(fields, ProviderSetupField{
 			Key:         "provider_base_url",
 			Label:       "Ollama endpoint",
 			Description: "Leave blank for http://localhost:11434",
 			EnvVar:      "OLLAMA_HOST",
-		})
-	case sdk.APIProviderFoundry:
-		fields = append(fields,
-			ProviderSetupField{
-				Key:         "provider_base_url",
-				Label:       "Foundry base URL",
-				Description: "Optional if you provide a Foundry resource id",
-				EnvVar:      "ANTHROPIC_FOUNDRY_BASE_URL",
-			},
-			ProviderSetupField{
-				Key:         "provider_resource",
-				Label:       "Foundry resource id",
-				Description: "Optional if you provide a Foundry base URL",
-				EnvVar:      "ANTHROPIC_FOUNDRY_RESOURCE",
-			},
-		)
-	case sdk.APIProviderWorkersAI:
-		fields = append(fields, ProviderSetupField{
-			Key:         "provider_project_id",
-			Label:       "Cloudflare account id",
-			Description: "Found on your Cloudflare dashboard; the API is scoped under this account",
-			EnvVar:      "CLOUDFLARE_ACCOUNT_ID",
-			Required:    true,
 		})
 	}
 
@@ -395,14 +287,6 @@ func setupHintForProvider(provider sdk.APIProvider) string {
 	switch provider {
 	case sdk.APIProviderOllama:
 		return "No API key required. Leave endpoint blank to use http://localhost:11434."
-	case sdk.APIProviderBedrock:
-		return "Requires AWS credentials in your environment or profile in addition to the region."
-	case sdk.APIProviderVertex:
-		return "Requires Google Cloud application credentials in addition to project and region."
-	case sdk.APIProviderFoundry:
-		return "Set at least one of base URL or resource id for Azure Foundry."
-	case sdk.APIProviderWorkersAI:
-		return "Requires a Cloudflare account id in addition to the API token."
 	default:
 		return ""
 	}
@@ -415,54 +299,6 @@ func resolveAPIKeyFromEnv(provider sdk.APIProvider) string {
 		}
 	}
 	return ""
-}
-
-func effectiveProviderRegion(config Config, provider sdk.APIProvider) string {
-	if value := strings.TrimSpace(config.ProviderRegion); value != "" {
-		return value
-	}
-	switch provider {
-	case sdk.APIProviderBedrock:
-		return strings.TrimSpace(os.Getenv("AWS_REGION"))
-	case sdk.APIProviderVertex:
-		return strings.TrimSpace(os.Getenv("CLOUD_ML_REGION"))
-	default:
-		return ""
-	}
-}
-
-func effectiveProviderProjectID(config Config, provider sdk.APIProvider) string {
-	if value := strings.TrimSpace(config.ProviderProjectID); value != "" {
-		return value
-	}
-	switch provider {
-	case sdk.APIProviderVertex:
-		return strings.TrimSpace(os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID"))
-	case sdk.APIProviderWorkersAI:
-		return strings.TrimSpace(os.Getenv("CLOUDFLARE_ACCOUNT_ID"))
-	default:
-		return ""
-	}
-}
-
-func effectiveProviderBaseURL(config Config, provider sdk.APIProvider) string {
-	if provider != sdk.APIProviderFoundry {
-		return ""
-	}
-	if value := strings.TrimSpace(config.ProviderBaseURL); value != "" {
-		return value
-	}
-	return strings.TrimSpace(os.Getenv("ANTHROPIC_FOUNDRY_BASE_URL"))
-}
-
-func effectiveProviderResource(config Config, provider sdk.APIProvider) string {
-	if provider != sdk.APIProviderFoundry {
-		return ""
-	}
-	if value := strings.TrimSpace(config.ProviderResource); value != "" {
-		return value
-	}
-	return strings.TrimSpace(os.Getenv("ANTHROPIC_FOUNDRY_RESOURCE"))
 }
 
 func setEnvIfPresent(key, value string) {

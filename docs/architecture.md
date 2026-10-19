@@ -405,7 +405,7 @@ The `providers.Client` supports 11 providers and a fallback chain:
                       ▼
                 ┌─────────────────────────────────────────────────────┐
                 │  primaryClient.CreateMessageStreamResultWithCallback│
-                │  (Anthropic / OpenAI / Bedrock / Vertex / Foundry…) │
+                │  (Anthropic / OpenAI / Gemini / OpenAI-compatible…) │
                 └──────────────────────┬──────────────────────────────┘
                                       │ error?
                                       ▼
@@ -468,15 +468,11 @@ When the circuit is Open, requests fail fast without hitting the provider. After
 |---|---|---|
 | `anthropic` | API key | Direct Messages API, prompt caching |
 | `openai` | API key | GPT-4o, o1, o3 |
-| `bedrock` | AWS credentials | Claude via Amazon |
-| `vertex` | GCP service account | Claude via Google Cloud |
-| `foundry` | Azure credentials | Claude via Azure |
 | `gemini` | API key | Google Gemini |
 | `ollama` | none | Local inference |
 | `openrouter` | API key | Unified multi-provider |
 | `zai` | API key | GLM / Z.ai |
 | `minimax` | API key | MiniMax |
-| `workers-ai` | Cloudflare token | Cloudflare Workers AI |
 
 ---
 

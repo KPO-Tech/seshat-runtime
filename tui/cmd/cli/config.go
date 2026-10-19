@@ -22,9 +22,6 @@ const (
 	credKeyModel      = "model"
 	credKeyAPIKey     = "api_key"
 	credKeyBaseURL    = "provider_base_url"
-	credKeyRegion     = "provider_region"
-	credKeyProjectID  = "provider_project_id"
-	credKeyResource   = "provider_resource"
 	credKeyTavily     = "TAVILY_API_KEY"
 	credKeyExa        = "EXA_API_KEY"
 	credKeyJina       = "JINA_API_KEY"
@@ -39,10 +36,7 @@ func runConfig(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	providerFlag := flags.String("provider", "", "provider name")
 	modelFlag := flags.String("model", "", "model identifier")
 	apiKeyFlag := flags.String("api-key", "", "provider API key")
-	regionFlag := flags.String("region", "", "cloud region")
-	projectIDFlag := flags.String("project-id", "", "project ID")
 	baseURLFlag := flags.String("base-url", "", "custom base URL")
-	resourceFlag := flags.String("resource", "", "provider resource")
 	cwdFlag := flags.String("cwd", "", "default working directory")
 	dbFlag := flags.String("db", "", "SQLite database path")
 	printFlag := flags.Bool("print", false, "print current config and exit")
@@ -127,7 +121,7 @@ func runConfig(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 
 	// ── Step 3: provider credential fields ───────────────────────────────────
 	for _, field := range providerInfo.SetupFields {
-		override := fieldOverride(field.Key, *apiKeyFlag, *regionFlag, *projectIDFlag, *baseURLFlag, *resourceFlag)
+		override := fieldOverride(field.Key, *apiKeyFlag, *baseURLFlag)
 		if override != "" {
 			if err := saveCredential(database, field.Key, override); err != nil {
 				return err
@@ -481,15 +475,6 @@ func loadCredsIntoConfig(database *db.DB, config *engineconfig.Config) {
 	if v := loadCredScoped(credKeyBaseURL, activeProvider); v != "" {
 		config.ProviderBaseURL = v
 	}
-	if v := loadCredScoped(credKeyRegion, activeProvider); v != "" {
-		config.ProviderRegion = v
-	}
-	if v := loadCredScoped(credKeyProjectID, activeProvider); v != "" {
-		config.ProviderProjectID = v
-	}
-	if v := loadCredScoped(credKeyResource, activeProvider); v != "" {
-		config.ProviderResource = v
-	}
 	config.TavilyAPIKey = loadCred(credKeyTavily)
 	config.ExaAPIKey = loadCred(credKeyExa)
 	config.JinaAPIKey = loadCred(credKeyJina)
@@ -511,9 +496,6 @@ func stripRuntimeSecrets(config engineconfig.Config) engineconfig.Config {
 	// Strip secrets — stored in the DB, never in YAML.
 	config.APIKey = ""
 	config.ProviderBaseURL = ""
-	config.ProviderRegion = ""
-	config.ProviderProjectID = ""
-	config.ProviderResource = ""
 	config.TavilyAPIKey = ""
 	config.ExaAPIKey = ""
 	config.JinaAPIKey = ""
@@ -526,18 +508,12 @@ func stripRuntimeSecrets(config engineconfig.Config) engineconfig.Config {
 
 // ─── Field mapping helpers ────────────────────────────────────────────────────
 
-func fieldOverride(key, apiKey, region, projectID, baseURL, resource string) string {
+func fieldOverride(key, apiKey, baseURL string) string {
 	switch key {
 	case "api_key":
 		return strings.TrimSpace(apiKey)
-	case "provider_region":
-		return strings.TrimSpace(region)
-	case "provider_project_id":
-		return strings.TrimSpace(projectID)
 	case "provider_base_url":
 		return strings.TrimSpace(baseURL)
-	case "provider_resource":
-		return strings.TrimSpace(resource)
 	default:
 		return ""
 	}
@@ -547,14 +523,8 @@ func currentFieldValue(config engineconfig.Config, key string) string {
 	switch key {
 	case "api_key":
 		return strings.TrimSpace(config.APIKey)
-	case "provider_region":
-		return strings.TrimSpace(config.ProviderRegion)
-	case "provider_project_id":
-		return strings.TrimSpace(config.ProviderProjectID)
 	case "provider_base_url":
 		return strings.TrimSpace(config.ProviderBaseURL)
-	case "provider_resource":
-		return strings.TrimSpace(config.ProviderResource)
 	default:
 		return ""
 	}
@@ -564,14 +534,8 @@ func applyField(config *engineconfig.Config, key, value string) {
 	switch key {
 	case "api_key":
 		config.APIKey = value
-	case "provider_region":
-		config.ProviderRegion = value
-	case "provider_project_id":
-		config.ProviderProjectID = value
 	case "provider_base_url":
 		config.ProviderBaseURL = value
-	case "provider_resource":
-		config.ProviderResource = value
 	}
 }
 

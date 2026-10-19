@@ -138,10 +138,8 @@ const (
 
 	APIProviderAnthropic = types.APIProviderAnthropic
 
-	APIProviderBedrock    = types.APIProviderBedrock
 	APIProviderCodex      = types.APIProviderCodex
 	APIProviderDeepSeek   = types.APIProviderDeepSeek
-	APIProviderFoundry    = types.APIProviderFoundry
 	APIProviderGemini     = types.APIProviderGemini
 	APIProviderMistral    = types.APIProviderMistral
 	APIProviderMiniMax    = types.APIProviderMiniMax
@@ -149,8 +147,6 @@ const (
 	APIProviderOpenCode   = types.APIProviderOpenCode
 	APIProviderOpenAI     = types.APIProviderOpenAI
 	APIProviderOpenRouter = types.APIProviderOpenRouter
-	APIProviderVertex     = types.APIProviderVertex
-	APIProviderWorkersAI  = types.APIProviderWorkersAI
 	APIProviderZAi        = types.APIProviderZAi
 	APIProviderKimi       = types.APIProviderKimi
 

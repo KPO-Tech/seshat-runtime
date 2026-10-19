@@ -1,6 +1,5 @@
 {
   "_comment": "Extra TUI display models beyond the SDK catalog in internal/providers/registry.go. The SDK catalog now carries up to 10 current models per provider, so this file is intentionally empty; add entries here only for display-only models the SDK should not know about (fields: id, name, context_window, default_max_tokens, can_reason, supports_images). Ollama stays empty — models come from live /api/tags detection at runtime. The first model of the merged list is the provider default, the last one the small model.",
-
   "anthropic": [],
   "openai": [],
   "gemini": [],
@@ -12,9 +11,5 @@
   "minimax": [],
   "codex": [],
   "opencode": [],
-  "bedrock": [],
-  "vertex": [],
-  "foundry": [],
-  "workers-ai": [],
   "ollama": []
 }

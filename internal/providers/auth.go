@@ -266,10 +266,6 @@ func providerEnvVar(provider types.APIProvider) string {
 		return "OPENROUTER_API_KEY"
 	case types.APIProviderMiniMax:
 		return "MINIMAX_API_KEY"
-	case types.APIProviderWorkersAI:
-		return "CLOUDFLARE_API_KEY"
-	case types.APIProviderFoundry:
-		return "ANTHROPIC_FOUNDRY_API_KEY"
 	case types.APIProviderMistral:
 		return "MISTRAL_API_KEY"
 	case types.APIProviderKimi:
