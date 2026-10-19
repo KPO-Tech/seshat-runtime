@@ -175,7 +175,6 @@ func TestBuiltInProviderListsGainTheCatalogModelsWithoutLosingTheirEnds(t *testi
 		t.Fatal("the curated Anthropic list is expected to have models")
 	}
 	large, small := before.Models[0].Identifier, before.Models[len(before.Models)-1].Identifier
-	curatedDescription := before.Models[0].Description
 
 	fake := &catalog.Catalog{Source: "test", Providers: map[string]catalog.Provider{
 		"anthropic": {ID: "anthropic", Name: "Anthropic", Models: map[string]catalog.Model{
@@ -190,8 +189,8 @@ func TestBuiltInProviderListsGainTheCatalogModelsWithoutLosingTheirEnds(t *testi
 	if got.Models[0].Identifier != large || got.Models[len(got.Models)-1].Identifier != small {
 		t.Fatalf("the ends of the list moved: first %q last %q, want %q and %q (they are the default large and small models)", got.Models[0].Identifier, got.Models[len(got.Models)-1].Identifier, large, small)
 	}
-	if got.Models[0].Description != curatedDescription || got.Models[0].ContextWindow == 5 {
-		t.Fatalf("a model we list by hand must not be replaced by the catalog's data: %+v", got.Models[0])
+	if got.Models[0].Description != "Overridden name" || got.Models[0].ContextWindow != 5 {
+		t.Fatalf("a default model takes its data from the catalog: %+v", got.Models[0])
 	}
 	var future, retired bool
 	for _, m := range got.Models {
