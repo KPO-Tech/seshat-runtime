@@ -243,7 +243,7 @@ func CatalogCredentialEnvVars(p types.APIProvider) []string {
 }
 
 // unsuitableMarkers are parts of a model id that mark a model the chat client cannot use: speech, realtime and image models, embeddings.
-var unsuitableMarkers = []string{"realtime", "audio", "transcribe", "tts", "image", "embed", "moderation", "search-preview"}
+var unsuitableMarkers = []string{"realtime", "audio", "transcribe", "tts", "image", "embed", "moderation", "search-preview", "deep-research", "computer-use"}
 
 // datedSnapshot matches the date a provider appends to a model id to pin a version (claude-opus-4-5-20251101, gpt-4o-2024-08-06).
 var datedSnapshot = regexp.MustCompile(`-(\d{8}|\d{4}-\d{2}-\d{2})$`)
@@ -269,9 +269,8 @@ func unsuitableForChat(provider types.APIProvider, id string, all map[string]cat
 	return false
 }
 
-// maxCatalogModelsPerProvider bounds how many catalog models are added to the list of one built-in provider: the newest ones. An
-// aggregator such as OpenRouter lists hundreds.
-const maxCatalogModelsPerProvider = 40
+// recentModelsConsidered is how many of the newest models are looked at to pick the default large one.
+const recentModelsConsidered = 10
 
 // catalogExtended names, for each built-in provider whose model list the catalog extends, its id in the catalog. Codex is not in the
 // catalog (it is a ChatGPT subscription route) and Ollama lists the models installed on the machine.
@@ -301,7 +300,8 @@ func AllProvidersInfo() map[types.APIProvider]ProviderInfo {
 	return out
 }
 
-// extendWithCatalog adds the catalog's models to the curated provider list.
+// extendWithCatalog gives each built-in provider the models of the catalog. The registry names none of them: the list is the
+// catalog's, newest first, with the default large model first and the default small model last (see rankModels).
 func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.Catalog) map[types.APIProvider]ProviderInfo {
 	out := make(map[types.APIProvider]ProviderInfo, len(curated))
 	for k, v := range curated {
@@ -310,37 +310,81 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 	for provider, catalogID := range catalogExtended() {
 		info, ok := out[provider]
 		cp, found := cat.Provider(catalogID)
-		if !ok || !found || len(info.Models) == 0 {
+		if !ok || !found {
 			continue
 		}
-		// The two models the registry names (default large first, default small last) take their data from the catalog.
-		stubs := append([]ModelInfo(nil), info.Models...)
-		have := make(map[string]bool, len(stubs))
-		for i, st := range stubs {
-			have[st.Identifier] = true
-			if m, ok := cp.Models[st.Identifier]; ok {
-				stubs[i] = catalogModelInfo(provider, info, m)
-			}
-		}
-		var added []ModelInfo
+		var eligible []catalog.Model
 		for _, m := range cp.SortedModels() {
-			if len(added) == maxCatalogModelsPerProvider {
-				break
-			}
-			if have[m.ID] || m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(provider, m.ID, cp.Models) {
+			if m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(provider, m.ID, cp.Models) {
 				continue
 			}
-			added = append(added, catalogModelInfo(provider, info, m))
+			eligible = append(eligible, m)
 		}
-		// Keep the first model (default large) first and the last (default small) last.
-		models := make([]ModelInfo, 0, len(info.Models)+len(added))
-		models = append(models, stubs[:len(stubs)-1]...)
-		models = append(models, added...)
-		models = append(models, stubs[len(stubs)-1])
+		if len(eligible) == 0 {
+			continue
+		}
+		models := make([]ModelInfo, 0, len(eligible))
+		for _, m := range rankModels(eligible) {
+			models = append(models, catalogModelInfo(provider, info, m))
+		}
 		info.Models = models
 		out[provider] = info
 	}
 	return out
+}
+
+// rankModels orders the models of a provider (given newest first): the default large model first, the default small one last,
+// the others between them, newest first. Nothing is hand-written: the large model is the most expensive of the newest ones (price
+// follows capability), the small one the cheapest. A provider whose models have no price gets its newest model as the large one and
+// its oldest as the small one.
+func rankModels(models []catalog.Model) []catalog.Model {
+	if len(models) < 2 {
+		return models
+	}
+	// A model still in alpha or beta is listed but is not picked as a default.
+	var stable []int
+	for i, m := range models {
+		if m.Status == "" {
+			stable = append(stable, i)
+		}
+	}
+	if len(stable) == 0 {
+		for i := range models {
+			stable = append(stable, i)
+		}
+	}
+	if len(stable) > recentModelsConsidered {
+		stable = stable[:recentModelsConsidered]
+	}
+	large := stable[0]
+	for _, i := range stable {
+		if models[i].Cost.Output > models[large].Cost.Output {
+			large = i
+		}
+	}
+	small := -1
+	for i, m := range models {
+		if i == large || m.Cost.Input <= 0 || m.Status != "" {
+			continue
+		}
+		if small < 0 || m.Cost.Input < models[small].Cost.Input {
+			small = i
+		}
+	}
+	if small < 0 {
+		small = len(models) - 1
+		if small == large {
+			small = 0
+		}
+	}
+	out := make([]catalog.Model, 0, len(models))
+	out = append(out, models[large])
+	for i, m := range models {
+		if i != large && i != small {
+			out = append(out, m)
+		}
+	}
+	return append(out, models[small])
 }
 
 // catalogModelInfo is the registry entry of a catalog model.

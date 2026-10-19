@@ -2,10 +2,9 @@ package config
 
 import "testing"
 
-// TestProvidersKeepRegistryOrderAndDefaults guards the contract of the model
-// registry: the first model of a provider is its default, the last its small
-// model. The catalog view in pkg/config sorts models by name, and the dialog used
-// to take its defaults from that sorted list.
+// TestProvidersKeepRegistryOrderAndDefaults guards the order of the model lists: the first model of a provider is its default, the
+// last its small model. The catalog view in pkg/config sorts models by name, and the dialog used to take its defaults from that
+// sorted list.
 func TestProvidersKeepRegistryOrderAndDefaults(t *testing.T) {
 	list, err := Providers(nil)
 	if err != nil {
@@ -24,20 +23,26 @@ func TestProvidersKeepRegistryOrderAndDefaults(t *testing.T) {
 		small[string(p.ID)] = p.DefaultSmallModelID
 	}
 
-	want := map[string][2]string{
-		"anthropic": {"claude-sonnet-5-5", "claude-haiku-5-5"},
-		"openai":    {"gpt-6.1-sol", "gpt-6-luna"},
-		"z-ai":      {"glm-5.3", "glm-5.3-flash"},
-		"gemini":    {"gemini-4-argon", "gemini-3.5-flash-lite"},
-		// Two models only: the same one for both, not the dearer one as the small model.
-		"deepseek": {"deepseek-flash", "deepseek-flash"},
-	}
-	for id, w := range want {
-		if large[id] != w[0] || small[id] != w[1] {
-			t.Errorf("%s defaults = large %q small %q, want %q / %q", id, large[id], small[id], w[0], w[1])
+	// The registry names no model: the lists are the catalog's. The contract is structural: the default large model is the first
+	// of the list, the small one is in the list, and a provider with two models uses the same for both.
+	for _, id := range []string{"anthropic", "openai", "z-ai", "gemini", "deepseek"} {
+		ids := byID[id]
+		if len(ids) == 0 {
+			t.Errorf("%s has no model", id)
+			continue
 		}
-		if ids := byID[id]; len(ids) == 0 || ids[0] != w[0] {
-			t.Errorf("%s list must start with its default %q, got %v", id, w[0], ids)
+		if large[id] != ids[0] {
+			t.Errorf("%s: default large model %q is not the first of the list %v", id, large[id], ids)
+		}
+		found := false
+		for _, m := range ids {
+			found = found || m == small[id]
+		}
+		if !found {
+			t.Errorf("%s: default small model %q is not in the list", id, small[id])
+		}
+		if len(ids) <= 2 && small[id] != large[id] {
+			t.Errorf("%s: with %d models the same one serves both, got %q / %q", id, len(ids), large[id], small[id])
 		}
 	}
 }
