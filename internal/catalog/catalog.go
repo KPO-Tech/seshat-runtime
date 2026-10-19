@@ -17,12 +17,17 @@ import (
 	"strings"
 )
 
-// Cost is the price of a model in US dollars per million tokens. A zero value means the price is unknown.
+// Cost is the price of a model in US dollars per million tokens. A zero value means the price is unknown (or not billed apart).
 type Cost struct {
 	Input      float64
 	Output     float64
 	CacheRead  float64
 	CacheWrite float64
+	// Reasoning is the price of reasoning tokens when they are billed apart from the output.
+	Reasoning float64
+	// InputAudio and OutputAudio are the prices of audio tokens when they are billed apart.
+	InputAudio  float64
+	OutputAudio float64
 }
 
 // Model describes one model of a provider.
@@ -30,15 +35,34 @@ type Model struct {
 	ID            string
 	Name          string
 	ContextWindow int
+	// MaxInput is the limit on the prompt alone, 0 when the catalog gives none. When it is below the context window the prompt
+	// cannot use the whole window (the rest is kept for the output).
+	MaxInput int
 	// MaxOutput is the output limit, 0 when unknown. See OutputIsKnown.
 	MaxOutput int
 	// InputModalities lists what the model accepts besides text: "image", "audio", "video", "pdf".
 	InputModalities []string
 	Reasoning       bool
-	Cost            Cost
+	// Attachment is true when the model accepts file attachments.
+	Attachment bool
+	// StructuredOutput is true when the model supports JSON-schema constrained output.
+	StructuredOutput bool
+	// NoTemperature is true when the catalog says the model does not support the temperature parameter (many reasoning models reject it).
+	// A model the catalog says nothing about is assumed to support it.
+	NoTemperature bool
+	// Interleaved says the model interleaves reasoning with its answer and how: the name of the response field that carries the reasoning
+	// ("reasoning_content" or "reasoning_details"), "true" when the catalog gives no field, "" when it does not interleave.
+	Interleaved string
+	// OpenWeights is true when the trained weights are publicly available.
+	OpenWeights bool
+	// Knowledge is the knowledge cutoff, "YYYY-MM" or "YYYY-MM-DD", "" when unknown.
+	Knowledge string
+	Cost      Cost
 	// Status is "", "alpha", "beta" or "deprecated".
 	Status      string
 	ReleaseDate string
+	// LastUpdated is the date of the last update of the model's entry.
+	LastUpdated string
 }
 
 // Vision reports whether the model accepts images.

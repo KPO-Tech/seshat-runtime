@@ -88,9 +88,9 @@ func catalogModelMetadata(provider string, m catalog.Model) model.Metadata {
 		ID:                 m.ID,
 		Provider:           provider,
 		Description:        m.Name,
-		ContextWindow:      model.ContextWindow{MaxTokens: m.ContextWindow, MaxOutputTokens: maxOutput},
+		ContextWindow:      model.ContextWindow{MaxTokens: m.ContextWindow, MaxOutputTokens: maxOutput, MaxInputTokens: m.MaxInput},
 		DefaultTemperature: 1.0,
-		Capabilities:       model.Capabilities{Vision: m.Vision(), Audio: m.Audio(), FunctionCalling: true, Streaming: true, PromptCaching: m.Cost.CacheRead > 0},
+		Capabilities:       model.Capabilities{Vision: m.Vision(), Audio: m.Audio(), FunctionCalling: true, Streaming: true, PromptCaching: m.Cost.CacheRead > 0, StructuredOutput: m.StructuredOutput, NoTemperature: m.NoTemperature},
 		Pricing:            model.Pricing{InputPerMTok: m.Cost.Input, OutputPerMTok: m.Cost.Output, CacheReadPerMTok: m.Cost.CacheRead, CacheWritePerMTok: m.Cost.CacheWrite},
 	}
 }
@@ -350,4 +350,14 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 		out[provider] = info
 	}
 	return out
+}
+
+// sendsTemperature reports whether the request's temperature goes into the body: the request sets one and the catalog does not say
+// the model rejects it (many reasoning models answer 400 to a temperature).
+func sendsTemperature(req types.APIRequest) bool {
+	if req.Temperature == nil {
+		return false
+	}
+	meta, ok := model.Global.Lookup(string(req.Model.Provider), req.Model.Model)
+	return !ok || !meta.Capabilities.NoTemperature
 }

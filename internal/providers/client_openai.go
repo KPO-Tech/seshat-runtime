@@ -28,7 +28,7 @@ func (c *Client) buildOpenAIRequestBody(req types.APIRequest) (io.Reader, error)
 	if len(req.Tools) > 0 {
 		body["tools"] = openAITools(req.Tools)
 	}
-	if req.Temperature != nil {
+	if sendsTemperature(req) {
 		body["temperature"] = *req.Temperature
 	}
 	if req.TopP != nil {
@@ -229,15 +229,45 @@ func openAITools(tools []types.APIToolDefinition) []map[string]any {
 
 // --- Response decoding ---
 
+// openAIReasoning holds the places OpenAI-compatible servers put a model's reasoning: reasoning_content (DeepSeek, GLM, Qwen...),
+// reasoning (OpenRouter, vLLM) and reasoning_details (OpenRouter's structured form). The models.dev catalog names the field
+// per model in "interleaved"; reading all three means a provider that changes its field keeps working.
+type openAIReasoning struct {
+	ReasoningContent string `json:"reasoning_content"`
+	Reasoning        string `json:"reasoning"`
+	ReasoningDetails []struct {
+		Text    string `json:"text"`
+		Summary string `json:"summary"`
+	} `json:"reasoning_details"`
+}
+
+// reasoningText returns the reasoning of a message or delta, whichever field carried it.
+func (r openAIReasoning) reasoningText() string {
+	if r.ReasoningContent != "" {
+		return r.ReasoningContent
+	}
+	if r.Reasoning != "" {
+		return r.Reasoning
+	}
+	var b strings.Builder
+	for _, d := range r.ReasoningDetails {
+		b.WriteString(d.Text)
+		if d.Text == "" {
+			b.WriteString(d.Summary)
+		}
+	}
+	return b.String()
+}
+
 func decodeOpenAIResponse(body io.Reader, model types.ModelIdentifier) (types.APIResponse, error) {
 	var resp struct {
 		ID      string `json:"id"`
 		Choices []struct {
 			FinishReason string `json:"finish_reason"`
 			Message      struct {
-				Content          string `json:"content"`
-				ReasoningContent string `json:"reasoning_content"`
-				ToolCalls        []struct {
+				Content string `json:"content"`
+				openAIReasoning
+				ToolCalls []struct {
 					ID       string `json:"id"`
 					Type     string `json:"type"`
 					Function struct {
@@ -261,9 +291,9 @@ func decodeOpenAIResponse(body io.Reader, model types.ModelIdentifier) (types.AP
 func canonicalResponseFromOpenAIChoice(responseID string, model types.ModelIdentifier, choices []struct {
 	FinishReason string `json:"finish_reason"`
 	Message      struct {
-		Content          string `json:"content"`
-		ReasoningContent string `json:"reasoning_content"`
-		ToolCalls        []struct {
+		Content string `json:"content"`
+		openAIReasoning
+		ToolCalls []struct {
 			ID       string `json:"id"`
 			Type     string `json:"type"`
 			Function struct {
@@ -277,8 +307,8 @@ func canonicalResponseFromOpenAIChoice(responseID string, model types.ModelIdent
 	stopReason := types.StopReasonEndTurn
 	if len(choices) > 0 {
 		choice := choices[0]
-		if choice.Message.ReasoningContent != "" {
-			content = append(content, types.ThinkingContent{Thinking: choice.Message.ReasoningContent})
+		if thinking := choice.Message.reasoningText(); thinking != "" {
+			content = append(content, types.ThinkingContent{Thinking: thinking})
 		}
 		if choice.Message.Content != "" {
 			content = append(content, types.TextContent{Text: choice.Message.Content})
@@ -410,9 +440,9 @@ func parseOpenAISSEStream(ctx context.Context, body io.Reader, model types.Model
 				Choices []struct {
 					Delta struct {
 						// Content can be a string or an empty array (Mistral tool-call chunks).
-						Content          json.RawMessage `json:"content"`
-						ReasoningContent string          `json:"reasoning_content"`
-						ToolCalls        []struct {
+						Content json.RawMessage `json:"content"`
+						openAIReasoning
+						ToolCalls []struct {
 							Index    int    `json:"index"`
 							ID       string `json:"id"`
 							Type     string `json:"type"`
@@ -451,11 +481,11 @@ func parseOpenAISSEStream(ctx context.Context, body io.Reader, model types.Model
 				)
 			}
 			for _, choice := range chunk.Choices {
-				if choice.Delta.ReasoningContent != "" {
-					thinking.WriteString(choice.Delta.ReasoningContent)
+				if delta := choice.Delta.reasoningText(); delta != "" {
+					thinking.WriteString(delta)
 					streamChunk := types.APIResponseChunk{
 						Type:      types.APIChunkTypeContentBlockDelta,
-						Delta:     choice.Delta.ReasoningContent,
+						Delta:     delta,
 						DeltaType: "thinking_delta",
 					}
 					emitStreamChunk(onChunk, streamChunk)

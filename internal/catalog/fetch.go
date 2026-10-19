@@ -30,11 +30,21 @@ type fullProvider struct {
 }
 
 type fullModel struct {
-	Name      string `json:"name"`
-	Reasoning bool   `json:"reasoning"`
-	ToolCall  bool   `json:"tool_call"`
-	Limit     struct {
+	Name             string `json:"name"`
+	Reasoning        bool   `json:"reasoning"`
+	ToolCall         bool   `json:"tool_call"`
+	Attachment       bool   `json:"attachment"`
+	StructuredOutput bool   `json:"structured_output"`
+	// Temperature is a pointer: absent means the catalog does not say.
+	Temperature *bool `json:"temperature"`
+	// Interleaved is true, false, or an object {"field": "reasoning_content"}.
+	Interleaved json.RawMessage `json:"interleaved"`
+	OpenWeights bool            `json:"open_weights"`
+	Knowledge   string          `json:"knowledge"`
+	LastUpdated string          `json:"last_updated"`
+	Limit       struct {
 		Context int `json:"context"`
+		Input   int `json:"input"`
 		Output  int `json:"output"`
 	} `json:"limit"`
 	Modalities struct {
@@ -42,10 +52,13 @@ type fullModel struct {
 		Output []string `json:"output"`
 	} `json:"modalities"`
 	Cost *struct {
-		Input      float64 `json:"input"`
-		Output     float64 `json:"output"`
-		CacheRead  float64 `json:"cache_read"`
-		CacheWrite float64 `json:"cache_write"`
+		Input       float64 `json:"input"`
+		Output      float64 `json:"output"`
+		CacheRead   float64 `json:"cache_read"`
+		CacheWrite  float64 `json:"cache_write"`
+		Reasoning   float64 `json:"reasoning"`
+		InputAudio  float64 `json:"input_audio"`
+		OutputAudio float64 `json:"output_audio"`
 	} `json:"cost"`
 	Status      string `json:"status"`
 	ReleaseDate string `json:"release_date"`
@@ -71,14 +84,22 @@ func Parse(raw []byte, source string) (*Catalog, error) {
 			if !fm.ToolCall || !producesText(fm.Modalities.Output) {
 				continue
 			}
-			m := Model{ID: mid, Name: fm.Name, ContextWindow: fm.Limit.Context, MaxOutput: fm.Limit.Output, Reasoning: fm.Reasoning, Status: fm.Status, ReleaseDate: fm.ReleaseDate}
+			m := Model{
+				ID: mid, Name: fm.Name, ContextWindow: fm.Limit.Context, MaxInput: fm.Limit.Input, MaxOutput: fm.Limit.Output,
+				Reasoning: fm.Reasoning, Attachment: fm.Attachment, StructuredOutput: fm.StructuredOutput,
+				NoTemperature: fm.Temperature != nil && !*fm.Temperature, Interleaved: interleavedField(fm.Interleaved),
+				OpenWeights: fm.OpenWeights, Knowledge: fm.Knowledge, Status: fm.Status, ReleaseDate: fm.ReleaseDate, LastUpdated: fm.LastUpdated,
+			}
 			for _, in := range fm.Modalities.Input {
 				if in != "text" {
 					m.InputModalities = append(m.InputModalities, in)
 				}
 			}
 			if fm.Cost != nil {
-				m.Cost = Cost{Input: fm.Cost.Input, Output: fm.Cost.Output, CacheRead: fm.Cost.CacheRead, CacheWrite: fm.Cost.CacheWrite}
+				m.Cost = Cost{
+					Input: fm.Cost.Input, Output: fm.Cost.Output, CacheRead: fm.Cost.CacheRead, CacheWrite: fm.Cost.CacheWrite,
+					Reasoning: fm.Cost.Reasoning, InputAudio: fm.Cost.InputAudio, OutputAudio: fm.Cost.OutputAudio,
+				}
 			}
 			p.Models[mid] = m
 		}
@@ -87,6 +108,28 @@ func Parse(raw []byte, source string) (*Catalog, error) {
 		}
 	}
 	return cat, nil
+}
+
+// interleavedField reads the "interleaved" value of a model: true, false, or an object with the name of the field that carries the
+// reasoning. It returns "true" for true without a field, the field name for an object, and "" otherwise.
+func interleavedField(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var flag bool
+	if err := json.Unmarshal(raw, &flag); err == nil {
+		if flag {
+			return "true"
+		}
+		return ""
+	}
+	var obj struct {
+		Field string `json:"field"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil && obj.Field != "" {
+		return obj.Field
+	}
+	return ""
 }
 
 func producesText(outputs []string) bool {
