@@ -16,6 +16,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The registry no longer lists models by hand.** For each built-in provider it names only the default large and small model (the first and the last); their limits, capabilities and prices, like every other model of the provider, come from the models.dev catalog. Codex and Ollama, which the catalog does not describe, keep their own lists.
 - **The embedded models.dev catalog carries more of what the catalog says about a model**: the prompt limit (`limit.input`), file attachments, structured output, whether the model accepts a temperature, the field its reasoning comes back in, open weights, knowledge cutoff, last update, and reasoning/audio prices. The snapshot format is version 2 (version 1 files are still read). `scripts/build_catalog_snapshot.go` replaces the Node script: `go run scripts/build_catalog_snapshot.go https://models.dev/api.json`.
 - **The context window follows the prompt limit** when a model has one below its window (the prompt cannot use the whole window, part is kept for the output).
 - **The temperature is not sent to a model the catalog says rejects it** (many reasoning models answer 400 to it).

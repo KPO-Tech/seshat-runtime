@@ -310,11 +310,15 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 		if !ok || !found || len(info.Models) == 0 {
 			continue
 		}
-		have := make(map[string]bool, len(info.Models))
-		for _, m := range info.Models {
-			have[m.Identifier] = true
+		// The two models the registry names (default large first, default small last) take their data from the catalog.
+		stubs := append([]ModelInfo(nil), info.Models...)
+		have := make(map[string]bool, len(stubs))
+		for i, st := range stubs {
+			have[st.Identifier] = true
+			if m, ok := cp.Models[st.Identifier]; ok {
+				stubs[i] = catalogModelInfo(provider, info, m)
+			}
 		}
-		first := info.Models[0]
 		var added []ModelInfo
 		for _, m := range cp.SortedModels() {
 			if len(added) == maxCatalogModelsPerProvider {
@@ -323,33 +327,31 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 			if have[m.ID] || m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(provider, m.ID, cp.Models) {
 				continue
 			}
-			meta := catalogModelMetadata(string(provider), m)
-			caps := meta.Capabilities
-			// Follow the provider's own conventions for what the catalog does not say.
-			caps.PromptCaching = caps.PromptCaching && first.Capabilities.PromptCaching
-			caps.StructuredOutput = first.Capabilities.StructuredOutput
-			added = append(added, ModelInfo{
-				Identifier:         m.ID,
-				ContextWindow:      m.ContextWindow,
-				MaxOutput:          min(meta.ContextWindow.MaxOutputTokens, m.ContextWindow),
-				DefaultTemperature: first.DefaultTemperature,
-				SupportsPC:         first.SupportsPC,
-				Description:        m.Name,
-				Capabilities:       caps,
-			})
-		}
-		if len(added) == 0 {
-			continue
+			added = append(added, catalogModelInfo(provider, info, m))
 		}
 		// Keep the first model (default large) first and the last (default small) last.
 		models := make([]ModelInfo, 0, len(info.Models)+len(added))
-		models = append(models, info.Models[:len(info.Models)-1]...)
+		models = append(models, stubs[:len(stubs)-1]...)
 		models = append(models, added...)
-		models = append(models, info.Models[len(info.Models)-1])
+		models = append(models, stubs[len(stubs)-1])
 		info.Models = models
 		out[provider] = info
 	}
 	return out
+}
+
+// catalogModelInfo is the registry entry of a catalog model.
+func catalogModelInfo(provider types.APIProvider, info ProviderInfo, m catalog.Model) ModelInfo {
+	meta := catalogModelMetadata(string(provider), m)
+	return ModelInfo{
+		Identifier:         m.ID,
+		ContextWindow:      m.ContextWindow,
+		MaxOutput:          min(meta.ContextWindow.MaxOutputTokens, m.ContextWindow),
+		DefaultTemperature: meta.DefaultTemperature,
+		SupportsPC:         info.SupportsPC,
+		Description:        m.Name,
+		Capabilities:       meta.Capabilities,
+	}
 }
 
 // sendsTemperature reports whether the request's temperature goes into the body: the request sets one and the catalog does not say

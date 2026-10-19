@@ -310,3 +310,24 @@ func TestContextWindowUsesTheInputLimitWhenItIsBelowTheWindow(t *testing.T) {
 		t.Fatalf("MaxTokens = %d, want the input limit 272000", cw.MaxTokens)
 	}
 }
+
+// The registry names only each provider's default large and small model; everything else about them comes from the catalog, so both
+// must exist there or they would be listed with no limits.
+func TestRegistryDefaultsExistInTheCatalog(t *testing.T) {
+	for provider, info := range curatedProvidersInfo() {
+		catalogID, native := "", false
+		for id, p := range nativeProviders {
+			if p == provider {
+				catalogID, native = id, true
+			}
+		}
+		if !native || len(info.Models) == 0 {
+			continue
+		}
+		for _, m := range []ModelInfo{info.Models[0], info.Models[len(info.Models)-1]} {
+			if _, ok := Catalog().Model(catalogID, m.Identifier); !ok {
+				t.Errorf("%s: default model %q is not in the catalog", provider, m.Identifier)
+			}
+		}
+	}
+}
