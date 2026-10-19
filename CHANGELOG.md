@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-19
+
 ### Removed
 
 - **The AWS Bedrock, Google Vertex AI and Azure AI Foundry providers.** None had ever been tried with a real account (the Bedrock transport itself said `SigV4-not-implemented`), and the models they listed were written by hand and could not be checked. They are removed with everything that carried them: `APIProviderBedrock`, `APIProviderVertex` and `APIProviderFoundry` (and `APIProviderWorkersAI`), their transports and adapter (`internal/providers/transport`), the `provider_region`, `provider_project_id` and `provider_resource` settings with `SESHAT_PROVIDER_REGION`, `SESHAT_PROVIDER_PROJECT_ID` and `SESHAT_PROVIDER_RESOURCE`, the `--region`, `--project-id` and `--resource` flags of `seshat config`, and their model lists. A model string such as `bedrock:...` no longer names a provider. If one of them is needed again it will come back with a test against a real account.
@@ -18,9 +20,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Groq, xAI, Cerebras, Together AI, DeepInfra and Cohere are callable.** models.dev names a vendor SDK for them and gives no URL, so a small reviewed table (`internal/catalog/overrides.go`) gives their OpenAI-compatible endpoint. It is applied to the embedded catalog only, so a refresh never moves it, and a test fails when a rebuilt snapshot starts giving a URL of its own.
 - **`scripts/check_providers.go`**: calls real providers with your own keys (`go run scripts/check_providers.go groq zai`, or no argument for every provider whose key variable is set) to see that the catalog models answer.
-
-### Added
-
 - **Hosts can complete or change the default models.** `providers.ModelPolicy` (a map from provider to `ModelDefaults{Large, Small}`, each entry a models.dev family or an exact model id) is passed to `providers.ProviderInfoWithPolicy`, `DefaultModelWithPolicy` and `SmallModelWithPolicy`; `providers.DefaultModelPolicy()` returns a copy of the runtime's own. A host writes only what it changes: its entries are tried first, the runtime's after them, so an entry naming a model the catalog no longer has falls back to the runtime's choice. The policy is a value: nothing is stored in the package, so two hosts in one process do not see each other. The terminal app reads it from `options.model_defaults` (`{"minimax": {"large": ["MiniMax-M3"], "small": ["MiniMax-M3.1-Flash"]}}`), at the next start.
 
 ### Changed
@@ -31,7 +30,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Specialised models of the catalog (`type: "decision"`) are left out.** models.dev keeps them out of its default file already (they are classifiers that answer typed questions, not chat models); a catalog fetched with `?type=all` no longer puts them in the pickers.
 - **Our own choice of default models, by family.** The catalog snapshot (version 3) keeps the `family` of each model (`claude-sonnet`, `gpt-sol`...), and a small table (`familyDefaults`) names, per provider, the family of the default large and small model. The newest stable model of that family is taken, so a new version is picked up without editing anything. A provider the table does not cover keeps the price rule.
 - **The registry names no model at all.** The model list of each built-in provider is the models.dev catalog's (no cap any more), newest first. When nothing is chosen, the default large model is the dearest of the ten newest stable models (price follows capability) and the default small one the cheapest; agent-only models (deep research, computer use) are left out of the lists. The terminal app's pickers show every model of the provider.
-- **The registry no longer lists models by hand.** For each built-in provider it names only the default large and small model (the first and the last); their limits, capabilities and prices, like every other model of the provider, come from the models.dev catalog. Codex and Ollama, which the catalog does not describe, keep their own lists.
 - **The embedded models.dev catalog carries more of what the catalog says about a model**: the prompt limit (`limit.input`), file attachments, structured output, whether the model accepts a temperature, the field its reasoning comes back in, open weights, knowledge cutoff, last update, and reasoning/audio prices. The snapshot format is version 2 (version 1 files are still read). `scripts/build_catalog_snapshot.go` replaces the Node script: `go run scripts/build_catalog_snapshot.go https://models.dev/api.json`.
 - **The context window follows the prompt limit** when a model has one below its window (the prompt cannot use the whole window, part is kept for the output).
 - **The temperature is not sent to a model the catalog says rejects it** (many reasoning models answer 400 to it).
