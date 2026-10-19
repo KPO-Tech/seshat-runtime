@@ -152,9 +152,14 @@ func refreshAccessToken(ctx context.Context, refreshToken string) (*authTypes.To
 	if resp.ExpiresIn > 0 {
 		expiresAt = time.Now().Add(time.Duration(resp.ExpiresIn) * time.Second)
 	}
+	// A refresh answer need not carry a new refresh token: keep the one that worked, or the next renewal has nothing to use.
+	newRefresh := resp.RefreshToken
+	if newRefresh == "" {
+		newRefresh = refreshToken
+	}
 	return &authTypes.Token{
 		AccessToken:  resp.AccessToken,
-		RefreshToken: resp.RefreshToken,
+		RefreshToken: newRefresh,
 		IDToken:      resp.IDToken,
 		TokenType:    authTypes.TokenTypeAccess,
 		ExpiresAt:    expiresAt,

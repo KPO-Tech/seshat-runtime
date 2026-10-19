@@ -93,6 +93,8 @@ func newStreamingHTTPClientWithHeaderTimeout(responseHeaderTimeout time.Duration
 type Client struct {
 	// apiKey is the API key
 	apiKey string
+	// keySource, when set, gives the key of each request (see authKey): Codex renews its token during a session through it.
+	keySource func(context.Context) string
 
 	// baseURL is the base URL for the API
 	baseURL string
@@ -161,6 +163,7 @@ func NewClient(apiKey string, providerType types.APIProvider) *Client {
 
 	return &Client{
 		apiKey:         apiKey,
+		keySource:      keySourceFor(providerType, apiKey),
 		baseURL:        providerConfig.GetBaseURL(),
 		provider:       providerType,
 		providerConfig: providerConfig,
@@ -206,6 +209,7 @@ func newClientWithConfig(apiKey string, config *Config) *Client {
 
 	return &Client{
 		apiKey:         apiKey,
+		keySource:      keySourceFor(config.Provider, apiKey),
 		baseURL:        baseURL,
 		httpClient:     httpClient,
 		retryConfig:    types.DefaultRetryConfig(),

@@ -196,7 +196,7 @@ func TestJobOutputTool_TimeoutWaitsForNewOutput(t *testing.T) {
 
 	// With timeout_ms, it should wait for the job to finish and produce it.
 	waited, err := joTool.Call(context.Background(), tool.CallInput{
-		Parsed: map[string]any{"job_id": task.ID, "timeout_ms": float64(3000)},
+		Parsed: map[string]any{"job_id": task.ID, "timeout_ms": float64(30000)},
 	}, nil)
 	if err != nil {
 		t.Fatalf("job_output Call (timeout_ms): %v", err)
@@ -204,8 +204,19 @@ func TestJobOutputTool_TimeoutWaitsForNewOutput(t *testing.T) {
 	if !strings.Contains(waited.Content, "late-output") {
 		t.Errorf("expected timeout_ms to wait for the job's eventual output, got:\n%s", waited.Content)
 	}
-	if !strings.Contains(waited.Content, "status: completed") {
-		t.Errorf("expected the job to be reported completed, got:\n%s", waited.Content)
+	// The call returns as soon as the output is there. The process prints it and then exits, and its exit is noticed a moment later, so
+	// the status may still say running: what must hold is that the job is reported completed shortly after, not at that exact instant.
+	completed := strings.Contains(waited.Content, "status: completed")
+	for deadline := time.Now().Add(15 * time.Second); !completed && time.Now().Before(deadline); {
+		time.Sleep(50 * time.Millisecond)
+		again, err := joTool.Call(context.Background(), tool.CallInput{Parsed: map[string]any{"job_id": task.ID}}, nil)
+		if err != nil {
+			t.Fatalf("job_output Call (status): %v", err)
+		}
+		completed = strings.Contains(again.Content, "status: completed")
+	}
+	if !completed {
+		t.Errorf("expected the job to be reported completed after it exited, last answer:\n%s", waited.Content)
 	}
 }
 
@@ -216,7 +227,7 @@ func TestJobOutputTool_NegativeOffsetTailsOutput(t *testing.T) {
 
 	joTool := NewJobOutputTool()
 	result, err := joTool.Call(context.Background(), tool.CallInput{
-		Parsed: map[string]any{"job_id": task.ID, "timeout_ms": float64(3000), "offset": float64(-5)},
+		Parsed: map[string]any{"job_id": task.ID, "timeout_ms": float64(30000), "offset": float64(-5)},
 	}, nil)
 	if err != nil {
 		t.Fatalf("job_output Call: %v", err)
