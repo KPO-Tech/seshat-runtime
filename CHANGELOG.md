@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-10-19
+
 ### Fixed
 
 - **A session on Codex stays signed in.** The ChatGPT access token lasts a few hours and was only renewed at the next start, so a long session ended with an authentication error. A Codex client created with the token the auth store holds now asks the store before each request, which renews the token when it is about to expire (one renewal at a time across the process) and writes the new one back. A client created with any other key, such as a user's own key given by a server, never reads the store. The refresh token is also kept when a renewal answer does not carry a new one, so the next renewal still works.
