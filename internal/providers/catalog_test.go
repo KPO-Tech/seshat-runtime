@@ -166,3 +166,63 @@ func TestAProviderOnlyADownloadedCatalogKnowsGetsNoConfigOfItsOwn(t *testing.T) 
 		t.Error("the unverified provider must still be listed, so the host can ask the user")
 	}
 }
+
+func TestBuiltInProviderListsGainTheCatalogModelsWithoutLosingTheirEnds(t *testing.T) {
+	original := Catalog()
+	t.Cleanup(func() { SetCatalog(original) })
+	before := AllProvidersInfo()[types.APIProviderAnthropic]
+	if len(before.Models) < 3 {
+		t.Fatal("the curated Anthropic list is expected to have models")
+	}
+	large, small := before.Models[0].Identifier, before.Models[len(before.Models)-1].Identifier
+	curatedDescription := before.Models[0].Description
+
+	fake := &catalog.Catalog{Source: "test", Providers: map[string]catalog.Provider{
+		"anthropic": {ID: "anthropic", Name: "Anthropic", Models: map[string]catalog.Model{
+			"claude-future-9":  {ID: "claude-future-9", Name: "Claude Future 9", ContextWindow: 2000000, MaxOutput: 200000, ReleaseDate: "2027-01-01", InputModalities: []string{"image"}},
+			"claude-retired-1": {ID: "claude-retired-1", Name: "Retired", ContextWindow: 100000, ReleaseDate: "2027-02-01", Status: "deprecated"},
+			large:              {ID: large, Name: "Overridden name", ContextWindow: 5},
+		}},
+	}}
+	SetCatalog(fake)
+
+	got := AllProvidersInfo()[types.APIProviderAnthropic]
+	if got.Models[0].Identifier != large || got.Models[len(got.Models)-1].Identifier != small {
+		t.Fatalf("the ends of the list moved: first %q last %q, want %q and %q (they are the default large and small models)", got.Models[0].Identifier, got.Models[len(got.Models)-1].Identifier, large, small)
+	}
+	if got.Models[0].Description != curatedDescription || got.Models[0].ContextWindow == 5 {
+		t.Fatalf("a model we list by hand must not be replaced by the catalog's data: %+v", got.Models[0])
+	}
+	var future, retired bool
+	for _, m := range got.Models {
+		future = future || m.Identifier == "claude-future-9"
+		retired = retired || m.Identifier == "claude-retired-1"
+	}
+	if !future {
+		t.Error("a model only the catalog has must be listed")
+	}
+	if retired {
+		t.Error("a deprecated model must not be listed")
+	}
+	if info, ok := GetModelInfo(types.APIProviderAnthropic, "claude-future-9"); !ok || info.ContextWindow != 2000000 || !info.Capabilities.Vision {
+		t.Errorf("GetModelInfo = %+v, %v, want the catalog model with its window and image input", info, ok)
+	}
+}
+
+func TestEveryBuiltInProviderThatTheCatalogExtendsKeepsItsCuratedModels(t *testing.T) {
+	curated := curatedProvidersInfo()
+	for provider, info := range AllProvidersInfo() {
+		have := map[string]bool{}
+		for _, m := range info.Models {
+			have[m.Identifier] = true
+		}
+		for _, m := range curated[provider].Models {
+			if !have[m.Identifier] {
+				t.Errorf("%s lost its curated model %s", provider, m.Identifier)
+			}
+		}
+		if len(info.Models) > len(curated[provider].Models)+maxCatalogModelsPerProvider {
+			t.Errorf("%s has %d models, more than curated plus the cap", provider, len(info.Models))
+		}
+	}
+}

@@ -1,13 +1,30 @@
 // Builds internal/catalog/snapshot.json.gz from a models.dev catalog (the output of https://models.dev/api.json, or the snapshot
 // opencode bundles at packages/core/src/models-dev/snapshot.txt).
-// Usage: node scripts/build-catalog-snapshot.js <api.json> [out.json.gz]
+// Usage: node scripts/build-catalog-snapshot.js <api.json | https://models.dev/api.json> [out.json.gz]
+//
+// This is the whole of keeping the model lists up to date: run it with the public URL, look at the diff of the snapshot (and run the
+// provider tests), commit. No Go code lists the models of the providers any more except where we correct them by hand.
 //
 // Only what Seshat reads is kept, so the embedded file stays small. The provider ids, base URLs and environment variable
 // names in this file are the trusted ones: a catalog fetched later never overrides them (see internal/catalog/merge.go).
 const fs = require('fs');
 const zlib = require('zlib');
 const [src, out = 'internal/catalog/snapshot.json.gz'] = process.argv.slice(2);
-const raw = JSON.parse(fs.readFileSync(src, 'utf8'));
+async function load(source) {
+  if (/^https?:/.test(source)) {
+    const res = await fetch(source);
+    if (!res.ok) throw new Error(`${source}: ${res.status}`);
+    return JSON.parse(await res.text());
+  }
+  return JSON.parse(fs.readFileSync(source, 'utf8'));
+}
+
+load(src).then(build).catch((e) => {
+  console.error(e.message);
+  process.exit(1);
+});
+
+function build(raw) {
 const MIN_PROVIDERS = 100;
 if (Object.keys(raw).length < MIN_PROVIDERS) {
   console.error(`the catalog has fewer than ${MIN_PROVIDERS} providers; refusing to write a snapshot`);
@@ -38,4 +55,5 @@ for (const [id, p] of Object.entries(raw)) {
 }
 const body = JSON.stringify({ v: 1, providers });
 fs.writeFileSync(out, zlib.gzipSync(Buffer.from(body), { level: 9 }));
-console.log(`${Object.keys(providers).length} providers, ${Object.values(providers).reduce((n, p) => n + Object.keys(p.m).length, 0)} models, ${body.length} bytes raw, ${fs.statSync(out).size} bytes compressed`);
+  console.log(`${Object.keys(providers).length} providers, ${Object.values(providers).reduce((n, p) => n + Object.keys(p.m).length, 0)} models, ${body.length} bytes raw, ${fs.statSync(out).size} bytes compressed`);
+}

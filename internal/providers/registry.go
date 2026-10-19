@@ -32,7 +32,9 @@ type ModelInfo struct {
 	Capabilities       model.Capabilities
 }
 
-func AllProvidersInfo() map[types.APIProvider]ProviderInfo {
+// curatedProvidersInfo is the part of the provider catalog written by hand: the providers, how they authenticate, and the models whose
+// description or limits we set ourselves. AllProvidersInfo extends it with the models of the models.dev catalog.
+func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 	return map[types.APIProvider]ProviderInfo{
 		types.APIProviderAnthropic: {
 			Name:         "anthropic",

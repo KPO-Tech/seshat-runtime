@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **The model lists of the built-in providers now follow the models.dev catalog, so they no longer have to be maintained by hand.** `AllProvidersInfo()` (and so the pickers of the terminal app, `sdk` and `pkg/config`) lists, for Anthropic, OpenAI, Gemini, Mistral, MiniMax, OpenRouter, DeepSeek, OpenCode, Z.ai, Kimi and Workers AI, the models we describe by hand followed by the catalog's newest models that we do not (at most 40 per provider; deprecated models left out). OpenAI goes from 12 models to 34, Gemini from 12 to 22, Mistral from 6 to 19. The first model of a list stays its default large model and the last its default small one, and a model we list by hand is never replaced by the catalog's data, so a limit we corrected stays corrected. Bedrock, Vertex and Foundry (whose model ids carry a region or a deployment), Codex (a ChatGPT subscription route, not in the catalog) and Ollama (the models installed on the machine) keep their own lists. Keeping the lists current is now: `node scripts/build-catalog-snapshot.js https://models.dev/api.json`, look at the diff, run the tests, commit; the embedded snapshot was rebuilt that way today (7,935 models). Hosts that opt in (`RefreshCatalog`, or `options.refresh_model_catalog` in the terminal app) get the new models without waiting for a release.
+
 ## [1.10.5] - 2026-10-19
 
 ### Added
