@@ -34,6 +34,8 @@ const defaultCatalogMaxOutput = 8192
 var (
 	catalogMu      sync.RWMutex
 	currentCatalog *catalog.Catalog
+	// extendedProviders is the curated provider list extended with the catalog's models, computed once per catalog.
+	extendedProviders map[types.APIProvider]ProviderInfo
 )
 
 func init() {
@@ -49,8 +51,10 @@ func SetCatalog(cat *catalog.Catalog) {
 	if cat == nil {
 		return
 	}
+	extended := extendWithCatalog(curatedProvidersInfo(), cat)
 	catalogMu.Lock()
 	currentCatalog = cat
+	extendedProviders = extended
 	catalogMu.Unlock()
 	for id, p := range cat.Providers {
 		ours := catalogProviderID(id)
@@ -189,4 +193,95 @@ func CatalogCredentialEnvVars(p types.APIProvider) []string {
 		return nil
 	}
 	return append([]string(nil), cp.Env...)
+}
+
+// maxCatalogModelsPerProvider bounds how many catalog models are added to the list of one built-in provider: the newest ones. An
+// aggregator such as OpenRouter lists hundreds.
+const maxCatalogModelsPerProvider = 40
+
+// catalogExtended names, for each built-in provider whose model list the catalog extends, its id in the catalog. Bedrock, Vertex and
+// Foundry are left out: their model ids carry a region or a deployment, which the catalog does not give in the form we call them
+// with. Codex is not in the catalog (it is a ChatGPT subscription route) and Ollama lists the models installed on the machine.
+func catalogExtended() map[types.APIProvider]string {
+	out := make(map[types.APIProvider]string, len(nativeProviders))
+	for catalogID, native := range nativeProviders {
+		switch native {
+		case types.APIProviderBedrock, types.APIProviderVertex, types.APIProviderFoundry:
+			continue
+		}
+		out[native] = catalogID
+	}
+	return out
+}
+
+// AllProvidersInfo returns the built-in providers with their models: the ones listed by hand, whose description and limits we set,
+// followed by the models of the models.dev catalog that the list does not have, newest first. A model added to the catalog therefore
+// shows up in the pickers without anyone editing this package. The first model of a list stays the default large one and the last
+// the default small one (see TestProvidersKeepRegistryOrderAndDefaults in the terminal app): the catalog's models go between them.
+func AllProvidersInfo() map[types.APIProvider]ProviderInfo {
+	catalogMu.RLock()
+	extended := extendedProviders
+	catalogMu.RUnlock()
+	if extended == nil {
+		return curatedProvidersInfo()
+	}
+	out := make(map[types.APIProvider]ProviderInfo, len(extended))
+	for k, v := range extended {
+		out[k] = v
+	}
+	return out
+}
+
+// extendWithCatalog adds the catalog's models to the curated provider list.
+func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.Catalog) map[types.APIProvider]ProviderInfo {
+	out := make(map[types.APIProvider]ProviderInfo, len(curated))
+	for k, v := range curated {
+		out[k] = v
+	}
+	for provider, catalogID := range catalogExtended() {
+		info, ok := out[provider]
+		cp, found := cat.Provider(catalogID)
+		if !ok || !found || len(info.Models) == 0 {
+			continue
+		}
+		have := make(map[string]bool, len(info.Models))
+		for _, m := range info.Models {
+			have[m.Identifier] = true
+		}
+		first := info.Models[0]
+		var added []ModelInfo
+		for _, m := range cp.SortedModels() {
+			if len(added) == maxCatalogModelsPerProvider {
+				break
+			}
+			if have[m.ID] || m.Deprecated() || m.ContextWindow <= 0 {
+				continue
+			}
+			meta := catalogModelMetadata(string(provider), m)
+			caps := meta.Capabilities
+			// Follow the provider's own conventions for what the catalog does not say.
+			caps.PromptCaching = caps.PromptCaching && first.Capabilities.PromptCaching
+			caps.StructuredOutput = first.Capabilities.StructuredOutput
+			added = append(added, ModelInfo{
+				Identifier:         m.ID,
+				ContextWindow:      m.ContextWindow,
+				MaxOutput:          min(meta.ContextWindow.MaxOutputTokens, m.ContextWindow),
+				DefaultTemperature: first.DefaultTemperature,
+				SupportsPC:         first.SupportsPC,
+				Description:        m.Name,
+				Capabilities:       caps,
+			})
+		}
+		if len(added) == 0 {
+			continue
+		}
+		// Keep the first model (default large) first and the last (default small) last.
+		models := make([]ModelInfo, 0, len(info.Models)+len(added))
+		models = append(models, info.Models[:len(info.Models)-1]...)
+		models = append(models, added...)
+		models = append(models, info.Models[len(info.Models)-1])
+		info.Models = models
+		out[provider] = info
+	}
+	return out
 }
