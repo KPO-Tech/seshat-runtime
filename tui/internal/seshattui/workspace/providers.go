@@ -49,6 +49,8 @@ func (w *SeshatWorkspace) DetectProviders() {
 		}
 	}
 
+	w.detectCodexSignIn(ctx)
+
 	if engCfg, err := engineconfig.Load(); err == nil {
 		dbPath := engineconfig.EffectiveSessionDBPath(engCfg)
 		if database, err := db.Open(context.Background(), db.DefaultSQLiteConfig(dbPath)); err == nil {
@@ -101,6 +103,19 @@ func (w *SeshatWorkspace) DetectProviders() {
 	w.cfgMu.Lock()
 	w.cfg = nil
 	w.cfgMu.Unlock()
+}
+
+// detectCodexSignIn marks Codex as configured when a ChatGPT sign-in is in the runtime's auth store. Codex signs in with an account:
+// its token, and the refresh token that renews it, are kept there and not in the credentials database, and resolving it here renews a
+// token that has expired since the last start.
+func (w *SeshatWorkspace) detectCodexSignIn(ctx context.Context) {
+	if _, already := w.providerKeys.Load("codex"); already {
+		return
+	}
+	resolver := sdk.NewStoredCredentialResolver(sdk.StoredCredentialResolverConfig{EnvFirst: true})
+	if token, err := resolver.ResolveAPIKey(ctx, "codex"); err == nil && strings.TrimSpace(token) != "" {
+		w.providerKeys.Store("codex", token)
+	}
 }
 
 // resolveAPIKey returns the stored API key for providerID, falling back to env.
