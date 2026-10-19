@@ -25,6 +25,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Choosing Codex in the terminal app opens a sign-in, not an API key field.** Codex is a ChatGPT account: the dialog shows the address and the code, opens the browser by itself, and waits for you to enter the code. The token is kept in the runtime's auth store with its refresh token, and Codex is detected as configured at the next start (a token that has expired is renewed then).
 - **The terminal app's provider list shows the main providers and one "More providers" entry.** The dozen providers built into the runtime come first; the rest of the models.dev catalog (about 190) is behind "More providers…", sorted without regard to case with the ones you have configured first, and typing in the filter searches all of them without opening it. The model picker lists only the models of the providers you have configured (the main providers when none is configured yet, and during onboarding).
 - **The generated provider page lists the default large and small model of each provider and the number of models the catalog holds**, instead of hundreds of rows that change every week. `docs/providers.md` no longer mentions the removed cloud providers.
 - **Specialised models of the catalog (`type: "decision"`) are left out.** models.dev keeps them out of its default file already (they are classifiers that answer typed questions, not chat models); a catalog fetched with `?type=all` no longer puts them in the pickers.
