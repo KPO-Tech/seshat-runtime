@@ -150,7 +150,7 @@ func NewAPIKeyInput(
 
 func providerNeedsAPIKey(providerID string) bool {
 	switch strings.ToLower(strings.TrimSpace(providerID)) {
-	case "ollama", "bedrock", "vertex":
+	case "ollama":
 		return false
 	default:
 		return true

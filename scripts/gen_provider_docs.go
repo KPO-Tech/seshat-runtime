@@ -47,6 +47,9 @@ func main() {
 	fmt.Printf("Updated %s\n", outPath)
 }
 
+// maxListedModels is the length above which a provider's models are summarised instead of listed.
+const maxListedModels = 8
+
 func generateProviderSection() string {
 	allInfo := providers.AllProvidersInfo()
 
@@ -62,10 +65,6 @@ func generateProviderSection() string {
 		types.APIProviderCodex,
 		types.APIProviderZAi,
 		types.APIProviderMiniMax,
-		types.APIProviderBedrock,
-		types.APIProviderVertex,
-		types.APIProviderFoundry,
-		types.APIProviderWorkersAI,
 		types.APIProviderOpenCode,
 	}
 	// Append any provider in the registry not explicitly listed above.
@@ -134,7 +133,14 @@ func generateProviderSection() string {
 		fmt.Fprintf(&sb, "### %s (`%s`)\n\n", info.DisplayName, info.Name)
 		sb.WriteString("| Model ID | Context | Max output | Cache | Description |\n")
 		sb.WriteString("|---|---|---|:---:|---|\n")
-		for _, m := range info.Models {
+		shown := info.Models
+		// A provider whose list is the models.dev catalog's has hundreds of models, which change every week: the page shows the default
+		// large and small models and says how many there are in all.
+		catalogList := len(info.Models) > maxListedModels
+		if catalogList {
+			shown = []providers.ModelInfo{info.Models[0], info.Models[len(info.Models)-1]}
+		}
+		for _, m := range shown {
 			pc := "—"
 			if m.SupportsPC {
 				pc = "✓"
@@ -147,6 +153,9 @@ func generateProviderSection() string {
 			}
 			fmt.Fprintf(&sb, "| `%s` | %s | %s | %s | %s |\n",
 				m.Identifier, ctx, out, pc, desc)
+		}
+		if catalogList {
+			fmt.Fprintf(&sb, "\nDefault large and small model shown. %d models in all, read from the models.dev catalog.\n", len(info.Models))
 		}
 		sb.WriteString("\n")
 	}
@@ -166,7 +175,7 @@ func formatTokens(n int) string {
 }
 
 // credentialEnvVar names the environment variables that carry the credentials of a provider that provider discovery has no entry for
-// (Foundry, Workers AI, OpenCode, Codex...): "OAuth" for a provider that signs in, otherwise the variables of the configuration, which
+// (OpenCode, Codex...): "OAuth" for a provider that signs in, otherwise the variables of the configuration, which
 // is where the runtime itself reads them.
 func credentialEnvVar(p types.APIProvider, authType string) string {
 	if authType == "oauth" {

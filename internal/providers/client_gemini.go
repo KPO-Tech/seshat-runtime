@@ -35,7 +35,7 @@ func (c *Client) buildGeminiRequestBody(req types.APIRequest) (io.Reader, error)
 	if req.MaxTokens > 0 {
 		generationConfig["maxOutputTokens"] = req.MaxTokens
 	}
-	if req.Temperature != nil {
+	if sendsTemperature(req) {
 		generationConfig["temperature"] = *req.Temperature
 	}
 	if req.TopP != nil {

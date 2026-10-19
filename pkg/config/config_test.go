@@ -4,6 +4,7 @@ import (
 	"github.com/KPO-Tech/seshat-runtime/pkg/sdk"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,24 +51,11 @@ func TestResolveAPIKeyUsesProviderSpecificEnv(t *testing.T) {
 }
 
 func TestApplyRuntimeEnvFromConfig(t *testing.T) {
-	_ = os.Unsetenv("ANTHROPIC_VERTEX_PROJECT_ID")
-	_ = os.Unsetenv("CLOUD_ML_REGION")
 	_ = os.Unsetenv("SESHAT_RUNTIME_ROOT")
 
-	cfg := Config{
-		RuntimeRoot:       "/tmp/seshat-runtime",
-		Model:             "vertex:claude-3-5-sonnet@20241022",
-		ProviderProjectID: "project-123",
-		ProviderRegion:    "us-east5",
-	}
+	cfg := Config{RuntimeRoot: "/tmp/seshat-runtime"}
 	ApplyRuntimeEnv(cfg)
 
-	if got := os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID"); got != "project-123" {
-		t.Fatalf("unexpected project id env: got %q", got)
-	}
-	if got := os.Getenv("CLOUD_ML_REGION"); got != "us-east5" {
-		t.Fatalf("unexpected region env: got %q", got)
-	}
 	if got := os.Getenv("SESHAT_RUNTIME_ROOT"); got != filepath.FromSlash("/tmp/seshat-runtime") {
 		t.Fatalf("unexpected runtime root env: got %q", got)
 	}
@@ -78,12 +66,9 @@ func TestSaveAtWritesLoadableConfig(t *testing.T) {
 	path := filepath.Join(dir, ".seshat.yaml")
 
 	cfg := Config{
-		Model:             "openai:gpt-5.5",
-		APIKey:            "secret",
-		ProviderBaseURL:   "https://example.invalid",
-		ProviderRegion:    "us-east-1",
-		ProviderProjectID: "demo-project",
-		ProviderResource:  "demo-resource",
+		Model:           "openai:gpt-5.5",
+		APIKey:          "secret",
+		ProviderBaseURL: "https://example.invalid",
 	}
 
 	if err := SaveAt(path, cfg); err != nil {
@@ -381,9 +366,6 @@ func TestProviderForModelUsesCatalog(t *testing.T) {
 	if provider := ProviderForModel("gpt-5.5"); provider != sdk.APIProviderOpenAI {
 		t.Fatalf("unexpected provider: got %q", provider)
 	}
-	if provider := ProviderForModel("@cf/zai-org/glm-5.3"); provider != sdk.APIProviderWorkersAI {
-		t.Fatalf("unexpected provider: got %q", provider)
-	}
 	if provider := ProviderForModel("deepseek-flash"); provider != sdk.APIProviderDeepSeek {
 		t.Fatalf("unexpected provider: got %q", provider)
 	}
@@ -439,43 +421,19 @@ func TestValidateProviderSetup(t *testing.T) {
 	}
 }
 
-// TestValidateProviderSetup_WorkersAIRequiresAccountID verifies the fix for
-// WorkersAI's setup validation previously accepting an API key alone: nothing
-// modeled the Cloudflare account id the real endpoint requires, so a config
-// missing it would only fail later with an opaque malformed-URL error deep in
-// the request path instead of a clear setup-time message.
+// TestValidateProviderSetup_WorkersAIRequiresAccountID: Cloudflare Workers AI is a generic catalog provider whose base URL carries the
+// account id. Without it the setup fails with a message that names it, instead of a malformed-URL error deep in the request path.
 func TestValidateProviderSetup_WorkersAIRequiresAccountID(t *testing.T) {
-	if err := ValidateProviderSetup(Config{APIKey: "secret"}, sdk.APIProviderWorkersAI); err == nil {
-		t.Fatal("expected validation error when account id is missing")
+	const workersAI = sdk.APIProvider("cloudflare-workers-ai")
+	t.Setenv("CLOUDFLARE_API_KEY", "secret")
+	t.Setenv("CLOUDFLARE_ACCOUNT_ID", "")
+	err := ValidateProviderSetup(Config{}, workersAI)
+	if err == nil || !strings.Contains(err.Error(), "CLOUDFLARE_ACCOUNT_ID") {
+		t.Fatalf("expected an error naming CLOUDFLARE_ACCOUNT_ID, got %v", err)
 	}
 
-	err := ValidateProviderSetup(Config{APIKey: "secret", ProviderProjectID: "acct-123"}, sdk.APIProviderWorkersAI)
-	if err != nil {
-		t.Fatalf("unexpected validation error once account id is set: %v", err)
-	}
-}
-
-// TestWorkersAISetupFieldsIncludeAccountID verifies the CLI setup wizard
-// actually surfaces the account id field for WorkersAI, reusing the same
-// provider_project_id slot Vertex uses for its GCP project id.
-func TestWorkersAISetupFieldsIncludeAccountID(t *testing.T) {
-	info, ok := GetProviderInfo(sdk.APIProviderWorkersAI)
-	if !ok {
-		t.Fatal("expected WorkersAI provider info")
-	}
-	found := false
-	for _, field := range info.SetupFields {
-		if field.Key == "provider_project_id" {
-			found = true
-			if field.EnvVar != "CLOUDFLARE_ACCOUNT_ID" {
-				t.Errorf("account id field EnvVar = %q, want CLOUDFLARE_ACCOUNT_ID", field.EnvVar)
-			}
-			if !field.Required {
-				t.Error("account id field should be required")
-			}
-		}
-	}
-	if !found {
-		t.Error("expected a provider_project_id setup field for WorkersAI")
+	t.Setenv("CLOUDFLARE_ACCOUNT_ID", "acct-123")
+	if err := ValidateProviderSetup(Config{}, workersAI); err != nil {
+		t.Fatalf("unexpected validation error once the account id is set: %v", err)
 	}
 }

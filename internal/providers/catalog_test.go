@@ -166,3 +166,231 @@ func TestAProviderOnlyADownloadedCatalogKnowsGetsNoConfigOfItsOwn(t *testing.T) 
 		t.Error("the unverified provider must still be listed, so the host can ask the user")
 	}
 }
+
+func TestBuiltInProviderListsAreTheCatalogModels(t *testing.T) {
+	original := Catalog()
+	t.Cleanup(func() { SetCatalog(original) })
+
+	fake := &catalog.Catalog{Source: "test", Providers: map[string]catalog.Provider{
+		"anthropic": {ID: "anthropic", Name: "Anthropic", Models: map[string]catalog.Model{
+			"claude-future-9":  {ID: "claude-future-9", Name: "Claude Future 9", ContextWindow: 2000000, MaxOutput: 200000, ReleaseDate: "2027-01-01", InputModalities: []string{"image"}, Cost: catalog.Cost{Input: 10, Output: 50}},
+			"claude-retired-1": {ID: "claude-retired-1", Name: "Retired", ContextWindow: 100000, ReleaseDate: "2027-02-01", Status: "deprecated"},
+			"claude-mid-1":     {ID: "claude-mid-1", Name: "Mid", ContextWindow: 200000, ReleaseDate: "2026-06-01", Cost: catalog.Cost{Input: 3, Output: 15}},
+			"claude-tiny-1":    {ID: "claude-tiny-1", Name: "Tiny", ContextWindow: 100000, ReleaseDate: "2026-01-01", Cost: catalog.Cost{Input: 0.5, Output: 2}},
+		}},
+	}}
+	SetCatalog(fake)
+
+	got := AllProvidersInfo()[types.APIProviderAnthropic]
+	var ids []string
+	for _, m := range got.Models {
+		ids = append(ids, m.Identifier)
+	}
+	want := []string{"claude-future-9", "claude-mid-1", "claude-tiny-1"}
+	if len(ids) != len(want) {
+		t.Fatalf("models = %v, want %v (the deprecated one is left out)", ids, want)
+	}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("models = %v, want %v", ids, want)
+		}
+	}
+	if info, ok := GetModelInfo(types.APIProviderAnthropic, "claude-future-9"); !ok || info.ContextWindow != 2000000 || !info.Capabilities.Vision {
+		t.Errorf("GetModelInfo = %+v, %v, want the catalog model with its window and image input", info, ok)
+	}
+	if def, ok := DefaultModelIdentifier(types.APIProviderAnthropic); !ok || def.Model != "claude-future-9" {
+		t.Errorf("default = %+v, %v", def, ok)
+	}
+}
+
+func TestEveryBuiltInProviderThatTheCatalogExtendsHasModelsFromIt(t *testing.T) {
+	for provider, info := range AllProvidersInfo() {
+		if _, extended := catalogExtended()[provider]; !extended {
+			continue
+		}
+		if len(info.Models) == 0 {
+			t.Errorf("%s has no model: the registry names none, so the catalog must supply them", provider)
+		}
+		for _, m := range info.Models {
+			if m.ContextWindow <= 0 {
+				t.Errorf("%s: model %s has no context window", provider, m.Identifier)
+			}
+		}
+	}
+}
+
+func TestRankModelsPutsTheDearestRecentModelFirstAndTheCheapestLast(t *testing.T) {
+	models := []catalog.Model{ // newest first
+		{ID: "mid", Cost: catalog.Cost{Input: 1, Output: 4}},
+		{ID: "flagship", Cost: catalog.Cost{Input: 5, Output: 20}},
+		{ID: "tiny", Cost: catalog.Cost{Input: 0.1, Output: 0.4}},
+		{ID: "old", Cost: catalog.Cost{Input: 2, Output: 8}},
+	}
+	got := rankModels(ModelDefaults{}, models)
+	ids := []string{got[0].ID, got[1].ID, got[2].ID, got[3].ID}
+	want := []string{"flagship", "mid", "old", "tiny"}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("order = %v, want %v", ids, want)
+		}
+	}
+	unpriced := rankModels(ModelDefaults{}, []catalog.Model{{ID: "new"}, {ID: "older"}, {ID: "oldest"}})
+	if unpriced[0].ID != "new" || unpriced[2].ID != "oldest" {
+		t.Fatalf("without prices the newest is large and the oldest small: %v", unpriced)
+	}
+}
+
+func TestListsLeaveOutModelsTheChatClientCannotUse(t *testing.T) {
+	all := map[string]catalog.Model{
+		"gpt-5.6":                    {ID: "gpt-5.6"},
+		"gpt-5.5-pro":                {ID: "gpt-5.5-pro"},
+		"gpt-5.3-codex":              {ID: "gpt-5.3-codex"},
+		"gpt-realtime-2.1":           {ID: "gpt-realtime-2.1"},
+		"gpt-image-2":                {ID: "gpt-image-2"},
+		"claude-opus-4-5":            {ID: "claude-opus-4-5"},
+		"claude-opus-4-5-20251101":   {ID: "claude-opus-4-5-20251101"},
+		"claude-only-dated-20251101": {ID: "claude-only-dated-20251101"},
+		"text-embedding-3":           {ID: "text-embedding-3"},
+	}
+	for id, want := range map[string]bool{
+		"gpt-5.6":                    false,
+		"gpt-5.5-pro":                true,
+		"gpt-5.3-codex":              true,
+		"gpt-realtime-2.1":           true,
+		"gpt-image-2":                true,
+		"claude-opus-4-5":            false,
+		"claude-opus-4-5-20251101":   true,
+		"claude-only-dated-20251101": false,
+		"text-embedding-3":           true,
+	} {
+		if got := unsuitableForChat(types.APIProviderOpenAI, id, all); got != want {
+			t.Errorf("unsuitableForChat(openai, %q) = %v, want %v", id, got, want)
+		}
+	}
+	if unsuitableForChat(types.APIProviderAnthropic, "claude-pro-x", all) {
+		t.Error("the -pro rule is OpenAI's: it must not hide other providers' models")
+	}
+}
+
+func TestReasoningIsReadFromWhicheverFieldCarriesIt(t *testing.T) {
+	for name, body := range map[string]string{
+		"reasoning_content": `{"choices":[{"message":{"content":"a","reasoning_content":"think"}}]}`,
+		"reasoning":         `{"choices":[{"message":{"content":"a","reasoning":"think"}}]}`,
+		"reasoning_details": `{"choices":[{"message":{"content":"a","reasoning_details":[{"text":"thi"},{"summary":"nk"}]}}]}`,
+	} {
+		resp, err := decodeOpenAIResponse(strings.NewReader(body), types.ModelIdentifier{})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		thinking, _ := resp.Content[0].(types.ThinkingContent)
+		if thinking.Thinking != "think" {
+			t.Errorf("%s: thinking = %q", name, thinking.Thinking)
+		}
+	}
+}
+
+func TestStreamReasoningDetailsBecomeThinking(t *testing.T) {
+	var r openAIReasoning
+	if err := json.Unmarshal([]byte(`{"reasoning_details":[{"text":"ab"},{"text":"c"}]}`), &r); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.reasoningText(); got != "abc" {
+		t.Fatalf("reasoningText = %q", got)
+	}
+}
+
+func TestTemperatureIsOmittedForAModelThatRejectsIt(t *testing.T) {
+	model.Global.Register(model.Metadata{ID: "no-temp-model", Provider: "no-temp-prov", Capabilities: model.Capabilities{NoTemperature: true}})
+	temp := 0.3
+	req := types.APIRequest{Model: types.ModelIdentifier{Provider: "no-temp-prov", Model: "no-temp-model"}, Temperature: &temp}
+	if sendsTemperature(req) {
+		t.Fatal("the temperature must not be sent to a model the catalog says rejects it")
+	}
+	req.Model.Model = "unknown-model"
+	if !sendsTemperature(req) {
+		t.Fatal("a model the catalog does not know receives the temperature the request sets")
+	}
+	req.Temperature = nil
+	if sendsTemperature(req) {
+		t.Fatal("no temperature set, nothing to send")
+	}
+}
+
+func TestContextWindowUsesTheInputLimitWhenItIsBelowTheWindow(t *testing.T) {
+	model.Global.Register(model.Metadata{ID: "input-capped", Provider: "cap-prov", ContextWindow: model.ContextWindow{MaxTokens: 400000, MaxInputTokens: 272000, MaxOutputTokens: 128000}})
+	cw := types.GetContextWindow(types.ModelIdentifier{Provider: "cap-prov", Model: "input-capped"})
+	if cw.MaxTokens != 272000 {
+		t.Fatalf("MaxTokens = %d, want the input limit 272000", cw.MaxTokens)
+	}
+}
+
+func TestRegistryDefaultsExistInTheCatalog(t *testing.T) {
+	for provider, info := range curatedProvidersInfo() {
+		catalogID, native := "", false
+		for id, p := range nativeProviders {
+			if p == provider {
+				catalogID, native = id, true
+			}
+		}
+		if !native || len(info.Models) == 0 {
+			continue
+		}
+		for _, m := range []ModelInfo{info.Models[0], info.Models[len(info.Models)-1]} {
+			if _, ok := Catalog().Model(catalogID, m.Identifier); !ok {
+				t.Errorf("%s: default model %q is not in the catalog", provider, m.Identifier)
+			}
+		}
+	}
+}
+
+func TestProvidersWithoutACatalogURLAreCallableThroughTheEndpointTable(t *testing.T) {
+	for _, id := range []string{"groq", "xai", "cerebras", "togetherai", "deepinfra", "cohere"} {
+		p := types.APIProvider(id)
+		if !IsCatalogProvider(p) {
+			t.Errorf("%s is not a catalog provider", id)
+			continue
+		}
+		cfg, ok := ConfigForCatalogProvider(p)
+		if !ok || !strings.HasPrefix(cfg.BaseURL, "https://") {
+			t.Errorf("%s: config = %+v, %v", id, cfg, ok)
+		}
+	}
+}
+
+func TestFamilyDefaultsPickTheNewestStableModelOfOurFamily(t *testing.T) {
+	models := []catalog.Model{ // newest first
+		{ID: "claude-opus-9", Family: "claude-opus", Cost: catalog.Cost{Input: 15, Output: 75}},
+		{ID: "claude-sonnet-beta", Family: "claude-sonnet", Status: "beta", Cost: catalog.Cost{Input: 3, Output: 15}},
+		{ID: "claude-sonnet-9", Family: "claude-sonnet", Cost: catalog.Cost{Input: 3, Output: 15}},
+		{ID: "claude-haiku-9", Family: "claude-haiku", Cost: catalog.Cost{Input: 1, Output: 5}},
+		{ID: "claude-sonnet-8", Family: "claude-sonnet", Cost: catalog.Cost{Input: 3, Output: 15}},
+	}
+	got := rankModels(runtimeModelPolicy["anthropic"], models)
+	if got[0].ID != "claude-sonnet-9" || got[len(got)-1].ID != "claude-haiku-9" {
+		t.Fatalf("large %q small %q, want claude-sonnet-9 and claude-haiku-9", got[0].ID, got[len(got)-1].ID)
+	}
+	// A provider the table does not know falls back to the price rule: the dearest recent model first.
+	if got := rankModels(ModelDefaults{}, models); got[0].ID != "claude-opus-9" {
+		t.Fatalf("without a table entry the dearest recent model leads, got %q", got[0].ID)
+	}
+}
+
+// Every family the table names must exist in the embedded catalog, or the entry silently does nothing.
+func TestFamilyDefaultsNameFamiliesThatExist(t *testing.T) {
+	for id, d := range runtimeModelPolicy {
+		cp, ok := Catalog().Provider(id)
+		if !ok {
+			t.Errorf("%s: no such provider in the catalog", id)
+			continue
+		}
+		have := map[string]bool{}
+		for _, m := range cp.Models {
+			have[m.Family] = true
+		}
+		for _, f := range append(append([]string{}, d.Large...), d.Small...) {
+			if !have[f] {
+				t.Errorf("%s: family %q is not in the catalog", id, f)
+			}
+		}
+	}
+}

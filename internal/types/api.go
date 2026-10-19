@@ -22,15 +22,6 @@ const (
 	// Ollama - Local models
 	APIProviderOllama APIProvider = "ollama"
 
-	// AWS Bedrock - Claude via AWS
-	APIProviderBedrock APIProvider = "bedrock"
-
-	// Google Cloud Vertex AI - Claude via GCP
-	APIProviderVertex APIProvider = "vertex"
-
-	// Microsoft Azure AI Foundry - Claude via Azure
-	APIProviderFoundry APIProvider = "foundry"
-
 	// Google Gemini - Direct API
 	APIProviderGemini APIProvider = "gemini"
 
@@ -42,9 +33,6 @@ const (
 
 	// MiniMax - Chinese AI platform
 	APIProviderMiniMax APIProvider = "minimax"
-
-	// Cloudflare Workers AI
-	APIProviderWorkersAI APIProvider = "workers-ai"
 
 	// Mistral AI - Direct API (OpenAI-compatible)
 	APIProviderMistral APIProvider = "mistral"
@@ -588,5 +576,10 @@ type ContextWindow struct {
 // not found there it falls back to a conservative default (128k/4k).
 func GetContextWindow(m ModelIdentifier) ContextWindow {
 	cw := model.Global.ContextWindowFor(string(m.Provider), m.Model)
-	return ContextWindow{MaxTokens: cw.MaxTokens, MaxOutputTokens: cw.MaxOutputTokens}
+	tokens := cw.MaxTokens
+	// A prompt limit below the window means the prompt cannot use all of it: budget against the smaller number.
+	if cw.MaxInputTokens > 0 && cw.MaxInputTokens < tokens {
+		tokens = cw.MaxInputTokens
+	}
+	return ContextWindow{MaxTokens: tokens, MaxOutputTokens: cw.MaxOutputTokens}
 }

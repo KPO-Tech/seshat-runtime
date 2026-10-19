@@ -16,10 +16,6 @@
 | `codex` | Codex | oauth | — | — | `OAuth` |
 | `z-ai` | Z.ai | api_key | ✓ | ✓ | `Z_AI_API_KEY` |
 | `minimax` | MiniMax | api_key | ✓ | ✓ | `MINIMAX_API_KEY` |
-| `bedrock` | AWS Bedrock | aws | ✓ | ✓ | `AWS_ACCESS_KEY_ID+AWS_REGION` |
-| `vertex` | Google Cloud Vertex AI | gcp | ✓ | ✓ | `ANTHROPIC_VERTEX_PROJECT_ID+CLOUD_ML_REGION` |
-| `foundry` | Azure AI Foundry | api_key | ✓ | ✓ | `ANTHROPIC_FOUNDRY_API_KEY` |
-| `workers-ai` | Cloudflare Workers AI | api_key | — | — | `CLOUDFLARE_API_KEY` |
 | `opencode` | OpenCode Zen | api_key | ✓ | — | `OPENCODE_API_KEY` |
 | `kimi` | Kimi (Moonshot AI) | api_key | ✓ | ✓ | `KIMI_API_KEY` |
 
@@ -29,70 +25,53 @@
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for... |
-| `claude-opus-5-5` | 1M | 128K | ✓ | Claude Opus 5.5 — Long-running agentic coding and knowledge work. |
-| `claude-fable-5-1` | 1M | 128K | ✓ | Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agent... |
-| `claude-sonnet-5` | 1M | 128K | ✓ | Claude Sonnet 5 — Previous-generation Sonnet. |
-| `claude-opus-5` | 1M | 128K | ✓ | Claude Opus 5 — Previous-generation Opus. |
-| `claude-opus-4-8` | 1M | 128K | ✓ | Claude Opus 4.8 — Legacy Opus, still available. |
-| `claude-sonnet-4-6` | 1M | 128K | ✓ | Claude Sonnet 4.6 — Legacy Sonnet, still available. |
-| `claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
+| `claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 |
+| `claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 |
+
+Default large and small model shown. 14 models in all, read from the models.dev catalog.
 
 ### OpenAI (`openai`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `gpt-6.1-sol` | 1M | 128K | ✓ | GPT-6.1 Sol — Current flagship for coding, research, and agentic work. |
-| `gpt-6-astra` | 1M | 128K | ✓ | GPT-6 Astra — Highest-capability GPT-6 tier for the hardest problems. |
-| `gpt-6-sol` | 1M | 128K | ✓ | GPT-6 Sol — Balanced GPT-6 model. |
-| `gpt-5.6-terra` | 1M | 128K | ✓ | GPT-5.6 Terra — Previous-generation mid-tier model. |
-| `gpt-5.5` | 272K | 32K | ✓ | GPT-5.5 — Previous-generation frontier model. |
-| `gpt-6-luna` | 1M | 128K | ✓ | GPT-6 Luna — Small, fast, and cost-efficient model. |
+| `gpt-6.1-sol` | 1M | 128K | ✓ | GPT-6.1 Sol |
+| `gpt-6-luna` | 1M | 128K | ✓ | GPT-6 Luna |
+
+Default large and small model shown. 24 models in all, read from the models.dev catalog.
 
 ### Mistral AI (`mistral`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `mistral-large-latest` | 1M | 262K | — | Mistral Large 4 — Top-tier reasoning model for complex multi-step tasks. |
-| `mistral-medium-latest` | 262K | 209K | — | Mistral Medium 3.5 — Balanced capability and cost, vision-capable. |
-| `devstral-latest` | 262K | 209K | — | Devstral — Agentic coding model. |
-| `codestral-latest` | 256K | 204K | — | Codestral — Code generation and completion. |
-| `ministral-14b-latest` | 262K | 209K | — | Ministral 14B — Compact, capable open-weight model. |
-| `mistral-small-latest` | 262K | 209K | — | Mistral Small 4 — Efficient and capable at low cost and latency. |
+| `mistral-large-2512` | 262K | 8K | — | Mistral Large 3 |
+| `mistral-small-2603` | 262K | 256K | — | Mistral Small 4 |
+
+Default large and small model shown. 17 models in all, read from the models.dev catalog.
 
 ### Google Gemini (`gemini`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `gemini-4-argon` | 1M | 65K | — | Gemini 4 Argon — Google's most capable model. 1M context, multimodal. |
-| `gemini-3.8-flash` | 1M | 65K | — | Gemini 3.8 Flash — Fast, capable multimodal model. |
-| `gemini-3.6-flash` | 1M | 65K | — | Gemini 3.6 Flash — Previous-generation Flash. |
-| `gemini-3.1-pro-preview` | 1M | 65K | — | Gemini 3.1 Pro (preview) — Pro-tier reasoning. |
-| `gemini-2.5-pro` | 1M | 65K | — | Gemini 2.5 Pro — Stable Pro-tier model. |
-| `gemini-2.5-flash` | 1M | 65K | — | Gemini 2.5 Flash — Stable, fast model. |
-| `gemini-3.5-flash-lite` | 1M | 65K | — | Gemini 3.5 Flash-Lite — Cheapest and fastest for high-volume tasks. |
+| `gemini-4-argon` | 1M | 32K | — | Gemini 4 Argon |
+| `gemini-3.5-flash-lite` | 1M | 65K | — | Gemini 3.5 Flash Lite |
+
+Default large and small model shown. 18 models in all, read from the models.dev catalog.
 
 ### DeepSeek (`deepseek`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `deepseek-flash` | 1M | 384K | — | DeepSeek V4.1 Flash — Fast, cost-effective default. 1M context, thinking an... |
-| `deepseek-v4-pro` | 1M | 384K | — | DeepSeek V4 Pro (0813) — Flagship for demanding reasoning and coding. 1M co... |
+| `deepseek-flash` | 1M | 393K | — | DeepSeek V4.1 Flash 1017 |
+| `deepseek-v4-pro` | 1M | 393K | — | DeepSeek V4 Pro |
 
 ### OpenRouter (`openrouter`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `anthropic/claude-sonnet-5.5` | 1M | 128K | — | Claude Sonnet 5.5 via OpenRouter. |
-| `anthropic/claude-opus-5.5` | 1M | 128K | — | Claude Opus 5.5 via OpenRouter. |
-| `openai/gpt-6.1-sol` | 1M | 128K | — | GPT-6.1 Sol via OpenRouter. |
-| `google/gemini-4-argon` | 1M | 65K | — | Gemini 4 Argon via OpenRouter. |
-| `deepseek/deepseek-v4-pro` | 1M | 384K | — | DeepSeek V4 Pro via OpenRouter. |
-| `moonshotai/kimi-k3` | 1M | 131K | — | Kimi K3 via OpenRouter. |
-| `nvidia/nemotron-3-super-120b-a12b:free` | 262K | 65K | — | NVIDIA Nemotron 3 Super 120B (free tier, rate-limited) via OpenRouter. Tested... |
-| `cohere/north-mini-code:free` | 256K | 64K | — | Cohere North Mini Code (free tier, rate-limited) via OpenRouter. Agentic codi... |
-| `nvidia/nemotron-3.5-lightning:free` | 1M | 65K | — | NVIDIA Nemotron 3.5 Lightning (free tier, rate-limited) via OpenRouter. 1M co... |
-| `anthropic/claude-haiku-5.5` | 1M | 128K | — | Claude Haiku 5.5 via OpenRouter — fast and cheap. |
+| `anthropic/claude-sonnet-5.5` | 1M | 128K | — | Claude Sonnet 5.5 |
+| `anthropic/claude-haiku-5.5` | 1M | 128K | — | Claude Haiku 5.5 |
+
+Default large and small model shown. 311 models in all, read from the models.dev catalog.
 
 ### Codex (`codex`)
 
@@ -109,84 +88,41 @@
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `glm-5.3` | 1M | 131K | ✓ | GLM-5.3 — Latest flagship GLM. 1M context, reasoning, advanced tool use. |
-| `glm-5.2` | 1M | 131K | ✓ | GLM-5.2 — Previous flagship, 1M context. |
-| `glm-5.1` | 200K | 128K | ✓ | GLM-5.1 — Long-horizon autonomous execution with tool use. |
-| `glm-5` | 200K | 128K | — | GLM-5 — Agentic and coding model. |
-| `glm-4.7` | 200K | 128K | — | GLM-4.7 — Stable previous generation. |
-| `glm-5.3-flashx` | 1M | 131K | — | GLM-5.3 FlashX — Faster, cheaper GLM-5.3 tier. |
-| `glm-5.3-flash` | 1M | 131K | — | GLM-5.3 Flash — Fastest and cheapest GLM-5.3 tier, image/video input. |
+| `glm-5.3` | 1M | 131K | ✓ | GLM-5.3 |
+| `glm-5.3-flashx` | 1M | 131K | ✓ | GLM-5.3-FlashX |
+
+Default large and small model shown. 18 models in all, read from the models.dev catalog.
 
 ### MiniMax (`minimax`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `MiniMax-M3` | 1M | 512K | ✓ | MiniMax M3 — Latest flagship. 1M context, multimodal input, long-horizon ag... |
-| `MiniMax-M2.7` | 204K | 128K | ✓ | MiniMax M2.7 — Strong long-horizon agentic model. |
-| `MiniMax-M2.5` | 204K | 128K | ✓ | MiniMax M2.5 — Complex multi-step tasks, coding and reasoning. |
-| `MiniMax-M2.1` | 204K | 128K | — | MiniMax M2.1 — Multilingual model for coding and analysis. |
-
-### AWS Bedrock (`bedrock`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `anthropic.claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for... |
-| `anthropic.claude-opus-5-5` | 1M | 128K | ✓ | Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Bedrock |
-| `anthropic.claude-fable-5-1` | 1M | 128K | ✓ | Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agent... |
-| `anthropic.claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
-
-### Google Cloud Vertex AI (`vertex`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for... |
-| `claude-opus-5-5` | 1M | 128K | ✓ | Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Vertex |
-| `claude-fable-5-1` | 1M | 128K | ✓ | Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agent... |
-| `claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
-
-### Azure AI Foundry (`foundry`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for... |
-| `claude-opus-5-5` | 1M | 128K | ✓ | Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Azure... |
-| `claude-fable-5-1` | 1M | 128K | ✓ | Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agent... |
-| `claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
-
-### Cloudflare Workers AI (`workers-ai`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `@cf/zai-org/glm-5.3` | 1M | 131K | — | GLM-5.3 — 1M context, reasoning and function calling at the edge. |
-| `@cf/moonshotai/kimi-k2.6` | 262K | 32K | — | Kimi K2.6 — Agentic model at the edge. |
-| `@cf/openai/gpt-oss-120b` | 128K | 16K | — | gpt-oss-120B — Open-weight reasoning model at the edge. |
-| `@cf/zai-org/glm-4.7-flash` | 131K | 16K | — | GLM-4.7 Flash — Fast, cheap model with tool calling. |
-| `@cf/meta/llama-4-scout-17b-16e-instruct` | 131K | 4K | — | Llama 4 Scout 17B — Multimodal MoE at the edge. |
-| `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | 80K | 4K | — | DeepSeek-R1 Distill Qwen 32B — Reasoning model at the edge. |
+| `MiniMax-M2.7-highspeed` | 204K | 131K | ✓ | MiniMax-M2.7-highspeed |
+| `MiniMax-M3` | 1M | 512K | ✓ | MiniMax-M3 |
+| `MiniMax-M2.7` | 204K | 131K | ✓ | MiniMax-M2.7 |
+| `MiniMax-M2.5-highspeed` | 204K | 131K | ✓ | MiniMax-M2.5-highspeed |
+| `MiniMax-M2.5` | 204K | 131K | ✓ | MiniMax-M2.5 |
+| `MiniMax-M2.1` | 204K | 131K | ✓ | MiniMax-M2.1 |
+| `MiniMax-M2` | 204K | 131K | ✓ | MiniMax-M2 |
+| `MiniMax-M3.1-Flash` | 1M | 512K | ✓ | MiniMax-M3.1-Flash |
 
 ### OpenCode Zen (`opencode`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `claude-sonnet-5-5` | 1M | 128K | — | Claude Sonnet 5.5 via OpenCode Zen. |
-| `claude-opus-5-5` | 1M | 128K | — | Claude Opus 5.5 via OpenCode Zen. |
-| `gpt-6.1-sol` | 1M | 128K | — | GPT-6.1 Sol via OpenCode Zen. |
-| `gemini-4-argon` | 1M | 65K | — | Gemini 4 Argon via OpenCode Zen. |
-| `grok-4.7` | 500K | 128K | — | Grok 4.7 via OpenCode Zen. |
-| `kimi-k3` | 1M | 131K | — | Kimi K3 via OpenCode Zen. |
-| `glm-5.3` | 1M | 131K | — | GLM-5.3 via OpenCode Zen. |
-| `deepseek-v4-pro` | 1M | 384K | — | DeepSeek V4 Pro via OpenCode Zen. |
-| `minimax-m3` | 1M | 131K | — | MiniMax M3 via OpenCode Zen. |
-| `claude-haiku-5-5` | 1M | 128K | — | Claude Haiku 5.5 via OpenCode Zen. |
+| `claude-sonnet-5-5` | 1M | 128K | — | Claude Sonnet 5.5 |
+| `claude-haiku-5-5` | 1M | 128K | — | Claude Haiku 5.5 |
+
+Default large and small model shown. 84 models in all, read from the models.dev catalog.
 
 ### Kimi (Moonshot AI) (`kimi`)
 
 | Model ID | Context | Max output | Cache | Description |
 |---|---|---|:---:|---|
-| `kimi-k3` | 1M | 1M | ✓ | Kimi K3 — Flagship native multimodal agentic model. 1M context, vision, rea... |
-| `kimi-k2.7-code` | 262K | 262K | ✓ | Kimi K2.7 Code — Coding specialist, always thinking. Long-horizon agentic c... |
-| `kimi-k2.7-code-highspeed` | 262K | 262K | ✓ | Kimi K2.7 Code (high-speed) — Same coding specialist tuned for faster output. |
-| `kimi-k2.6` | 262K | 262K | ✓ | Kimi K2.6 — Multimodal model with vision, thinking mode and agent orchestra... |
+| `kimi-k3` | 1M | 8K | ✓ | Kimi K3 |
+| `kimi-k2.7-code-highspeed` | 262K | 8K | ✓ | Kimi K2.7 Code HighSpeed |
+| `kimi-k2.6` | 262K | 8K | ✓ | Kimi K2.6 |
+| `kimi-k2.7-code` | 262K | 8K | ✓ | Kimi K2.7 Code |
 
 
 ---
@@ -219,9 +155,8 @@ statements in `client.go`:
 
 | Adapter | Providers | Endpoint | Auth |
 |---|---|---|---|
-| `anthropicAdapter` | anthropic, bedrock, vertex, workers-ai, unknown (default) | `/v1/messages` | `x-api-key` + `anthropic-version` |
-| `foundryAdapter` | foundry | `/v1/messages` | `api-key` + `Anthropic-Foundry-Resource-Id` |
-| `openAICompatAdapter` | openai, z-ai, minimax, openrouter, mistral | `/chat/completions` | `Authorization: Bearer` |
+| `anthropicAdapter` | anthropic, unknown (default) | `/v1/messages` | `x-api-key` + `anthropic-version` |
+| `openAICompatAdapter` | openai, z-ai, minimax, openrouter, mistral, deepseek, opencode, kimi, and every generic provider of the models.dev catalog (groq, xai, together...) | `/chat/completions` | `Authorization: Bearer` |
 | `codexAdapter` | codex | `/responses` | `Authorization: Bearer` + codex UA |
 | `ollamaAdapter` | ollama | `/api/chat` | `Authorization: Bearer` (optional) |
 | `geminiAdapter` | gemini | `:generateContent` / `:streamGenerateContent?alt=sse` | `Authorization: Bearer` |
@@ -324,7 +259,7 @@ cfg := &providers.Config{
             {Provider: "anthropic", Model: "claude-haiku-4-5"},
         },
         FallbackProviders: []types.APIProvider{
-            types.APIProviderBedrock,
+            types.APIProviderOpenRouter,
         },
         CircuitBreaker: &providers.CircuitBreakerConfig{
             FailureThreshold: 3,

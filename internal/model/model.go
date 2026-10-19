@@ -25,6 +25,8 @@ type Capabilities struct {
 	PromptCaching bool
 	// StructuredOutput indicates native JSON schema output support.
 	StructuredOutput bool
+	// NoTemperature indicates the model rejects the temperature parameter: it must not be sent.
+	NoTemperature bool
 }
 
 // Pricing holds per-token costs in USD per 1 million tokens (MTok).
@@ -46,6 +48,8 @@ type ContextWindow struct {
 	MaxTokens int
 	// MaxOutputTokens is the cap on generated tokens per call.
 	MaxOutputTokens int
+	// MaxInputTokens caps the prompt alone when it is below MaxTokens; 0 means the prompt can use the window.
+	MaxInputTokens int
 }
 
 // Metadata aggregates all model-level metadata.

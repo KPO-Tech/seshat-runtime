@@ -294,12 +294,6 @@ func providerEnvVars(provider string) []string {
 		return []string{"GOOGLE_API_KEY", "GOOGLE_GEMINI_API_KEY"}
 	case string(APIProviderOllama):
 		return []string{"OLLAMA_API_KEY"}
-	case string(APIProviderBedrock):
-		return []string{"AWS_ACCESS_KEY_ID"}
-	case string(APIProviderVertex):
-		return []string{"ANTHROPIC_VERTEX_PROJECT_ID"}
-	case string(APIProviderFoundry):
-		return []string{"ANTHROPIC_FOUNDRY_API_KEY"}
 	case string(APIProviderZAi):
 		// Order matches pkg/config/provider_catalog.go's
 		// ProviderCredentialEnvVars (M5d in TODO.md - the two lists used to
@@ -309,8 +303,6 @@ func providerEnvVars(provider string) []string {
 		return []string{"OPENROUTER_API_KEY"}
 	case string(APIProviderMiniMax):
 		return []string{"MINIMAX_API_KEY"}
-	case string(APIProviderWorkersAI):
-		return []string{"CLOUDFLARE_API_KEY"}
 	case string(APIProviderMistral):
 		return []string{"MISTRAL_API_KEY"}
 	case string(APIProviderCodex):

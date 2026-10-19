@@ -59,7 +59,7 @@ func Refresh(ctx context.Context, client *http.Client, url, cacheDir string) err
 	if err != nil {
 		return err
 	}
-	data, err := encodeSnapshot(cat)
+	data, err := Encode(cat)
 	if err != nil {
 		return err
 	}
@@ -96,24 +96,37 @@ func RefreshIfStale(ctx context.Context, client *http.Client, url, cacheDir stri
 	return true, Refresh(ctx, client, url, cacheDir)
 }
 
-// encodeSnapshot writes a catalog in the compact gzip form Load reads.
-func encodeSnapshot(c *Catalog) ([]byte, error) {
-	doc := snapshotDoc{Version: 1, Providers: make(map[string]snapshotProvider, len(c.Providers))}
+// flag is 1 for true, 0 for false, so a false flag is left out of the compact form.
+func flag(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// Encode writes a catalog in the compact gzip form Load reads (and the embedded snapshot is kept in).
+func Encode(c *Catalog) ([]byte, error) {
+	doc := snapshotDoc{Version: snapshotVersion, Providers: make(map[string]snapshotProvider, len(c.Providers))}
 	for id, p := range c.Providers {
 		sp := snapshotProvider{Name: p.Name, API: p.BaseURL, Env: p.Env, Protocol: p.Protocol, Models: make(map[string]snapshotModel, len(p.Models))}
 		for mid, m := range p.Models {
-			sm := snapshotModel{Name: m.Name, Context: m.ContextWindow, Output: m.MaxOutput, Status: m.Status, Date: m.ReleaseDate}
-			if m.Reasoning {
-				sm.Reason = 1
+			sm := snapshotModel{
+				Name: m.Name, Context: m.ContextWindow, MaxInput: m.MaxInput, Output: m.MaxOutput, Status: m.Status, Date: m.ReleaseDate,
+				Interleaved: m.Interleaved, Knowledge: m.Knowledge, Updated: m.LastUpdated, Family: m.Family,
 			}
+			sm.Reason = flag(m.Reasoning)
+			sm.Attachment = flag(m.Attachment)
+			sm.Structured = flag(m.StructuredOutput)
+			sm.NoTemp = flag(m.NoTemperature)
+			sm.OpenWeights = flag(m.OpenWeights)
 			for i, in := range m.InputModalities {
 				if i > 0 {
 					sm.Input += ","
 				}
 				sm.Input += in
 			}
-			if m.Cost.Input > 0 || m.Cost.Output > 0 {
-				sm.Price = []float64{m.Cost.Input, m.Cost.Output, m.Cost.CacheRead, m.Cost.CacheWrite}
+			if m.Cost != (Cost{}) {
+				sm.Price = []float64{m.Cost.Input, m.Cost.Output, m.Cost.CacheRead, m.Cost.CacheWrite, m.Cost.Reasoning, m.Cost.InputAudio, m.Cost.OutputAudio}
 			}
 			sp.Models[mid] = sm
 		}

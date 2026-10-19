@@ -1723,14 +1723,6 @@ func (m *UI) applyDialogAction(action dialog.Action) tea.Cmd {
 	case dialog.ActionDisableMCPServer:
 		cmds = append(cmds, m.disableMCPServer(msg.Name))
 	case dialog.ActionOpenProviderConfig:
-		providerID := string(msg.Provider.ID)
-		if providerID == "bedrock" || providerID == "vertex" {
-			if cmd := m.openModelsDialog(providerID); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			cmds = append(cmds, util.ReportInfo("Provider-specific env configuration is used for this provider."))
-			break
-		}
 		if cmd := m.openAuthenticationDialog(msg.Provider, config.SelectedModel{}, config.SelectedModelTypeLarge); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -2052,6 +2044,9 @@ func (m *UI) openAuthenticationDialog(provider catwalk.Provider, model config.Se
 		dlg, cmd = dialog.NewOAuthHyper(m.com, isOnboarding, provider, model, modelType)
 	case catwalk.InferenceProviderCopilot:
 		dlg, cmd = dialog.NewOAuthCopilot(m.com, isOnboarding, provider, model, modelType)
+	case "codex":
+		// Codex is a ChatGPT account: it signs in with a code and the browser, not with an API key.
+		dlg, cmd = dialog.NewOAuthCodex(m.com, isOnboarding, provider, model, modelType)
 	default:
 		dlg, cmd = dialog.NewAPIKeyInput(m.com, isOnboarding, provider, model, modelType)
 	}
@@ -3807,19 +3802,12 @@ func isProviderConfigured(cfg *config.Config, providerID string) bool {
 	if ok && (providerCfg.APIKey != "" || providerCfg.OAuthToken != nil || (!providerNeedsSetup(providerID) && providerCfg.BaseURL != "")) {
 		return true
 	}
-	switch strings.ToLower(providerID) {
-	case "bedrock":
-		return strings.TrimSpace(os.Getenv("AWS_REGION")) != ""
-	case "vertex":
-		return strings.TrimSpace(os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")) != "" && strings.TrimSpace(os.Getenv("CLOUD_ML_REGION")) != ""
-	default:
-		return false
-	}
+	return false
 }
 
 func providerNeedsSetup(providerID string) bool {
 	switch strings.ToLower(providerID) {
-	case "ollama", "bedrock", "vertex":
+	case "ollama":
 		return false
 	default:
 		return true

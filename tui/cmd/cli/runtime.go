@@ -32,9 +32,6 @@ type runtimeOptions struct {
 	SQLitePath              string
 	APIKey                  string
 	ProviderBaseURL         string
-	ProviderRegion          string
-	ProviderProjectID       string
-	ProviderResource        string
 	BrowserRemoteControlURL string
 	BrowserExecutablePath   string
 	DocumentReaderURL       string
@@ -145,9 +142,6 @@ func loadRuntimeOptions(overrides runtimeOverrides) (runtimeOptions, error) {
 		SQLitePath:              engineconfig.EffectiveSessionDBPath(config),
 		APIKey:                  apiKey,
 		ProviderBaseURL:         config.ProviderBaseURL,
-		ProviderRegion:          config.ProviderRegion,
-		ProviderProjectID:       config.ProviderProjectID,
-		ProviderResource:        config.ProviderResource,
 		BrowserRemoteControlURL: strings.TrimSpace(config.BrowserRemoteControlURL),
 		BrowserExecutablePath:   strings.TrimSpace(config.BrowserExecutablePath),
 		DocumentReaderURL:       strings.TrimSpace(config.DocumentReaderURL),
@@ -193,15 +187,6 @@ func newClient(
 	providerConfig.APIKey = options.APIKey
 	if options.ProviderBaseURL != "" {
 		providerConfig.BaseURL = options.ProviderBaseURL
-	}
-	if options.ProviderRegion != "" {
-		providerConfig.Region = options.ProviderRegion
-	}
-	if options.ProviderProjectID != "" {
-		providerConfig.ProjectID = options.ProviderProjectID
-	}
-	if options.ProviderResource != "" && options.Model.Provider == sdk.APIProviderFoundry {
-		providerConfig.Region = options.ProviderResource
 	}
 
 	// Initialize the longterm knowledge-graph store backed by the same SQLite DB.

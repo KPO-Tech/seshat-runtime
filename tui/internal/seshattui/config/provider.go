@@ -50,9 +50,9 @@ func cachePathFor(name string) string {
 // values so the TUI models dialog can render them. The list is built once
 // from pkg/config.AvailableProviders() (the SDK's own registry) extended
 // with the display-only model IDs in extra_models.json. No network I/O.
-func Providers(_ *Config) ([]catwalk.Provider, error) {
+func Providers(cfg *Config) ([]catwalk.Provider, error) {
 	providerOnce.Do(func() {
-		providerList = buildSeshatProviders()
+		providerList = buildSeshatProviders(modelPolicyFrom(cfg))
 	})
 	return providerList, nil
 }

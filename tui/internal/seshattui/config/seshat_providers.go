@@ -76,8 +76,6 @@ func apiEndpointFor(providerID string) string {
 		return "https://api.minimax.chat/v1"
 	case "opencode":
 		return "https://opencode.ai/zen/v1"
-	case "workers-ai":
-		return "https://api.cloudflare.com/client/v4/accounts"
 	case "kimi":
 		return "https://api.moonshot.ai/v1"
 	case "ollama":
@@ -91,14 +89,10 @@ func apiEndpointFor(providerID string) string {
 // used by the TUI's API key verification flow (TestConnection).
 func catwalkProviderType(providerID string) catwalk.Type {
 	switch providerID {
-	case "anthropic", "foundry":
+	case "anthropic":
 		return catwalk.TypeAnthropic
 	case "gemini":
 		return catwalk.TypeGoogle
-	case "bedrock":
-		return catwalk.TypeBedrock
-	case "vertex":
-		return "google-vertex"
 	default:
 		return catwalk.TypeOpenAI
 	}
@@ -108,7 +102,7 @@ func catwalkProviderType(providerID string) catwalk.Type {
 // seshat's SDK provider catalog, extended with the models in extra_models.json.
 // Ollama is included but its Models list is intentionally empty — the workspace
 // populates it at runtime via providers.FetchModels (DetectProviders goroutine).
-func buildSeshatProviders() []catwalk.Provider {
+func buildSeshatProviders(policy internalproviders.ModelPolicy) []catwalk.Provider {
 	extras := loadExtraModels()
 
 	sdkProviders := engineconfig.AvailableProviders()
@@ -123,7 +117,7 @@ func buildSeshatProviders() []catwalk.Provider {
 		// alphabetically first one.
 		var baseModels []catwalk.Model
 		seen := make(map[string]struct{}, len(p.Models))
-		if info, ok := internalproviders.GetProviderInfo(types.APIProvider(pid)); ok {
+		if info, ok := internalproviders.ProviderInfoWithPolicy(types.APIProvider(pid), policy); ok {
 			for _, m := range info.Models {
 				baseModels = append(baseModels, catwalk.Model{
 					ID:               m.Identifier,
@@ -180,9 +174,35 @@ func buildSeshatProviders() []catwalk.Provider {
 // Used to decide whether to skip the API key input dialog.
 func needsAPIKey(providerID string) bool {
 	switch strings.ToLower(providerID) {
-	case "ollama", "bedrock", "vertex":
+	case "ollama":
 		return false
 	default:
 		return true
 	}
+}
+
+// modelPolicyFrom reads the model_defaults of the configuration into a policy for the runtime. Nil when there are none.
+func modelPolicyFrom(cfg *Config) internalproviders.ModelPolicy {
+	if cfg == nil || cfg.Options == nil || len(cfg.Options.ModelDefaults) == 0 {
+		return nil
+	}
+	policy := make(internalproviders.ModelPolicy, len(cfg.Options.ModelDefaults))
+	for provider, entry := range cfg.Options.ModelDefaults {
+		policy[types.APIProvider(provider)] = internalproviders.ModelDefaults{
+			Large: append([]string(nil), entry.Large...),
+			Small: append([]string(nil), entry.Small...),
+		}
+	}
+	return policy
+}
+
+// MainProviderIDs returns the ids of the providers built into the runtime: the ones the terminal app lists first. Every other provider
+// of the list comes from the models.dev catalog and is offered behind "More providers", or by search.
+func MainProviderIDs() map[string]bool {
+	sdkProviders := engineconfig.AvailableProviders()
+	ids := make(map[string]bool, len(sdkProviders))
+	for _, p := range sdkProviders {
+		ids[string(p.Name)] = true
+	}
+	return ids
 }

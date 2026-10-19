@@ -340,7 +340,7 @@ func (c *Client) CreateMessageStreamResultWithCallback(ctx context.Context, req 
 
 // createAnthropicStreamResult consumes an Anthropic SSE stream and returns the
 // canonical aggregated response. It is the default streaming path (anthropic,
-// bedrock, vertex, workers-ai) used by anthropicAdapter/foundryAdapter.
+// and any provider without its own adapter) used by anthropicAdapter.
 func (c *Client) createAnthropicStreamResult(ctx context.Context, req types.APIRequest, onChunk func(types.APIResponseChunk)) (*types.APIStreamResult, error) {
 	chunks, err := c.CreateMessageStream(ctx, req)
 	if err != nil {
@@ -496,7 +496,7 @@ func anthropicToolsWithCacheControl(tools []types.APIToolDefinition, provider ty
 	if len(tools) == 0 {
 		return tools
 	}
-	if provider != types.APIProviderAnthropic && provider != types.APIProviderFoundry {
+	if provider != types.APIProviderAnthropic {
 		return tools
 	}
 	out := make([]types.APIToolDefinition, len(tools))
@@ -524,7 +524,7 @@ func anthropicMessagesWithCacheControl(messages []types.Message, provider types.
 	if len(messages) == 0 {
 		return messages
 	}
-	if provider != types.APIProviderAnthropic && provider != types.APIProviderFoundry {
+	if provider != types.APIProviderAnthropic {
 		return messages
 	}
 
@@ -573,8 +573,8 @@ func (c *Client) buildRequestBody(req types.APIRequest) (io.Reader, error) {
 }
 
 // buildAnthropicRequestBody serializes an APIRequest into the Anthropic Messages
-// wire format. It is the default request builder (anthropic, foundry, bedrock,
-// vertex, workers-ai) used by anthropicAdapter/foundryAdapter.
+// wire format. It is the default request builder (anthropic and any provider
+// without its own adapter) used by anthropicAdapter.
 func (c *Client) buildAnthropicRequestBody(req types.APIRequest) (io.Reader, error) {
 	body := map[string]any{
 		"model":      req.Model.ProviderModelName(),
@@ -582,15 +582,11 @@ func (c *Client) buildAnthropicRequestBody(req types.APIRequest) (io.Reader, err
 		"messages":   anthropicMessagesWithCacheControl(req.Messages, c.provider),
 	}
 
-	// Anthropic-style providers can consume structured system prompt blocks,
-	// preserving cache_control breakpoints. Foundry speaks the same Messages
-	// wire format as Anthropic (both route through this builder) and gets
-	// the same treatment for the same reason tools do just below — flattening
-	// here would silently drop Foundry's system-prompt cache_control instead
-	// of just not caching it. Other providers fall back to the flattened
-	// prompt string so the runtime keeps one canonical prompt representation
-	// while their transport stays simple.
-	if len(req.SystemPromptBlocks) > 0 && (c.provider == types.APIProviderAnthropic || c.provider == types.APIProviderFoundry) {
+	// Anthropic can consume structured system prompt blocks, preserving
+	// cache_control breakpoints. Other providers that go through this builder
+	// fall back to the flattened prompt string so the runtime keeps one
+	// canonical prompt representation while their transport stays simple.
+	if len(req.SystemPromptBlocks) > 0 && c.provider == types.APIProviderAnthropic {
 		body["system"] = req.SystemPromptBlocks
 	} else if req.SystemPrompt != "" {
 		body["system"] = req.SystemPrompt
@@ -602,7 +598,7 @@ func (c *Client) buildAnthropicRequestBody(req types.APIRequest) (io.Reader, err
 		body["tools"] = anthropicToolsWithCacheControl(req.Tools, c.provider)
 	}
 
-	if req.Temperature != nil {
+	if sendsTemperature(req) {
 		body["temperature"] = *req.Temperature
 	}
 	if req.TopK != nil {
@@ -640,8 +636,8 @@ func (c *Client) decodeProviderResponse(body io.Reader, model types.ModelIdentif
 }
 
 // decodeAnthropicResponse decodes an Anthropic Messages JSON response into the
-// canonical APIResponse. It is the default decoder (anthropic, foundry, bedrock,
-// vertex, workers-ai) used by anthropicAdapter/foundryAdapter.
+// canonical APIResponse. It is the default decoder (anthropic and any provider
+// without its own adapter) used by anthropicAdapter.
 func decodeAnthropicResponse(body io.Reader, _ types.ModelIdentifier) (types.APIResponse, error) {
 	var apiResp types.APIResponse
 	if err := json.NewDecoder(body).Decode(&apiResp); err != nil {

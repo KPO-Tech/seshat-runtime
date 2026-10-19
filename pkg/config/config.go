@@ -38,9 +38,6 @@ type Config struct {
 	DBPath            string  `mapstructure:"db_path" yaml:"db_path,omitempty"`
 	SessionDBPath     string  `mapstructure:"session_db_path" yaml:"session_db_path,omitempty"`
 	ProviderBaseURL   string  `mapstructure:"provider_base_url" yaml:"provider_base_url,omitempty"`
-	ProviderRegion    string  `mapstructure:"provider_region" yaml:"provider_region,omitempty"`
-	ProviderProjectID string  `mapstructure:"provider_project_id" yaml:"provider_project_id,omitempty"`
-	ProviderResource  string  `mapstructure:"provider_resource" yaml:"provider_resource,omitempty"`
 	AdminEmail        string  `mapstructure:"admin_email" yaml:"admin_email,omitempty"`
 	AdminPassword     string  `mapstructure:"admin_password" yaml:"-"`
 	AdminPasswordHash string  `mapstructure:"admin_password_hash" yaml:"admin_password_hash,omitempty"`
@@ -183,9 +180,6 @@ func DefaultConfig() Config {
 		DBPath:                  "",
 		SessionDBPath:           "",
 		ProviderBaseURL:         "",
-		ProviderRegion:          "",
-		ProviderProjectID:       "",
-		ProviderResource:        "",
 		AdminEmail:              "",
 		AdminPassword:           "",
 		AdminPasswordHash:       "",
@@ -257,9 +251,6 @@ func LoadInto(config *Config) error {
 	v.BindEnv("db_path", "SESHAT_DB_PATH")
 	v.BindEnv("session_db_path", "SESHAT_SESSION_DB_PATH")
 	v.BindEnv("provider_base_url", "SESHAT_PROVIDER_BASE_URL")
-	v.BindEnv("provider_region", "SESHAT_PROVIDER_REGION")
-	v.BindEnv("provider_project_id", "SESHAT_PROVIDER_PROJECT_ID")
-	v.BindEnv("provider_resource", "SESHAT_PROVIDER_RESOURCE")
 	v.BindEnv("admin_email", "SESHAT_ADMIN_EMAIL")
 	v.BindEnv("admin_password", "SESHAT_ADMIN_PASSWORD")
 	v.BindEnv("admin_password_hash", "SESHAT_ADMIN_PASSWORD_HASH")
@@ -444,7 +435,7 @@ func DetectProviderFromModel(model string) sdk.APIProvider {
 	case strings.HasPrefix(model, "glm"):
 		return sdk.APIProviderZAi
 	case strings.HasPrefix(model, "@cf/"):
-		return sdk.APIProviderWorkersAI
+		return sdk.APIProvider("cloudflare-workers-ai")
 	case strings.HasPrefix(model, "anthropic/"),
 		strings.HasPrefix(model, "openai/"),
 		strings.HasPrefix(model, "deepseek/"),

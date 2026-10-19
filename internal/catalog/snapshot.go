@@ -14,12 +14,12 @@ import (
 // maxCatalogBytes bounds what is read from the embedded file, the cache or the network once decompressed.
 const maxCatalogBytes = 64 << 20
 
-// snapshotFile is the trimmed catalog embedded in the binary. Rebuild it with scripts/build-catalog-snapshot.js.
+// snapshotFile is the trimmed catalog embedded in the binary. Rebuild it with scripts/build_catalog_snapshot.go.
 //
 //go:embed snapshot.json.gz
 var snapshotFile []byte
 
-// The compact form of the snapshot, as scripts/build-catalog-snapshot.js writes it.
+// The compact form of the snapshot, as scripts/build_catalog_snapshot.go writes it.
 type snapshotDoc struct {
 	Version   int                         `json:"v"`
 	Providers map[string]snapshotProvider `json:"providers"`
@@ -34,15 +34,30 @@ type snapshotProvider struct {
 }
 
 type snapshotModel struct {
-	Name    string    `json:"n"`
-	Context int       `json:"c,omitempty"`
-	Output  int       `json:"o,omitempty"`
-	Input   string    `json:"i,omitempty"`
-	Reason  int       `json:"r,omitempty"`
-	Price   []float64 `json:"p,omitempty"`
-	Status  string    `json:"s,omitempty"`
-	Date    string    `json:"d,omitempty"`
+	Name    string `json:"n"`
+	Context int    `json:"c,omitempty"`
+	Output  int    `json:"o,omitempty"`
+	Input   string `json:"i,omitempty"`
+	Reason  int    `json:"r,omitempty"`
+	// Price is [input, output, cache read, cache write, reasoning, input audio, output audio]; the last five may be missing.
+	Price  []float64 `json:"p,omitempty"`
+	Status string    `json:"s,omitempty"`
+	Date   string    `json:"d,omitempty"`
+	// Added in version 2; absent in version 1.
+	MaxInput    int    `json:"li,omitempty"`
+	Attachment  int    `json:"at,omitempty"`
+	Structured  int    `json:"so,omitempty"`
+	NoTemp      int    `json:"nt,omitempty"`
+	Interleaved string `json:"il,omitempty"`
+	OpenWeights int    `json:"ow,omitempty"`
+	Knowledge   string `json:"kn,omitempty"`
+	Updated     string `json:"lu,omitempty"`
+	// Added in version 3.
+	Family string `json:"fa,omitempty"`
 }
+
+// snapshotVersion is the version of the compact form this package writes. It reads versions 1 to 3.
+const snapshotVersion = 3
 
 var (
 	embeddedOnce sync.Once
@@ -54,6 +69,9 @@ var (
 func Embedded() (*Catalog, error) {
 	embeddedOnce.Do(func() {
 		embedded, embeddedErr = decodeSnapshot(snapshotFile, "embedded", false)
+		if embeddedErr == nil {
+			applyEndpointOverrides(embedded)
+		}
 	})
 	return embedded, embeddedErr
 }
@@ -73,7 +91,7 @@ func decodeSnapshot(data []byte, source string, unverified bool) (*Catalog, erro
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("parse catalog: %w", err)
 	}
-	if doc.Version != 1 {
+	if doc.Version < 1 || doc.Version > snapshotVersion {
 		return nil, fmt.Errorf("unsupported catalog version %d", doc.Version)
 	}
 	return fromSnapshot(doc, source, unverified), nil
@@ -87,7 +105,11 @@ func fromSnapshot(doc snapshotDoc, source string, unverified bool) *Catalog {
 			Models: make(map[string]Model, len(sp.Models)), Unverified: unverified,
 		}
 		for mid, sm := range sp.Models {
-			m := Model{ID: mid, Name: sm.Name, ContextWindow: sm.Context, MaxOutput: sm.Output, Reasoning: sm.Reason == 1, Status: sm.Status, ReleaseDate: sm.Date}
+			m := Model{
+				ID: mid, Name: sm.Name, ContextWindow: sm.Context, MaxInput: sm.MaxInput, MaxOutput: sm.Output, Reasoning: sm.Reason == 1,
+				Attachment: sm.Attachment == 1, StructuredOutput: sm.Structured == 1, NoTemperature: sm.NoTemp == 1, Interleaved: sm.Interleaved,
+				OpenWeights: sm.OpenWeights == 1, Family: sm.Family, Knowledge: sm.Knowledge, Status: sm.Status, ReleaseDate: sm.Date, LastUpdated: sm.Updated,
+			}
 			if sm.Input != "" {
 				m.InputModalities = strings.Split(sm.Input, ",")
 			}
@@ -98,6 +120,12 @@ func fromSnapshot(doc snapshotDoc, source string, unverified bool) *Catalog {
 				}
 				if len(sm.Price) > 3 {
 					m.Cost.CacheWrite = sm.Price[3]
+				}
+				if len(sm.Price) > 4 {
+					m.Cost.Reasoning = sm.Price[4]
+				}
+				if len(sm.Price) > 6 {
+					m.Cost.InputAudio, m.Cost.OutputAudio = sm.Price[5], sm.Price[6]
 				}
 			}
 			p.Models[mid] = m
