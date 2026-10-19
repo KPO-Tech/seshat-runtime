@@ -6,7 +6,7 @@ func TestKimiProviderUsesInternationalEndpoint(t *testing.T) {
 	if got := apiEndpointFor("kimi"); got != "https://api.moonshot.ai/v1" {
 		t.Fatalf("apiEndpointFor(kimi) = %q, want https://api.moonshot.ai/v1", got)
 	}
-	providers := buildSeshatProviders()
+	providers := buildSeshatProviders(nil)
 	found := false
 	for _, provider := range providers {
 		if provider.ID == "kimi" {

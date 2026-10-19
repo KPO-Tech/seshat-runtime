@@ -226,7 +226,7 @@ func TestRankModelsPutsTheDearestRecentModelFirstAndTheCheapestLast(t *testing.T
 		{ID: "tiny", Cost: catalog.Cost{Input: 0.1, Output: 0.4}},
 		{ID: "old", Cost: catalog.Cost{Input: 2, Output: 8}},
 	}
-	got := rankModels("", models)
+	got := rankModels(ModelDefaults{}, models)
 	ids := []string{got[0].ID, got[1].ID, got[2].ID, got[3].ID}
 	want := []string{"flagship", "mid", "old", "tiny"}
 	for i := range want {
@@ -234,7 +234,7 @@ func TestRankModelsPutsTheDearestRecentModelFirstAndTheCheapestLast(t *testing.T
 			t.Fatalf("order = %v, want %v", ids, want)
 		}
 	}
-	unpriced := rankModels("", []catalog.Model{{ID: "new"}, {ID: "older"}, {ID: "oldest"}})
+	unpriced := rankModels(ModelDefaults{}, []catalog.Model{{ID: "new"}, {ID: "older"}, {ID: "oldest"}})
 	if unpriced[0].ID != "new" || unpriced[2].ID != "oldest" {
 		t.Fatalf("without prices the newest is large and the oldest small: %v", unpriced)
 	}
@@ -365,19 +365,19 @@ func TestFamilyDefaultsPickTheNewestStableModelOfOurFamily(t *testing.T) {
 		{ID: "claude-haiku-9", Family: "claude-haiku", Cost: catalog.Cost{Input: 1, Output: 5}},
 		{ID: "claude-sonnet-8", Family: "claude-sonnet", Cost: catalog.Cost{Input: 3, Output: 15}},
 	}
-	got := rankModels("anthropic", models)
+	got := rankModels(runtimeModelPolicy["anthropic"], models)
 	if got[0].ID != "claude-sonnet-9" || got[len(got)-1].ID != "claude-haiku-9" {
 		t.Fatalf("large %q small %q, want claude-sonnet-9 and claude-haiku-9", got[0].ID, got[len(got)-1].ID)
 	}
 	// A provider the table does not know falls back to the price rule: the dearest recent model first.
-	if got := rankModels("nobody", models); got[0].ID != "claude-opus-9" {
+	if got := rankModels(ModelDefaults{}, models); got[0].ID != "claude-opus-9" {
 		t.Fatalf("without a table entry the dearest recent model leads, got %q", got[0].ID)
 	}
 }
 
 // Every family the table names must exist in the embedded catalog, or the entry silently does nothing.
 func TestFamilyDefaultsNameFamiliesThatExist(t *testing.T) {
-	for id, d := range familyDefaults {
+	for id, d := range runtimeModelPolicy {
 		cp, ok := Catalog().Provider(id)
 		if !ok {
 			t.Errorf("%s: no such provider in the catalog", id)

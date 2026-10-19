@@ -274,6 +274,12 @@ func (Attribution) JSONSchemaExtend(schema *jsonschema.Schema) {
 	}
 }
 
+// ModelDefaultsEntry names the default large and small model of one provider: families of the models.dev catalog or exact model ids.
+type ModelDefaultsEntry struct {
+	Large []string `json:"large,omitempty"`
+	Small []string `json:"small,omitempty"`
+}
+
 type Options struct {
 	ContextPaths         []string    `json:"context_paths,omitempty" jsonschema:"description=Paths to files containing context information for the AI,example=.cursorrules,example=SESHAT.md"`
 	SkillsPaths          []string    `json:"skills_paths,omitempty" jsonschema:"description=Paths to directories containing Agent Skills (folders with SKILL.md files),example=~/.config/seshat-tui/skills,example=./skills"`
@@ -281,6 +287,9 @@ type Options struct {
 	Debug                bool        `json:"debug,omitempty" jsonschema:"description=Enable debug logging,default=false"`
 	DebugLSP             bool        `json:"debug_lsp,omitempty" jsonschema:"description=Enable debug logging for LSP servers,default=false"`
 	DisableAutoSummarize bool        `json:"disable_auto_summarize,omitempty" jsonschema:"description=Disable automatic conversation summarization,default=false"`
+	// ModelDefaults changes which model Seshat starts with for a provider when none was chosen. Only what is written here changes: the
+	// runtime's own choice applies to the rest. Each side is a family of the models.dev catalog or an exact model id, tried in order.
+	ModelDefaults map[string]ModelDefaultsEntry `json:"model_defaults,omitempty" jsonschema:"description=Default large and small model per provider when none was chosen. Each entry is a models.dev family (claude-sonnet) or an exact model id. Takes effect at the next start"`
 	// RefreshModelCatalog lets Seshat download the public models.dev catalog of providers and models in the background when the saved copy is more than a day old. Off by default; takes effect at the next start.
 	RefreshModelCatalog *bool `json:"refresh_model_catalog,omitempty" jsonschema:"description=Download the public models.dev catalog of providers and models in the background when the saved copy is a day old. Takes effect at the next start,default=false"`
 	// MemoryEnabled turns on long-term memory: notes are extracted from conversations and recalled into new ones. Off until the user opts in; takes effect at the next start.
