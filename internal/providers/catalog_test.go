@@ -258,3 +258,55 @@ func TestListsLeaveOutModelsTheChatClientCannotUse(t *testing.T) {
 		t.Error("the -pro rule is OpenAI's: it must not hide other providers' models")
 	}
 }
+
+func TestReasoningIsReadFromWhicheverFieldCarriesIt(t *testing.T) {
+	for name, body := range map[string]string{
+		"reasoning_content": `{"choices":[{"message":{"content":"a","reasoning_content":"think"}}]}`,
+		"reasoning":         `{"choices":[{"message":{"content":"a","reasoning":"think"}}]}`,
+		"reasoning_details": `{"choices":[{"message":{"content":"a","reasoning_details":[{"text":"thi"},{"summary":"nk"}]}}]}`,
+	} {
+		resp, err := decodeOpenAIResponse(strings.NewReader(body), types.ModelIdentifier{})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		thinking, _ := resp.Content[0].(types.ThinkingContent)
+		if thinking.Thinking != "think" {
+			t.Errorf("%s: thinking = %q", name, thinking.Thinking)
+		}
+	}
+}
+
+func TestStreamReasoningDetailsBecomeThinking(t *testing.T) {
+	var r openAIReasoning
+	if err := json.Unmarshal([]byte(`{"reasoning_details":[{"text":"ab"},{"text":"c"}]}`), &r); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.reasoningText(); got != "abc" {
+		t.Fatalf("reasoningText = %q", got)
+	}
+}
+
+func TestTemperatureIsOmittedForAModelThatRejectsIt(t *testing.T) {
+	model.Global.Register(model.Metadata{ID: "no-temp-model", Provider: "no-temp-prov", Capabilities: model.Capabilities{NoTemperature: true}})
+	temp := 0.3
+	req := types.APIRequest{Model: types.ModelIdentifier{Provider: "no-temp-prov", Model: "no-temp-model"}, Temperature: &temp}
+	if sendsTemperature(req) {
+		t.Fatal("the temperature must not be sent to a model the catalog says rejects it")
+	}
+	req.Model.Model = "unknown-model"
+	if !sendsTemperature(req) {
+		t.Fatal("a model the catalog does not know receives the temperature the request sets")
+	}
+	req.Temperature = nil
+	if sendsTemperature(req) {
+		t.Fatal("no temperature set, nothing to send")
+	}
+}
+
+func TestContextWindowUsesTheInputLimitWhenItIsBelowTheWindow(t *testing.T) {
+	model.Global.Register(model.Metadata{ID: "input-capped", Provider: "cap-prov", ContextWindow: model.ContextWindow{MaxTokens: 400000, MaxInputTokens: 272000, MaxOutputTokens: 128000}})
+	cw := types.GetContextWindow(types.ModelIdentifier{Provider: "cap-prov", Model: "input-capped"})
+	if cw.MaxTokens != 272000 {
+		t.Fatalf("MaxTokens = %d, want the input limit 272000", cw.MaxTokens)
+	}
+}

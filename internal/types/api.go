@@ -576,5 +576,10 @@ type ContextWindow struct {
 // not found there it falls back to a conservative default (128k/4k).
 func GetContextWindow(m ModelIdentifier) ContextWindow {
 	cw := model.Global.ContextWindowFor(string(m.Provider), m.Model)
-	return ContextWindow{MaxTokens: cw.MaxTokens, MaxOutputTokens: cw.MaxOutputTokens}
+	tokens := cw.MaxTokens
+	// A prompt limit below the window means the prompt cannot use all of it: budget against the smaller number.
+	if cw.MaxInputTokens > 0 && cw.MaxInputTokens < tokens {
+		tokens = cw.MaxInputTokens
+	}
+	return ContextWindow{MaxTokens: tokens, MaxOutputTokens: cw.MaxOutputTokens}
 }

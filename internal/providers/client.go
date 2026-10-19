@@ -598,7 +598,7 @@ func (c *Client) buildAnthropicRequestBody(req types.APIRequest) (io.Reader, err
 		body["tools"] = anthropicToolsWithCacheControl(req.Tools, c.provider)
 	}
 
-	if req.Temperature != nil {
+	if sendsTemperature(req) {
 		body["temperature"] = *req.Temperature
 	}
 	if req.TopK != nil {
