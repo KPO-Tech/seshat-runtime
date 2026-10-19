@@ -46,3 +46,26 @@ func TestProvidersKeepRegistryOrderAndDefaults(t *testing.T) {
 		}
 	}
 }
+
+// model_defaults in the configuration changes the default of one provider and nothing else.
+func TestModelDefaultsOfTheConfigurationReachTheProviderList(t *testing.T) {
+	cfg := &Config{Options: &Options{ModelDefaults: map[string]ModelDefaultsEntry{"anthropic": {Large: []string{"claude-opus"}}}}}
+	policy := modelPolicyFrom(cfg)
+	if modelPolicyFrom(&Config{Options: &Options{}}) != nil || modelPolicyFrom(nil) != nil {
+		t.Fatal("no model_defaults, no policy")
+	}
+	var plain, changed []string
+	for _, p := range buildSeshatProviders(nil) {
+		if p.ID == "anthropic" {
+			plain = []string{p.DefaultLargeModelID, p.DefaultSmallModelID}
+		}
+	}
+	for _, p := range buildSeshatProviders(policy) {
+		if p.ID == "anthropic" {
+			changed = []string{p.DefaultLargeModelID, p.DefaultSmallModelID}
+		}
+	}
+	if plain[0] == changed[0] || plain[1] != changed[1] {
+		t.Fatalf("plain %v, with an opus large default %v: only the large model should change", plain, changed)
+	}
+}

@@ -313,19 +313,9 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 		if !ok || !found {
 			continue
 		}
-		var eligible []catalog.Model
-		for _, m := range cp.SortedModels() {
-			if m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(provider, m.ID, cp.Models) {
-				continue
-			}
-			eligible = append(eligible, m)
-		}
-		if len(eligible) == 0 {
+		models := listModels(provider, info, cp, catalogID, nil)
+		if len(models) == 0 {
 			continue
-		}
-		models := make([]ModelInfo, 0, len(eligible))
-		for _, m := range rankModels(catalogID, eligible) {
-			models = append(models, catalogModelInfo(provider, info, m))
 		}
 		info.Models = models
 		out[provider] = info
@@ -333,31 +323,15 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 	return out
 }
 
-// familyDefaults is our own choice of default models, by family of the catalog (never by model id, so a new version of the family is
-// picked up by the next catalog). For each provider the families are tried in order and the newest stable model of the first one the
-// provider has is taken. A provider not in the table, or whose families are not found, falls back to pickByPrice. The families are
-// the "family" field of models.dev.
-var familyDefaults = map[string]struct{ Large, Small []string }{
-	"anthropic":  {[]string{"claude-sonnet"}, []string{"claude-haiku"}},
-	"openai":     {[]string{"gpt-sol", "gpt"}, []string{"gpt-luna", "gpt-mini"}},
-	"google":     {[]string{"gemini", "gemini-pro"}, []string{"gemini-flash-lite", "gemini-flash"}},
-	"mistral":    {[]string{"mistral-large"}, []string{"mistral-small"}},
-	"openrouter": {[]string{"claude-sonnet"}, []string{"claude-haiku"}},
-	"opencode":   {[]string{"claude-sonnet"}, []string{"claude-haiku"}},
-	"deepseek":   {[]string{"deepseek-flash"}, []string{"deepseek-flash"}},
-	"zai":        {[]string{"glm"}, []string{"glm-flash"}},
-	"moonshotai": {[]string{"kimi-k3", "kimi-k2"}, []string{"kimi-k2"}},
-}
-
 // rankModels orders the models of a provider (given newest first): the default large model first, the default small one last,
 // the others between them, newest first. Nothing is hand-written: the large model is the most expensive of the newest ones (price
 // follows capability), the small one the cheapest. A provider whose models have no price gets its newest model as the large one and
 // its oldest as the small one.
-func rankModels(catalogID string, models []catalog.Model) []catalog.Model {
+func rankModels(defaults ModelDefaults, models []catalog.Model) []catalog.Model {
 	if len(models) < 2 {
 		return models
 	}
-	large, small := pickByFamily(catalogID, models)
+	large, small := pickByPolicy(defaults, models)
 	if large < 0 || small < 0 {
 		byPriceLarge, byPriceSmall := pickByPrice(models)
 		if large < 0 {
@@ -387,27 +361,6 @@ func arrange(models []catalog.Model, large, small int) []catalog.Model {
 		}
 	}
 	return append(out, models[small])
-}
-
-// pickByFamily applies the table of familyDefaults: the newest model of the first family listed that the provider has. It returns -1
-// for a side the table does not settle.
-func pickByFamily(catalogID string, models []catalog.Model) (large, small int) {
-	large, small = -1, -1
-	d, ok := familyDefaults[catalogID]
-	if !ok {
-		return
-	}
-	find := func(families []string) int {
-		for _, family := range families {
-			for i, m := range models { // models are newest first
-				if m.Family == family && m.Status == "" {
-					return i
-				}
-			}
-		}
-		return -1
-	}
-	return find(d.Large), find(d.Small)
 }
 
 // pickByPrice is the choice for a provider the table does not cover.

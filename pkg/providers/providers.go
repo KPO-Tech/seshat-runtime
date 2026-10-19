@@ -93,3 +93,32 @@ func DiscoverProviders(ctx context.Context) []DiscoveryResult {
 func GetProviderConfig(provider internaltypes.APIProvider) *Config {
 	return internalproviders.GetProviderConfig(provider)
 }
+
+type (
+	// ModelDefaults names the default large and small model of a provider as families of the models.dev catalog ("claude-sonnet") or
+	// exact model ids, tried in order.
+	ModelDefaults = internalproviders.ModelDefaults
+	// ModelPolicy is a set of ModelDefaults by provider. A host writes only what it changes: its entries are tried first and the
+	// runtime's after them, so an entry naming a model the catalog no longer has falls back to the runtime's choice. It is a value
+	// passed to the functions below; nothing is stored in the package.
+	ModelPolicy = internalproviders.ModelPolicy
+)
+
+// DefaultModelPolicy returns a copy of the runtime's own default models, to read or complete.
+func DefaultModelPolicy() ModelPolicy { return internalproviders.DefaultModelPolicy() }
+
+// ProviderInfoWithPolicy returns the catalogue entry of a provider with its models ordered under the host's policy: the default large
+// model first, the small one last.
+func ProviderInfoWithPolicy(provider internaltypes.APIProvider, policy ModelPolicy) (ProviderInfo, bool) {
+	return internalproviders.ProviderInfoWithPolicy(provider, policy)
+}
+
+// DefaultModelWithPolicy returns the default large model of a provider under the host's policy.
+func DefaultModelWithPolicy(provider internaltypes.APIProvider, policy ModelPolicy) (internaltypes.ModelIdentifier, bool) {
+	return internalproviders.DefaultModelWithPolicy(provider, policy)
+}
+
+// SmallModelWithPolicy returns the default small model of a provider under the host's policy.
+func SmallModelWithPolicy(provider internaltypes.APIProvider, policy ModelPolicy) (string, bool) {
+	return internalproviders.SmallModelWithPolicy(provider, policy)
+}

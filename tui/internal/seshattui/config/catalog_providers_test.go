@@ -9,7 +9,7 @@ import (
 )
 
 func TestTheTUIOffersTheCatalogProvidersAfterTheBuiltInOnes(t *testing.T) {
-	all := buildSeshatProviders()
+	all := buildSeshatProviders(nil)
 	builtIn := map[string]bool{}
 	for _, p := range all {
 		if p.Type != catwalk.TypeOpenAICompat {

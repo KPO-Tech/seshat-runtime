@@ -19,6 +19,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Groq, xAI, Cerebras, Together AI, DeepInfra and Cohere are callable.** models.dev names a vendor SDK for them and gives no URL, so a small reviewed table (`internal/catalog/overrides.go`) gives their OpenAI-compatible endpoint. It is applied to the embedded catalog only, so a refresh never moves it, and a test fails when a rebuilt snapshot starts giving a URL of its own.
 - **`scripts/check_providers.go`**: calls real providers with your own keys (`go run scripts/check_providers.go groq zai`, or no argument for every provider whose key variable is set) to see that the catalog models answer.
 
+### Added
+
+- **Hosts can complete or change the default models.** `providers.ModelPolicy` (a map from provider to `ModelDefaults{Large, Small}`, each entry a models.dev family or an exact model id) is passed to `providers.ProviderInfoWithPolicy`, `DefaultModelWithPolicy` and `SmallModelWithPolicy`; `providers.DefaultModelPolicy()` returns a copy of the runtime's own. A host writes only what it changes: its entries are tried first, the runtime's after them, so an entry naming a model the catalog no longer has falls back to the runtime's choice. The policy is a value: nothing is stored in the package, so two hosts in one process do not see each other. The terminal app reads it from `options.model_defaults` (`{"minimax": {"large": ["MiniMax-M3"], "small": ["MiniMax-M3.1-Flash"]}}`), at the next start.
+
 ### Changed
 
 - **Our own choice of default models, by family.** The catalog snapshot (version 3) keeps the `family` of each model (`claude-sonnet`, `gpt-sol`...), and a small table (`familyDefaults`) names, per provider, the family of the default large and small model. The newest stable model of that family is taken, so a new version is picked up without editing anything. A provider the table does not cover keeps the price rule.

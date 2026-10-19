@@ -102,7 +102,7 @@ func catwalkProviderType(providerID string) catwalk.Type {
 // seshat's SDK provider catalog, extended with the models in extra_models.json.
 // Ollama is included but its Models list is intentionally empty — the workspace
 // populates it at runtime via providers.FetchModels (DetectProviders goroutine).
-func buildSeshatProviders() []catwalk.Provider {
+func buildSeshatProviders(policy internalproviders.ModelPolicy) []catwalk.Provider {
 	extras := loadExtraModels()
 
 	sdkProviders := engineconfig.AvailableProviders()
@@ -117,7 +117,7 @@ func buildSeshatProviders() []catwalk.Provider {
 		// alphabetically first one.
 		var baseModels []catwalk.Model
 		seen := make(map[string]struct{}, len(p.Models))
-		if info, ok := internalproviders.GetProviderInfo(types.APIProvider(pid)); ok {
+		if info, ok := internalproviders.ProviderInfoWithPolicy(types.APIProvider(pid), policy); ok {
 			for _, m := range info.Models {
 				baseModels = append(baseModels, catwalk.Model{
 					ID:               m.Identifier,
@@ -179,4 +179,19 @@ func needsAPIKey(providerID string) bool {
 	default:
 		return true
 	}
+}
+
+// modelPolicyFrom reads the model_defaults of the configuration into a policy for the runtime. Nil when there are none.
+func modelPolicyFrom(cfg *Config) internalproviders.ModelPolicy {
+	if cfg == nil || cfg.Options == nil || len(cfg.Options.ModelDefaults) == 0 {
+		return nil
+	}
+	policy := make(internalproviders.ModelPolicy, len(cfg.Options.ModelDefaults))
+	for provider, entry := range cfg.Options.ModelDefaults {
+		policy[types.APIProvider(provider)] = internalproviders.ModelDefaults{
+			Large: append([]string(nil), entry.Large...),
+			Small: append([]string(nil), entry.Small...),
+		}
+	}
+	return policy
 }
