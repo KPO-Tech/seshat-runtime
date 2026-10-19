@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **excelize is updated to a version that fixes four advisories** (GO-2026-6685, 6688, 6689 and one more): a spreadsheet read by the document reader could exhaust memory, overflow the stack through array formulas that refer to each other, or loop for days over an unbounded row number. Reading a spreadsheet is reachable from `officetext.ExtractXLSX`, so `govulncheck` reported the runtime as affected; it reports none now.
+
 ## [1.11.1] - 2026-10-19
 
 ### Fixed
