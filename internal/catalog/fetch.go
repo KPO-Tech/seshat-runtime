@@ -30,7 +30,10 @@ type fullProvider struct {
 }
 
 type fullModel struct {
-	Name             string `json:"name"`
+	Name string `json:"name"`
+	// Type marks a specialised model ("decision": a classifier that answers typed questions, not a chat model). models.dev leaves them
+	// out of its default api.json; this is for a catalog fetched with ?type=all.
+	Type             string `json:"type"`
 	Reasoning        bool   `json:"reasoning"`
 	ToolCall         bool   `json:"tool_call"`
 	Attachment       bool   `json:"attachment"`
@@ -82,7 +85,7 @@ func Parse(raw []byte, source string) (*Catalog, error) {
 	for id, fp := range full {
 		p := Provider{ID: id, Name: fp.Name, BaseURL: strings.TrimSpace(fp.API), Env: fp.Env, Protocol: fp.NPM, Models: map[string]Model{}, Unverified: true}
 		for mid, fm := range fp.Models {
-			if !fm.ToolCall || !producesText(fm.Modalities.Output) {
+			if fm.Type != "" || !fm.ToolCall || !producesText(fm.Modalities.Output) {
 				continue
 			}
 			m := Model{
