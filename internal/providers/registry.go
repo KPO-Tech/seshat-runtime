@@ -242,18 +242,28 @@ func ResolveProviderFromString(s string) types.APIProvider {
 		return types.APIProviderOpenCode
 	case "kimi", "moonshot", "moonshot-ai", "moonshotai":
 		return types.APIProviderKimi
+	// Cloudflare Workers AI used to be a built-in provider ("workers-ai"); it is a generic provider of the catalog now.
+	case "workers-ai", "workers_ai", "cloudflare":
+		return types.APIProvider("cloudflare-workers-ai")
 	default:
+		// A generic provider of the catalog resolves to itself; any other unknown name keeps the historical default.
+		if p := types.APIProvider(strings.ToLower(s)); IsCatalogProvider(p) {
+			return p
+		}
 		return types.APIProviderAnthropic
 	}
 }
 
+// GetProviderInfo describes a provider: a built-in one, or a generic provider of the models.dev catalog.
 func GetProviderInfo(provider types.APIProvider) (ProviderInfo, bool) {
-	info, ok := AllProvidersInfo()[provider]
-	return info, ok
+	if info, ok := AllProvidersInfo()[provider]; ok {
+		return info, true
+	}
+	return catalogInfoFor(provider)
 }
 
 func GetModelInfo(provider types.APIProvider, model string) (ModelInfo, bool) {
-	info, ok := AllProvidersInfo()[provider]
+	info, ok := GetProviderInfo(provider)
 	if !ok {
 		return ModelInfo{}, false
 	}

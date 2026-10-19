@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -96,8 +97,20 @@ func DefaultBaseURL(providerName string) string {
 		// China deployment; keys aren't interchangeable between the two.
 		return "https://api.minimax.io"
 	default:
-		return ""
+		// A generic provider of the catalog: the base URL the catalog gives (already versioned, see modelsURL).
+		return catalogBaseURL(ResolveProviderFromString(providerName))
 	}
+}
+
+// versionedBase matches a base URL that already ends in an API version, as the catalog's do ("https://api.groq.com/openai/v1").
+var versionedBase = regexp.MustCompile(`/v\d+[a-z0-9]*$`)
+
+// modelsURL is the route that lists the models of an OpenAI-compatible provider: /models under a versioned base URL, else /v1/models.
+func modelsURL(baseURL string) string {
+	if versionedBase.MatchString(baseURL) {
+		return baseURL + "/models"
+	}
+	return baseURL + "/v1/models"
 }
 
 // NeedsCatalogReseed returns true when none of the supplied model IDs exist in
@@ -262,7 +275,7 @@ func fetchOllamaModelInfo(ctx context.Context, client *http.Client, baseURL, mod
 // ─── OpenAI-compatible ────────────────────────────────────────────────────────
 
 func fetchOpenAICompatModels(ctx context.Context, client *http.Client, baseURL, apiKey string) ([]FetchedModel, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL(baseURL), nil)
 	if err != nil {
 		return nil, err
 	}
