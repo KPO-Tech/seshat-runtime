@@ -53,3 +53,22 @@ func TestInterleavedFieldAcceptsBoolAndObject(t *testing.T) {
 		}
 	}
 }
+
+// models.dev leaves "decision" models (classifiers answering typed questions) out of its default file; a catalog fetched with
+// ?type=all has them, and they must not appear in a chat model picker.
+func TestParseLeavesOutSpecialisedModels(t *testing.T) {
+	var providers []string
+	for i := 0; i < minProviders; i++ {
+		providers = append(providers, fmt.Sprintf(`"p%d": {"name": "P", "npm": "@ai-sdk/openai-compatible", "api": "https://p.test/v1", "models": {
+			"chat": {"name": "Chat", "tool_call": true},
+			"judge": {"name": "Judge", "type": "decision", "tool_call": true}}}`, i))
+	}
+	cat, err := Parse([]byte("{"+strings.Join(providers, ",")+"}"), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	models := cat.Providers["p0"].Models
+	if _, ok := models["judge"]; ok || len(models) != 1 {
+		t.Fatalf("models = %v, want only the chat model", models)
+	}
+}
