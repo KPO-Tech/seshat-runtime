@@ -537,6 +537,7 @@ func (c *Commands) defaultCommands() []*CommandItem {
 		NewCommandItem(c.com.Styles, "shell_panel_previous", "Command Panel: Previous Command", "", ActionShellPanel{Op: "previous"}),
 		NewCommandItem(c.com.Styles, "shell_panel_next", "Command Panel: Next Command", "", ActionShellPanel{Op: "next"}),
 		NewCommandItem(c.com.Styles, "shell_panel_clear", "Command Panel: Clear", "", ActionShellPanel{Op: "clear"}),
+		NewCommandItem(c.com.Styles, "refresh_catalog", "Refresh Models Catalog", "", ActionCmd{Cmd: refreshCatalogCmd()}),
 		NewCommandItem(c.com.Styles, "memory_show", "Memory: Show Notes", "", ActionMemory{Op: "show"}),
 		NewCommandItem(c.com.Styles, "memory_forget", "Memory: Forget a Note", "", ActionMemory{Op: "forget"}),
 		NewCommandItem(c.com.Styles, "memory_undo", "Memory: Undo Last Change", "", ActionMemory{Op: "undo"}),

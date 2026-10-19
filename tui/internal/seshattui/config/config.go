@@ -281,6 +281,8 @@ type Options struct {
 	Debug                bool        `json:"debug,omitempty" jsonschema:"description=Enable debug logging,default=false"`
 	DebugLSP             bool        `json:"debug_lsp,omitempty" jsonschema:"description=Enable debug logging for LSP servers,default=false"`
 	DisableAutoSummarize bool        `json:"disable_auto_summarize,omitempty" jsonschema:"description=Disable automatic conversation summarization,default=false"`
+	// RefreshModelCatalog lets Seshat download the public models.dev catalog of providers and models in the background when the saved copy is more than a day old. Off by default; takes effect at the next start.
+	RefreshModelCatalog *bool `json:"refresh_model_catalog,omitempty" jsonschema:"description=Download the public models.dev catalog of providers and models in the background when the saved copy is a day old. Takes effect at the next start,default=false"`
 	// MemoryEnabled turns on long-term memory: notes are extracted from conversations and recalled into new ones. Off until the user opts in; takes effect at the next start.
 	MemoryEnabled *bool `json:"memory_enabled,omitempty" jsonschema:"description=Learn from conversations: store preferences and lessons and recall them in later sessions. Takes effect at the next start,default=false"`
 	// DataDirectory is where Seshat keeps per-project state such as
@@ -853,6 +855,13 @@ func (c *ProviderConfig) TestConnection(resolver VariableResolver) error {
 			return fmt.Errorf("failed to connect to provider %s: %s", c.ID, resp.Status)
 		}
 	default:
+		if isCatalogProviderID(c.ID) {
+			// Most providers of the models.dev catalog have a /models endpoint, but not all: only a refused key is a failure.
+			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+				return fmt.Errorf("failed to connect to provider %s: %s", c.ID, resp.Status)
+			}
+			return nil
+		}
 		if resp.StatusCode != http.StatusOK {
 			return fmt.Errorf("failed to connect to provider %s: %s", c.ID, resp.Status)
 		}

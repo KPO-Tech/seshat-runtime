@@ -54,6 +54,9 @@ func runSeshatTUI(ctx context.Context, options runtimeOptions, initialSessionID 
 		if o := mcpStore.Config().Options; o != nil && o.MemoryEnabled != nil {
 			options.MemoryEnabled = *o.MemoryEnabled
 		}
+		if o := mcpStore.Config().Options; o != nil && o.RefreshModelCatalog != nil {
+			options.RefreshCatalog = *o.RefreshModelCatalog
+		}
 		options.MCPServers = seshatMCPToSDK(mcpStore)
 		go mcptools.Initialize(ctx, nil, mcpStore)
 	} else if mcps := tuiconfig.LoadMCPConfig(options.WorkingDir); len(mcps) > 0 {

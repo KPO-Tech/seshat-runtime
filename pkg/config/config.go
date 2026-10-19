@@ -100,6 +100,7 @@ type Config struct {
 	StorageGCNamespaces     string `mapstructure:"storage_gc_namespaces" yaml:"storage_gc_namespaces,omitempty"`
 	MemoryEnabled           bool   `mapstructure:"memory_enabled" yaml:"memory_enabled,omitempty"`
 	MemoryConsolidate       bool   `mapstructure:"memory_consolidate" yaml:"memory_consolidate,omitempty"`
+	RefreshCatalog          bool   `mapstructure:"refresh_catalog" yaml:"refresh_catalog,omitempty"`
 	BrowserRemoteControlURL string `mapstructure:"browser_remote_control_url" yaml:"browser_remote_control_url,omitempty"`
 	BrowserExecutablePath   string `mapstructure:"browser_executable_path" yaml:"browser_executable_path,omitempty"`
 	DocumentReaderURL       string `mapstructure:"document_reader_url" yaml:"document_reader_url,omitempty"`
@@ -278,6 +279,7 @@ func LoadInto(config *Config) error {
 	v.BindEnv("storage_gc_namespaces", "SESHAT_STORAGE_GC_NAMESPACES")
 	v.BindEnv("memory_enabled", "SESHAT_MEMORY_ENABLED")
 	v.BindEnv("memory_consolidate", "SESHAT_MEMORY_CONSOLIDATE")
+	v.BindEnv("refresh_catalog", "SESHAT_REFRESH_CATALOG")
 	v.BindEnv("browser_remote_control_url", "SESHAT_BROWSER_REMOTE_CONTROL_URL")
 	v.BindEnv("browser_executable_path", "SESHAT_BROWSER_EXECUTABLE_PATH")
 	v.BindEnv("db_driver", "SESHAT_DB_DRIVER")

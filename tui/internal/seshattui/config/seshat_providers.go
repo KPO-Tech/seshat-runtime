@@ -173,7 +173,7 @@ func buildSeshatProviders() []catwalk.Provider {
 		})
 	}
 
-	return out
+	return append(out, catalogProviders()...)
 }
 
 // needsAPIKey returns true when the provider requires an API key to authenticate.

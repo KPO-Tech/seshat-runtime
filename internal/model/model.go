@@ -9,6 +9,8 @@
 //	}
 package model
 
+import "sync"
+
 // Capabilities describes what a specific model variant can do.
 type Capabilities struct {
 	// Vision indicates the model can process image content blocks.
@@ -65,9 +67,9 @@ type Metadata struct {
 }
 
 // Registry is a lookup table from (provider, modelID) → Metadata.
-// It is safe for concurrent reads; writes happen only at init time via
-// Register or the package-level Global variable.
+// It is safe for concurrent use: the catalog of providers adds entries while sessions look models up.
 type Registry struct {
+	mu      sync.RWMutex
 	entries map[registryKey]Metadata
 }
 
@@ -80,12 +82,29 @@ func NewRegistry() *Registry {
 
 // Register adds or replaces a model entry.
 func (r *Registry) Register(m Metadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.entries[registryKey{m.Provider, m.ID}] = m
+}
+
+// RegisterIfAbsent adds a model entry unless the registry already has that (provider, model) pair, and reports whether it
+// added it. It lets a broader source (the models.dev catalog) fill in what the curated one does not know without overriding it.
+func (r *Registry) RegisterIfAbsent(m Metadata) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	key := registryKey{m.Provider, m.ID}
+	if _, ok := r.entries[key]; ok {
+		return false
+	}
+	r.entries[key] = m
+	return true
 }
 
 // Lookup returns the Metadata for a (provider, modelID) pair.
 // provider may be empty to fall back to a model-ID-only search across all providers.
 func (r *Registry) Lookup(provider, modelID string) (Metadata, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	if m, ok := r.entries[registryKey{provider, modelID}]; ok {
 		return m, true
 	}
@@ -117,6 +136,8 @@ func (r *Registry) VisionCapable(provider, modelID string) bool {
 
 // All returns a copy of every registered model.
 func (r *Registry) All() []Metadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]Metadata, 0, len(r.entries))
 	for _, v := range r.entries {
 		out = append(out, v)
