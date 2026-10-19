@@ -76,8 +76,6 @@ func apiEndpointFor(providerID string) string {
 		return "https://api.minimax.chat/v1"
 	case "opencode":
 		return "https://opencode.ai/zen/v1"
-	case "workers-ai":
-		return "https://api.cloudflare.com/client/v4/accounts"
 	case "kimi":
 		return "https://api.moonshot.ai/v1"
 	case "ollama":
@@ -91,14 +89,10 @@ func apiEndpointFor(providerID string) string {
 // used by the TUI's API key verification flow (TestConnection).
 func catwalkProviderType(providerID string) catwalk.Type {
 	switch providerID {
-	case "anthropic", "foundry":
+	case "anthropic":
 		return catwalk.TypeAnthropic
 	case "gemini":
 		return catwalk.TypeGoogle
-	case "bedrock":
-		return catwalk.TypeBedrock
-	case "vertex":
-		return "google-vertex"
 	default:
 		return catwalk.TypeOpenAI
 	}
@@ -180,7 +174,7 @@ func buildSeshatProviders() []catwalk.Provider {
 // Used to decide whether to skip the API key input dialog.
 func needsAPIKey(providerID string) bool {
 	switch strings.ToLower(providerID) {
-	case "ollama", "bedrock", "vertex":
+	case "ollama":
 		return false
 	default:
 		return true

@@ -62,10 +62,6 @@ func generateProviderSection() string {
 		types.APIProviderCodex,
 		types.APIProviderZAi,
 		types.APIProviderMiniMax,
-		types.APIProviderBedrock,
-		types.APIProviderVertex,
-		types.APIProviderFoundry,
-		types.APIProviderWorkersAI,
 		types.APIProviderOpenCode,
 	}
 	// Append any provider in the registry not explicitly listed above.
@@ -166,7 +162,7 @@ func formatTokens(n int) string {
 }
 
 // credentialEnvVar names the environment variables that carry the credentials of a provider that provider discovery has no entry for
-// (Foundry, Workers AI, OpenCode, Codex...): "OAuth" for a provider that signs in, otherwise the variables of the configuration, which
+// (OpenCode, Codex...): "OAuth" for a provider that signs in, otherwise the variables of the configuration, which
 // is where the runtime itself reads them.
 func credentialEnvVar(p types.APIProvider, authType string) string {
 	if authType == "oauth" {

@@ -8,8 +8,7 @@ import (
 )
 
 // DefaultSonnetModel and DefaultHaikuModel are the Claude identifiers used as
-// defaults across the engine, SDK, and the Anthropic/Foundry alias maps below.
-// Bedrock prefixes them with "anthropic."; Vertex and Foundry use them as is.
+// defaults across the engine, SDK, and the Anthropic alias map below.
 const (
 	DefaultSonnetModel = "claude-sonnet-5-5"
 	DefaultHaikuModel  = "claude-haiku-5-5"
@@ -35,8 +34,6 @@ type Config struct {
 	Provider          types.APIProvider
 	APIKey            string
 	BaseURL           string
-	Region            string
-	ProjectID         string
 	ModelAliasMapping map[string]string
 	CustomHeaders     map[string]string
 	Routing           *RoutingConfig
@@ -90,35 +87,6 @@ func DefaultConfigs() map[types.APIProvider]*Config {
 				"mistral":    "mistral:7b",
 				"codellama":  "codellama:7b",
 				"phi":        "phi3:3.8b",
-			},
-		},
-		types.APIProviderBedrock: {
-			Provider: types.APIProviderBedrock,
-			Region:   getEnvOrDefault("AWS_REGION", "us-east-1"),
-			ModelAliasMapping: map[string]string{
-				"sonnet": "anthropic." + DefaultSonnetModel,
-				"haiku":  "anthropic." + DefaultHaikuModel,
-				"opus":   "anthropic." + DefaultOpusModel,
-			},
-		},
-		types.APIProviderVertex: {
-			Provider:  types.APIProviderVertex,
-			ProjectID: os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID"),
-			Region:    getEnvOrDefault("CLOUD_ML_REGION", "us-east5"),
-			ModelAliasMapping: map[string]string{
-				"sonnet": DefaultSonnetModel,
-				"haiku":  DefaultHaikuModel,
-				"opus":   DefaultOpusModel,
-			},
-		},
-		types.APIProviderFoundry: {
-			Provider: types.APIProviderFoundry,
-			BaseURL:  getEnvOrDefault("ANTHROPIC_FOUNDRY_BASE_URL", "https://your-resource.services.ai.azure.com/anthropic/v1"),
-			Region:   getEnvOrDefault("ANTHROPIC_FOUNDRY_RESOURCE", ""),
-			ModelAliasMapping: map[string]string{
-				"sonnet": DefaultSonnetModel,
-				"haiku":  DefaultHaikuModel,
-				"opus":   DefaultOpusModel,
 			},
 		},
 		types.APIProviderGemini: {
@@ -183,22 +151,6 @@ func DefaultConfigs() map[types.APIProvider]*Config {
 				"m2.5-fast": "MiniMax-M2.5-highspeed",
 				"m2.1":      "MiniMax-M2.1",
 				"m2":        "MiniMax-M2",
-			},
-		},
-		types.APIProviderWorkersAI: {
-			Provider: types.APIProviderWorkersAI,
-			BaseURL:  "https://api.cloudflare.com/client/v4",
-			// ProjectID carries the Cloudflare account id, reusing the same
-			// slot Vertex uses for its GCP project id — both are an
-			// account/tenant identifier embedded directly in the request
-			// URL, not just a header value.
-			ProjectID: os.Getenv("CLOUDFLARE_ACCOUNT_ID"),
-			ModelAliasMapping: map[string]string{
-				"glm":      "@cf/zai-org/glm-5.3",
-				"kimi":     "@cf/moonshotai/kimi-k2.6",
-				"gpt-oss":  "@cf/openai/gpt-oss-120b",
-				"llama":    "@cf/meta/llama-4-scout-17b-16e-instruct",
-				"deepseek": "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
 			},
 		},
 		types.APIProviderMistral: {
@@ -363,7 +315,7 @@ func (c *Config) GetEndpoint(model string) string {
 	resolvedModel := c.ResolveModel(model)
 
 	switch c.Provider {
-	case types.APIProviderAnthropic, types.APIProviderVertex, types.APIProviderFoundry:
+	case types.APIProviderAnthropic:
 		return c.GetBaseURL() + "/v1/messages"
 
 	case types.APIProviderOpenAI, types.APIProviderOpenRouter, types.APIProviderZAi, types.APIProviderMistral, types.APIProviderDeepSeek, types.APIProviderOpenCode, types.APIProviderKimi, types.APIProviderMiniMax:
@@ -381,19 +333,8 @@ func (c *Config) GetEndpoint(model string) string {
 	case types.APIProviderOllama:
 		return c.GetBaseURL() + "/api/chat"
 
-	case types.APIProviderWorkersAI:
-		// Cloudflare's OpenAI-compatible endpoint is scoped under the
-		// account id (https://api.cloudflare.com/client/v4/accounts/
-		// {account_id}/ai/v1/chat/completions) — the model itself is
-		// specified in the request body, not the URL, matching every
-		// other OpenAI-compatible provider this SDK talks to.
-		return c.GetBaseURL() + "/accounts/" + c.ProjectID + "/ai/v1/chat/completions"
-
 	case types.APIProviderCodex:
 		return c.GetBaseURL() + "/responses"
-
-	case types.APIProviderBedrock:
-		return ""
 
 	default:
 		// A generic provider of the models.dev catalog speaks the OpenAI chat completions protocol, whose base URL is a root
@@ -417,8 +358,6 @@ var defaultBaseURLs = map[types.APIProvider]string{
 	types.APIProviderZAi:        "https://api.z.ai/api/paas/v4",
 	types.APIProviderOpenRouter: "https://openrouter.ai/api/v1",
 	types.APIProviderMiniMax:    "https://api.minimax.io/v1",
-	types.APIProviderWorkersAI:  "https://api.cloudflare.com/client/v4",
-	types.APIProviderFoundry:    "https://your-resource.services.ai.azure.com/anthropic/v1",
 	types.APIProviderMistral:    "https://api.mistral.ai/v1",
 	types.APIProviderKimi:       "https://api.moonshot.ai/v1",
 	types.APIProviderCodex:      "https://chatgpt.com/backend-api/codex",
@@ -439,24 +378,6 @@ func ValidateProviderConfig(config *Config) error {
 	}
 
 	switch config.Provider {
-	case types.APIProviderBedrock:
-		if config.Region == "" {
-			return fmt.Errorf("Bedrock requires AWS_REGION to be set")
-		}
-
-	case types.APIProviderVertex:
-		if config.ProjectID == "" {
-			return fmt.Errorf("Vertex requires ANTHROPIC_VERTEX_PROJECT_ID to be set")
-		}
-		if config.Region == "" {
-			return fmt.Errorf("Vertex requires CLOUD_ML_REGION to be set")
-		}
-
-	case types.APIProviderFoundry:
-		if config.BaseURL == "" && config.Region == "" {
-			return fmt.Errorf("Foundry requires ANTHROPIC_FOUNDRY_BASE_URL or ANTHROPIC_FOUNDRY_RESOURCE to be set")
-		}
-
 	case types.APIProviderGemini:
 		if config.APIKey == "" {
 			return fmt.Errorf("Gemini requires GOOGLE_GEMINI_API_KEY to be set")
@@ -475,14 +396,6 @@ func ValidateProviderConfig(config *Config) error {
 	case types.APIProviderOpenRouter:
 		if config.APIKey == "" {
 			return fmt.Errorf("OpenRouter requires OPENROUTER_API_KEY to be set")
-		}
-
-	case types.APIProviderWorkersAI:
-		if config.APIKey == "" {
-			return fmt.Errorf("Workers AI requires CLOUDFLARE_API_KEY to be set")
-		}
-		if config.ProjectID == "" {
-			return fmt.Errorf("Workers AI requires CLOUDFLARE_ACCOUNT_ID to be set")
 		}
 
 	case types.APIProviderMistral:

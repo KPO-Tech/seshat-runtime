@@ -226,3 +226,35 @@ func TestEveryBuiltInProviderThatTheCatalogExtendsKeepsItsCuratedModels(t *testi
 		}
 	}
 }
+
+func TestListsLeaveOutModelsTheChatClientCannotUse(t *testing.T) {
+	all := map[string]catalog.Model{
+		"gpt-5.6":                    {ID: "gpt-5.6"},
+		"gpt-5.5-pro":                {ID: "gpt-5.5-pro"},
+		"gpt-5.3-codex":              {ID: "gpt-5.3-codex"},
+		"gpt-realtime-2.1":           {ID: "gpt-realtime-2.1"},
+		"gpt-image-2":                {ID: "gpt-image-2"},
+		"claude-opus-4-5":            {ID: "claude-opus-4-5"},
+		"claude-opus-4-5-20251101":   {ID: "claude-opus-4-5-20251101"},
+		"claude-only-dated-20251101": {ID: "claude-only-dated-20251101"},
+		"text-embedding-3":           {ID: "text-embedding-3"},
+	}
+	for id, want := range map[string]bool{
+		"gpt-5.6":                    false,
+		"gpt-5.5-pro":                true,
+		"gpt-5.3-codex":              true,
+		"gpt-realtime-2.1":           true,
+		"gpt-image-2":                true,
+		"claude-opus-4-5":            false,
+		"claude-opus-4-5-20251101":   true,
+		"claude-only-dated-20251101": false,
+		"text-embedding-3":           true,
+	} {
+		if got := unsuitableForChat(types.APIProviderOpenAI, id, all); got != want {
+			t.Errorf("unsuitableForChat(openai, %q) = %v, want %v", id, got, want)
+		}
+	}
+	if unsuitableForChat(types.APIProviderAnthropic, "claude-pro-x", all) {
+		t.Error("the -pro rule is OpenAI's: it must not hide other providers' models")
+	}
+}

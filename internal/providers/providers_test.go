@@ -34,7 +34,6 @@ func TestProviderAdapterDispatch(t *testing.T) {
 		wantBodyKey  string    // top-level JSON key expected in the request body
 	}{
 		{"anthropic", types.APIProviderAnthropic, "claude-x", "/v1/messages", [2]string{"x-api-key", "k"}, "messages"},
-		{"foundry", types.APIProviderFoundry, "claude-x", "/v1/messages", [2]string{"api-key", "k"}, "messages"},
 		{"openai", types.APIProviderOpenAI, "gpt", "/chat/completions", [2]string{"Authorization", "Bearer k"}, "messages"},
 		{"zai", types.APIProviderZAi, "glm", "/chat/completions", [2]string{"x-api-key", "k"}, "messages"},
 		{"minimax", types.APIProviderMiniMax, "mm", "/chat/completions", [2]string{"Authorization", "Bearer k"}, "messages"},
@@ -127,28 +126,13 @@ func TestGeminiStreamEndpoint(t *testing.T) {
 	}
 }
 
-// TestAdapterForProviderDefault verifies unmapped/anthropic-compatible providers
-// fall back to the Anthropic wire format, matching the prior switch default.
-// WorkersAI is deliberately NOT in this list: it used to fall through to this
-// same default by omission (a bug — Cloudflare's endpoint is OpenAI-shaped,
-// not Anthropic Messages-shaped), fixed by routing it through
-// openAICompatAdapter instead. See TestAdapterForProviderWorkersAIUsesOpenAICompat.
+// TestAdapterForProviderDefault verifies the Anthropic provider uses the
+// Anthropic wire format, matching the prior switch default.
 func TestAdapterForProviderDefault(t *testing.T) {
-	for _, p := range []types.APIProvider{types.APIProviderAnthropic, types.APIProviderBedrock, types.APIProviderVertex} {
+	for _, p := range []types.APIProvider{types.APIProviderAnthropic} {
 		if _, ok := adapterForProvider(p).(anthropicAdapter); !ok {
 			t.Errorf("adapterForProvider(%s) = %T, want anthropicAdapter", p, adapterForProvider(p))
 		}
-	}
-}
-
-// TestAdapterForProviderWorkersAIUsesOpenAICompat verifies the fix for
-// WorkersAI silently falling through to the Anthropic Messages wire format
-// (wrong request shape, wrong auth header) because it was absent from
-// adapterForProvider's real dispatch cases. Cloudflare's Workers AI endpoint
-// (ai/v1/chat/completions) is genuinely OpenAI-compatible.
-func TestAdapterForProviderWorkersAIUsesOpenAICompat(t *testing.T) {
-	if _, ok := adapterForProvider(types.APIProviderWorkersAI).(openAICompatAdapter); !ok {
-		t.Errorf("adapterForProvider(workers-ai) = %T, want openAICompatAdapter", adapterForProvider(types.APIProviderWorkersAI))
 	}
 }
 
@@ -284,56 +268,6 @@ func TestKimiProviderConfig(t *testing.T) {
 	}
 	if !found {
 		t.Error(`expected "kimi-k3" in the Kimi model catalog`)
-	}
-}
-
-// TestWorkersAIProviderConfig locks in the fix for WorkersAI being completely
-// non-functional: it fell through to the Anthropic wire format by omission
-// from adapterForProvider (wrong request shape, wrong x-api-key auth instead
-// of Bearer), its default BaseURL was https://workers.ai/v1/chat — not a real
-// Cloudflare domain — and there was no account_id concept anywhere, even
-// though Cloudflare's real endpoint is scoped under one
-// (.../accounts/{account_id}/ai/v1/chat/completions).
-func TestWorkersAIProviderConfig(t *testing.T) {
-	t.Setenv("CLOUDFLARE_ACCOUNT_ID", "test-account-id")
-	cfg := GetProviderConfig(types.APIProviderWorkersAI)
-	if cfg == nil {
-		t.Fatal("GetProviderConfig(workers-ai) = nil")
-	}
-	if cfg.BaseURL != "https://api.cloudflare.com/client/v4" {
-		t.Errorf("workers-ai BaseURL = %q, want the real Cloudflare API domain", cfg.BaseURL)
-	}
-
-	cfg.APIKey = "test-key"
-	cfg.ProjectID = "test-account-id"
-	endpoint := cfg.GetEndpoint("@cf/meta/llama-3.1-70b-instruct")
-	wantEndpoint := "https://api.cloudflare.com/client/v4/accounts/test-account-id/ai/v1/chat/completions"
-	if endpoint != wantEndpoint {
-		t.Errorf("GetEndpoint() = %q, want %q", endpoint, wantEndpoint)
-	}
-
-	if _, ok := adapterForProvider(types.APIProviderWorkersAI).(openAICompatAdapter); !ok {
-		t.Errorf("adapterForProvider(workers-ai) = %T, want openAICompatAdapter", adapterForProvider(types.APIProviderWorkersAI))
-	}
-
-	if got := providerEnvVar(types.APIProviderWorkersAI); got != "CLOUDFLARE_API_KEY" {
-		t.Errorf("providerEnvVar(workers-ai) = %q, want CLOUDFLARE_API_KEY", got)
-	}
-}
-
-// TestValidateProviderConfig_WorkersAIRequiresAccountID verifies that a
-// WorkersAI config without an account id is rejected before ever reaching
-// the network — previously nothing in this codebase modeled account_id at
-// all, so a request would only fail late with an opaque malformed-URL error.
-func TestValidateProviderConfig_WorkersAIRequiresAccountID(t *testing.T) {
-	cfg := &Config{Provider: types.APIProviderWorkersAI, APIKey: "k"}
-	if err := ValidateProviderConfig(cfg); err == nil {
-		t.Error("expected an error when CLOUDFLARE_ACCOUNT_ID/ProjectID is missing")
-	}
-
-	cfg.ProjectID = "acct-123"
-	if err := ValidateProviderConfig(cfg); err != nil {
-		t.Errorf("unexpected error once ProjectID is set: %v", err)
 	}
 }
 
@@ -3183,14 +3117,6 @@ func TestAnthropicToolsWithCacheControl_DoesNotMutateInput(t *testing.T) {
 	}
 }
 
-func TestAnthropicToolsWithCacheControl_FoundryAlsoGetsCache(t *testing.T) {
-	tools := []types.APIToolDefinition{{Name: "read", Description: "Read"}}
-	result := anthropicToolsWithCacheControl(tools, types.APIProviderFoundry)
-	if result[0].CacheControl == nil {
-		t.Error("Foundry provider should also get cache_control on last tool")
-	}
-}
-
 // TestAnthropicMessagesWithCacheControl verifies the fix for conversation/
 // tool-result history never being cached: previously only the system prompt
 // and tool definitions ever got a cache_control breakpoint, so in a long
@@ -3213,13 +3139,13 @@ func TestAnthropicMessagesWithCacheControl(t *testing.T) {
 		}
 	})
 
-	t.Run("marks last ToolResultContent block for Foundry", func(t *testing.T) {
+	t.Run("marks last ToolResultContent block for Anthropic", func(t *testing.T) {
 		messages := []types.Message{
 			{ID: "m1", Role: types.RoleUser, Content: []types.ContentBlock{
 				types.ToolResultContent{ToolUseID: "t1", Content: "ok"},
 			}},
 		}
-		result := anthropicMessagesWithCacheControl(messages, types.APIProviderFoundry)
+		result := anthropicMessagesWithCacheControl(messages, types.APIProviderAnthropic)
 		toolResult, ok := result[0].Content[0].(types.ToolResultContent)
 		if !ok || toolResult.CacheControl == nil {
 			t.Fatalf("expected last ToolResultContent block to carry cache_control, got %+v", result[0].Content[0])
@@ -3482,52 +3408,6 @@ func TestHTTPClientForProvider_LongFirstByteProviders(t *testing.T) {
 	}
 	if defaultTransport.ResponseHeaderTimeout != defaultResponseHeaderTimeout {
 		t.Fatalf("OpenAI ResponseHeaderTimeout = %v, want unchanged default %v", defaultTransport.ResponseHeaderTimeout, defaultResponseHeaderTimeout)
-	}
-}
-
-// TestBuildRequestBody_FoundrySystemPromptBlocksWithCache verifies the fix for
-// Foundry silently losing its system-prompt cache_control: it speaks the same
-// Anthropic Messages wire format and shares this request builder, but was
-// gated out of the structured-block path and fell back to
-// FlattenSystemPromptBlocks, which drops CacheControl entirely.
-func TestBuildRequestBody_FoundrySystemPromptBlocksWithCache(t *testing.T) {
-	client := NewClient("key", types.APIProviderFoundry)
-	req := types.APIRequest{
-		Model:     types.ModelIdentifier{Provider: types.APIProviderFoundry, Model: "claude-sonnet-4-20250514"},
-		MaxTokens: 1024,
-		Messages:  []types.Message{types.UserMessage("m1", "hello")},
-		SystemPromptBlocks: []types.SystemPromptBlock{
-			types.NewTextSystemPromptBlock("stable content", types.NewEphemeralPromptCacheControl()),
-			types.NewTextSystemPromptBlock("dynamic content", nil),
-		},
-	}
-
-	body, err := client.buildRequestBody(req)
-	if err != nil {
-		t.Fatalf("buildRequestBody: %v", err)
-	}
-	data, _ := io.ReadAll(body)
-
-	var payload struct {
-		System []struct {
-			Type         string `json:"type"`
-			Text         string `json:"text"`
-			CacheControl *struct {
-				Type string `json:"type"`
-			} `json:"cache_control"`
-		} `json:"system"`
-	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(payload.System) != 2 {
-		t.Fatalf("expected 2 system blocks, got %d", len(payload.System))
-	}
-	if payload.System[0].CacheControl == nil || payload.System[0].CacheControl.Type != "ephemeral" {
-		t.Error("stable block must have ephemeral cache_control")
-	}
-	if payload.System[1].CacheControl != nil {
-		t.Error("dynamic block must not have cache_control")
 	}
 }
 
@@ -3813,5 +3693,42 @@ func TestBuildCodexRequestBody_StaleMessageCountFallsBackToFullHistory(t *testin
 	input, ok := body["input"].([]any)
 	if !ok || len(input) != 1 {
 		t.Fatalf("expected the full 1-message history, got %#v", body["input"])
+	}
+}
+
+// TestWorkersAIIsAGenericCatalogProviderWhoseURLCarriesTheAccountID: Cloudflare Workers AI used to be a built-in provider with its own
+// account-id plumbing. It is now served by the generic OpenAI-compatible client, with the account id taken from the environment into
+// the base URL the catalog gives.
+func TestWorkersAIIsAGenericCatalogProviderWhoseURLCarriesTheAccountID(t *testing.T) {
+	const workersAI = types.APIProvider("cloudflare-workers-ai")
+	if !IsCatalogProvider(workersAI) {
+		t.Fatal("cloudflare-workers-ai must be a generic catalog provider")
+	}
+	if _, ok := adapterForProvider(workersAI).(openAICompatAdapter); !ok {
+		t.Errorf("adapterForProvider = %T, want openAICompatAdapter", adapterForProvider(workersAI))
+	}
+	if got := providerEnvVar(workersAI); got != "CLOUDFLARE_API_KEY" {
+		t.Errorf("providerEnvVar = %q, want CLOUDFLARE_API_KEY (the account id configures the URL, it is not the key)", got)
+	}
+
+	t.Setenv("CLOUDFLARE_ACCOUNT_ID", "")
+	if missing := CatalogURLVariables(workersAI); len(missing) != 1 || missing[0] != "CLOUDFLARE_ACCOUNT_ID" {
+		t.Errorf("without the account id the missing variables = %v, want [CLOUDFLARE_ACCOUNT_ID]", missing)
+	}
+
+	t.Setenv("CLOUDFLARE_ACCOUNT_ID", "acct-123")
+	cfg, ok := ConfigForCatalogProvider(workersAI)
+	if !ok {
+		t.Fatal("no config for a verified catalog provider")
+	}
+	wantBase := "https://api.cloudflare.com/client/v4/accounts/acct-123/ai/v1"
+	if cfg.BaseURL != wantBase {
+		t.Errorf("BaseURL = %q, want %q", cfg.BaseURL, wantBase)
+	}
+	if got := cfg.GetEndpoint("@cf/meta/llama-3.1-70b-instruct"); got != wantBase+"/chat/completions" {
+		t.Errorf("endpoint = %q, want %q", got, wantBase+"/chat/completions")
+	}
+	if missing := CatalogURLVariables(workersAI); len(missing) != 0 {
+		t.Errorf("with the account id set nothing is missing, got %v", missing)
 	}
 }

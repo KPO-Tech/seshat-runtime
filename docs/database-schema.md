@@ -319,10 +319,7 @@ CREATE TABLE credentials (
 | DB key | Purpose |
 |---|---|
 | `api_key` | Provider API key (scoped: `api_key:<provider_id>`) |
-| `provider_base_url` | Custom base URL for Ollama / Foundry |
-| `provider_region` | AWS region (Bedrock) or GCP region (Vertex) |
-| `provider_project_id` | GCP project ID (Vertex) |
-| `provider_resource` | Azure Foundry resource ID |
+| `provider_base_url` | Custom base URL for Ollama |
 | `model` | Persisted model selection (e.g. `anthropic:claude-opus-4-8`) |
 | `TAVILY_API_KEY` | Tavily web search |
 | `EXA_API_KEY` | Exa web search |
@@ -620,10 +617,7 @@ hooks:
 | `api_key` | `SESHAT_API_KEY` | `""` | Loaded from credentials DB at runtime |
 | `db_path` | `SESHAT_DB_PATH` | `""` | Overrides default SQLite path |
 | `session_db_path` | `SESHAT_SESSION_DB_PATH` | `""` | Separate session DB (optional) |
-| `provider_base_url` | `SESHAT_PROVIDER_BASE_URL` | `""` | Ollama/Foundry custom endpoint |
-| `provider_region` | `SESHAT_PROVIDER_REGION` | `""` | AWS/GCP region |
-| `provider_project_id` | `SESHAT_PROVIDER_PROJECT_ID` | `""` | GCP project (Vertex) |
-| `provider_resource` | `SESHAT_PROVIDER_RESOURCE` | `""` | Azure Foundry resource ID |
+| `provider_base_url` | `SESHAT_PROVIDER_BASE_URL` | `""` | Ollama custom endpoint |
 | `mcp_enabled` | — | `true` | Enable MCP server integrations |
 | `skills_enabled` | — | `true` | Enable slash-command skills |
 | `debug` | `SESHAT_DEBUG` | `false` | Verbose logging |
@@ -650,11 +644,7 @@ hooks:
 | `opencode` | OpenCode | API key | `OPENCODE_API_KEY` |
 | `mistral` | Mistral AI | API key | `MISTRAL_API_KEY` |
 | `minimax` | MiniMax | API key | `MINIMAX_API_KEY` |
-| `workers-ai` | Cloudflare Workers AI | API key | `CLOUDFLARE_API_KEY` |
 | `ollama` | Ollama (local) | None | — |
-| `bedrock` | AWS Bedrock | AWS env credentials | — |
-| `vertex` | Google Vertex | GCP application credentials | — |
-| `foundry` | Azure Foundry | API key + base URL or resource | `ANTHROPIC_FOUNDRY_API_KEY` |
 
 **Model identifier format**: `provider:model-name`
 
@@ -662,7 +652,6 @@ hooks:
 anthropic:claude-opus-4-8
 openai:gpt-4o
 ollama:llama3.3:70b
-bedrock:us.anthropic.claude-opus-4-8-20251101-v1:0
 ```
 
 **Resolution order** (`EffectiveAPIKeyAndProvider`):
@@ -678,10 +667,7 @@ bedrock:us.anthropic.claude-opus-4-8-20251101-v1:0
 api_key:anthropic     → ANTHROPIC_API_KEY
 api_key:openai        → OPENAI_API_KEY
 api_key:ollama        → (not needed)
-provider_base_url     → Ollama host or Foundry base URL
-provider_region       → AWS_REGION or CLOUD_ML_REGION
-provider_project_id   → ANTHROPIC_VERTEX_PROJECT_ID
-provider_resource     → ANTHROPIC_FOUNDRY_RESOURCE
+provider_base_url     → Ollama host
 ```
 
 ---

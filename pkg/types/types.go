@@ -74,10 +74,8 @@ const (
 	APIChunkTypeError             = internaltypes.APIChunkTypeError
 
 	APIProviderAnthropic  = internaltypes.APIProviderAnthropic
-	APIProviderBedrock    = internaltypes.APIProviderBedrock
 	APIProviderCodex      = internaltypes.APIProviderCodex
 	APIProviderDeepSeek   = internaltypes.APIProviderDeepSeek
-	APIProviderFoundry    = internaltypes.APIProviderFoundry
 	APIProviderGemini     = internaltypes.APIProviderGemini
 	APIProviderKimi       = internaltypes.APIProviderKimi
 	APIProviderMiniMax    = internaltypes.APIProviderMiniMax
@@ -86,8 +84,6 @@ const (
 	APIProviderOpenAI     = internaltypes.APIProviderOpenAI
 	APIProviderOpenCode   = internaltypes.APIProviderOpenCode
 	APIProviderOpenRouter = internaltypes.APIProviderOpenRouter
-	APIProviderVertex     = internaltypes.APIProviderVertex
-	APIProviderWorkersAI  = internaltypes.APIProviderWorkersAI
 	APIProviderZAi        = internaltypes.APIProviderZAi
 
 	ExecutionOriginInteractive = internaltypes.ExecutionOriginInteractive

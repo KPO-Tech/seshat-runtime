@@ -1,6 +1,9 @@
 package providers
 
 import (
+	"os"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/KPO-Tech/seshat-runtime/internal/catalog"
@@ -12,20 +15,16 @@ import (
 // catalog provider in this table is not offered as a generic one: our own entry, with its own protocol quirks, serves it, and the
 // catalog only fills in models our curated list does not have.
 var nativeProviders = map[string]types.APIProvider{
-	"anthropic":             types.APIProviderAnthropic,
-	"openai":                types.APIProviderOpenAI,
-	"google":                types.APIProviderGemini,
-	"mistral":               types.APIProviderMistral,
-	"minimax":               types.APIProviderMiniMax,
-	"openrouter":            types.APIProviderOpenRouter,
-	"deepseek":              types.APIProviderDeepSeek,
-	"opencode":              types.APIProviderOpenCode,
-	"zai":                   types.APIProviderZAi,
-	"moonshotai":            types.APIProviderKimi,
-	"cloudflare-workers-ai": types.APIProviderWorkersAI,
-	"amazon-bedrock":        types.APIProviderBedrock,
-	"google-vertex":         types.APIProviderVertex,
-	"azure":                 types.APIProviderFoundry,
+	"anthropic":  types.APIProviderAnthropic,
+	"openai":     types.APIProviderOpenAI,
+	"google":     types.APIProviderGemini,
+	"mistral":    types.APIProviderMistral,
+	"minimax":    types.APIProviderMiniMax,
+	"openrouter": types.APIProviderOpenRouter,
+	"deepseek":   types.APIProviderDeepSeek,
+	"opencode":   types.APIProviderOpenCode,
+	"zai":        types.APIProviderZAi,
+	"moonshotai": types.APIProviderKimi,
 }
 
 // defaultCatalogMaxOutput is the output limit given to a catalog model whose limit is unknown (see catalog.Model.OutputIsKnown).
@@ -143,7 +142,7 @@ func CatalogProviders() []ProviderInfo {
 			info.Description = "Unverified provider from a downloaded catalog: confirm " + cp.BaseURL + " before sending a key"
 		}
 		for _, m := range cp.SortedModels() {
-			if m.Deprecated() || m.ContextWindow <= 0 {
+			if m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(types.APIProvider(cp.ID), m.ID, cp.Models) {
 				continue
 			}
 			maxOutput := defaultCatalogMaxOutput
@@ -173,42 +172,109 @@ func ConfigForCatalogProvider(p types.APIProvider) (*Config, bool) {
 	if !ok || cp.Unverified {
 		return nil, false
 	}
-	return &Config{Provider: p, BaseURL: cp.BaseURL}, true
+	return &Config{Provider: p, BaseURL: expandCatalogURL(cp.BaseURL)}, true
+}
+
+// catalogURLVariable matches a ${NAME} placeholder in a base URL of the catalog (Cloudflare Workers AI carries the account id there).
+var catalogURLVariable = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// expandCatalogURL replaces the ${NAME} placeholders of a catalog base URL with the environment variables of that name. A variable
+// that is not set stays as it is, so the URL is visibly incomplete (see CatalogURLVariables). Only the URL of a verified provider is
+// expanded, which is the one that comes from the embedded catalog.
+func expandCatalogURL(url string) string {
+	return catalogURLVariable.ReplaceAllStringFunc(url, func(m string) string {
+		name := catalogURLVariable.FindStringSubmatch(m)[1]
+		if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+			return v
+		}
+		return m
+	})
+}
+
+// CatalogURLVariables returns the environment variables the base URL of a generic provider needs and that are not set, or nil.
+func CatalogURLVariables(p types.APIProvider) []string {
+	cp, ok := catalogProvider(p)
+	if !ok {
+		return nil
+	}
+	var missing []string
+	for _, m := range catalogURLVariable.FindAllStringSubmatch(expandCatalogURL(cp.BaseURL), -1) {
+		missing = append(missing, m[1])
+	}
+	return missing
+}
+
+// credentialVariables keeps, among the environment variables a catalog entry lists, the ones that carry a secret (a key, a token).
+// The others (an account id, a region) configure the URL. When none looks like a secret, every one is kept.
+func credentialVariables(env []string) []string {
+	var out []string
+	for _, name := range env {
+		upper := strings.ToUpper(name)
+		if strings.Contains(upper, "KEY") || strings.Contains(upper, "TOKEN") || strings.Contains(upper, "SECRET") {
+			out = append(out, name)
+		}
+	}
+	if len(out) == 0 {
+		return append([]string(nil), env...)
+	}
+	return out
 }
 
 // catalogEnvVar returns the environment variable that holds the API key of a generic catalog provider, or "" when p is not one.
 func catalogEnvVar(p types.APIProvider) string {
-	cp, ok := catalogProvider(p)
-	if !ok || len(cp.Env) == 0 {
+	vars := CatalogCredentialEnvVars(p)
+	if len(vars) == 0 {
 		return ""
 	}
-	return cp.Env[0]
+	return vars[0]
 }
 
-// CatalogCredentialEnvVars returns every environment variable the catalog names for the API key of a generic provider, or nil when
-// p is not one.
+// CatalogCredentialEnvVars returns the environment variables that can hold the API key of a generic provider (the ones of its catalog
+// entry that look like a secret), or nil when p is not one.
 func CatalogCredentialEnvVars(p types.APIProvider) []string {
 	cp, ok := catalogProvider(p)
 	if !ok {
 		return nil
 	}
-	return append([]string(nil), cp.Env...)
+	return credentialVariables(cp.Env)
+}
+
+// unsuitableMarkers are parts of a model id that mark a model the chat client cannot use: speech, realtime and image models, embeddings.
+var unsuitableMarkers = []string{"realtime", "audio", "transcribe", "tts", "image", "embed", "moderation", "search-preview"}
+
+// datedSnapshot matches the date a provider appends to a model id to pin a version (claude-opus-4-5-20251101, gpt-4o-2024-08-06).
+var datedSnapshot = regexp.MustCompile(`-(\d{8}|\d{4}-\d{2}-\d{2})$`)
+
+// unsuitableForChat reports whether a catalog model should not be listed in a picker of the chat client: a model made for another
+// use (see unsuitableMarkers), one of OpenAI's pro and codex models, which are served by the Responses API only, and a dated copy of
+// a model that is also listed without its date. The catalog is data about models, not about which of our protocols can call them.
+func unsuitableForChat(provider types.APIProvider, id string, all map[string]catalog.Model) bool {
+	lower := strings.ToLower(id)
+	for _, marker := range unsuitableMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	if provider == types.APIProviderOpenAI && (strings.Contains(lower, "-pro") || strings.Contains(lower, "codex")) {
+		return true
+	}
+	if loc := datedSnapshot.FindStringIndex(id); loc != nil {
+		if _, undated := all[id[:loc[0]]]; undated {
+			return true
+		}
+	}
+	return false
 }
 
 // maxCatalogModelsPerProvider bounds how many catalog models are added to the list of one built-in provider: the newest ones. An
 // aggregator such as OpenRouter lists hundreds.
 const maxCatalogModelsPerProvider = 40
 
-// catalogExtended names, for each built-in provider whose model list the catalog extends, its id in the catalog. Bedrock, Vertex and
-// Foundry are left out: their model ids carry a region or a deployment, which the catalog does not give in the form we call them
-// with. Codex is not in the catalog (it is a ChatGPT subscription route) and Ollama lists the models installed on the machine.
+// catalogExtended names, for each built-in provider whose model list the catalog extends, its id in the catalog. Codex is not in the
+// catalog (it is a ChatGPT subscription route) and Ollama lists the models installed on the machine.
 func catalogExtended() map[types.APIProvider]string {
 	out := make(map[types.APIProvider]string, len(nativeProviders))
 	for catalogID, native := range nativeProviders {
-		switch native {
-		case types.APIProviderBedrock, types.APIProviderVertex, types.APIProviderFoundry:
-			continue
-		}
 		out[native] = catalogID
 	}
 	return out
@@ -254,7 +320,7 @@ func extendWithCatalog(curated map[types.APIProvider]ProviderInfo, cat *catalog.
 			if len(added) == maxCatalogModelsPerProvider {
 				break
 			}
-			if have[m.ID] || m.Deprecated() || m.ContextWindow <= 0 {
+			if have[m.ID] || m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(provider, m.ID, cp.Models) {
 				continue
 			}
 			meta := catalogModelMetadata(string(provider), m)

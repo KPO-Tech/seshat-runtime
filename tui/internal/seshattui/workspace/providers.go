@@ -152,8 +152,6 @@ func defaultProviderBaseURL(providerID string) string {
 		return "https://api.minimax.chat/v1"
 	case "opencode":
 		return "https://opencode.ai/zen/v1"
-	case "workers-ai":
-		return "https://api.cloudflare.com/client/v4/accounts"
 	case "kimi":
 		return "https://api.moonshot.ai/v1"
 	case "ollama":
@@ -284,10 +282,6 @@ func catwalkTypeFor(providerID string) catwalk.Type {
 		return catwalk.TypeAnthropic
 	case "gemini":
 		return catwalk.TypeGoogle
-	case "bedrock":
-		return catwalk.TypeBedrock
-	case "vertex":
-		return "google-vertex"
 	default:
 		return catwalk.TypeOpenAI
 	}

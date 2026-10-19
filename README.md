@@ -352,7 +352,7 @@ fmt.Println(resp.Content)
 
 | Capability | Details |
 |---|---|
-| 🌍 **Multi-provider** | 15 providers: Anthropic, OpenAI, Gemini, Mistral, DeepSeek, Ollama, OpenRouter, AWS Bedrock, GCP Vertex, Azure Foundry, Codex, MiniMax, Z.ai, OpenCode, Cloudflare Workers AI |
+| 🌍 **Multi-provider** | Anthropic, OpenAI, Gemini, Mistral, DeepSeek, Ollama, OpenRouter, Codex, MiniMax, Z.ai, OpenCode, Cloudflare Workers AI |
 | 🛠️ **60+ built-in tools** | File read/write/patch, bash (Landlock, srt or Docker sandbox), web search, web fetch, browser (Playwright), grep/glob, LSP, sub-agents, RAG, tasks, memory, worktree, notebooks, image generation, TTS/STT |
 | 🔌 **MCP client** | Universal MCP client: plug in any MCP server (GitHub, Postgres, Slack, Docker, Notion, ...) |
 | ⚡ **Skills** | Markdown instruction files injected into the system prompt: encode your team's conventions and domain expertise |
@@ -408,14 +408,10 @@ seshat/
 | `deepseek` | DeepSeek | `DEEPSEEK_API_KEY` |
 | `ollama` | Ollama (local) | none |
 | `openrouter` | OpenRouter | `OPENROUTER_API_KEY` |
-| `bedrock` | AWS Bedrock | `AWS_ACCESS_KEY_ID` + region |
-| `vertex` | GCP Vertex AI | `ANTHROPIC_VERTEX_PROJECT_ID` + region |
-| `foundry` | Azure AI Foundry | `ANTHROPIC_FOUNDRY_API_KEY` |
 | `codex` | ChatGPT Pro (OAuth) | device-code flow |
 | `minimax` | MiniMax | `MINIMAX_API_KEY` |
 | `z-ai` | Z.ai | `Z_AI_API_KEY` |
 | `opencode` | OpenCode Zen | `OPENCODE_API_KEY` |
-| `workers-ai` | Cloudflare Workers AI | `CLOUDFLARE_API_KEY` |
 
 Full model listings and capabilities: [`docs/providers.md`](./docs/providers.md).
 

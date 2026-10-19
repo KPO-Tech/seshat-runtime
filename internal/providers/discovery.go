@@ -128,29 +128,6 @@ func DiscoverProviders(ctx context.Context) []DiscoveryResult {
 			},
 		},
 		{
-			types.APIProviderBedrock, "AWS Bedrock", "aws",
-			func() (bool, string, string) {
-				hasRegion := os.Getenv("AWS_REGION") != "" || os.Getenv("AWS_DEFAULT_REGION") != ""
-				hasKey := os.Getenv("AWS_ACCESS_KEY_ID") != "" || os.Getenv("AWS_PROFILE") != ""
-				if hasRegion && hasKey {
-					return true, "AWS_ACCESS_KEY_ID+AWS_REGION", "Claude on AWS Bedrock"
-				}
-				return false, "AWS_ACCESS_KEY_ID+AWS_REGION", "Set AWS credentials and AWS_REGION"
-			},
-		},
-		{
-			types.APIProviderVertex, "Google Vertex AI", "gcp",
-			func() (bool, string, string) {
-				proj := os.Getenv("ANTHROPIC_VERTEX_PROJECT_ID")
-				region := os.Getenv("CLOUD_ML_REGION")
-				if proj != "" && region != "" {
-					return true, "ANTHROPIC_VERTEX_PROJECT_ID+CLOUD_ML_REGION", "Claude on Google Vertex"
-				}
-				return false, "ANTHROPIC_VERTEX_PROJECT_ID+CLOUD_ML_REGION",
-					"Set ANTHROPIC_VERTEX_PROJECT_ID and CLOUD_ML_REGION"
-			},
-		},
-		{
 			types.APIProviderMiniMax, "MiniMax", "api_key",
 			func() (bool, string, string) {
 				ev := providerEnvVar(types.APIProviderMiniMax)

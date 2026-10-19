@@ -51,7 +51,7 @@ func adapterForProvider(p types.APIProvider) providerAdapter {
 	switch p {
 	case types.APIProviderZAi, "zai", "z.ai":
 		return zAiAdapter{}
-	case types.APIProviderOpenAI, types.APIProviderMiniMax, types.APIProviderOpenRouter, types.APIProviderMistral, types.APIProviderDeepSeek, types.APIProviderOpenCode, types.APIProviderKimi, types.APIProviderWorkersAI:
+	case types.APIProviderOpenAI, types.APIProviderMiniMax, types.APIProviderOpenRouter, types.APIProviderMistral, types.APIProviderDeepSeek, types.APIProviderOpenCode, types.APIProviderKimi:
 		return openAICompatAdapter{}
 	case types.APIProviderCodex:
 		return codexAdapter{}
@@ -59,21 +59,19 @@ func adapterForProvider(p types.APIProvider) providerAdapter {
 		return ollamaAdapter{}
 	case types.APIProviderGemini:
 		return geminiAdapter{}
-	case types.APIProviderFoundry:
-		return foundryAdapter{}
 	default:
 		// A generic provider of the models.dev catalog speaks the OpenAI chat completions protocol.
 		if IsCatalogProvider(p) {
 			return openAICompatAdapter{}
 		}
-		// anthropic, bedrock, vertex, and any unknown provider use the
-		// Anthropic Messages wire format (matches the prior switch default).
+		// anthropic and any unknown provider use the Anthropic Messages wire
+		// format (matches the prior switch default).
 		return anthropicAdapter{}
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Anthropic (and the default for bedrock/vertex/workers-ai/unknown)
+// Anthropic (and the default for unknown providers)
 // ---------------------------------------------------------------------------
 
 type anthropicAdapter struct{}
@@ -103,21 +101,6 @@ func (anthropicAdapter) decodeResponse(_ *Client, body io.Reader, model types.Mo
 
 func (anthropicAdapter) createStreamResult(c *Client, ctx context.Context, req types.APIRequest, onChunk func(types.APIResponseChunk)) (*types.APIStreamResult, error) {
 	return c.createAnthropicStreamResult(ctx, req, onChunk)
-}
-
-// ---------------------------------------------------------------------------
-// Azure AI Foundry — Anthropic wire format with Azure-style auth headers.
-// ---------------------------------------------------------------------------
-
-type foundryAdapter struct{ anthropicAdapter }
-
-func (foundryAdapter) applyAuthHeaders(c *Client, req *http.Request) {
-	if c.apiKey != "" {
-		req.Header.Set("api-key", c.apiKey)
-	}
-	if c.providerConfig != nil && c.providerConfig.Region != "" {
-		req.Header.Set("Anthropic-Foundry-Resource-Id", c.providerConfig.Region)
-	}
 }
 
 // ---------------------------------------------------------------------------

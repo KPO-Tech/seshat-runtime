@@ -373,63 +373,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			SupportsPC:   false,
 			Models:       nil,
 		},
-		types.APIProviderBedrock: {
-			Name:         "bedrock",
-			DisplayName:  "AWS Bedrock",
-			Description:  "Claude via Amazon AWS",
-			AuthType:     "aws",
-			AuthTypes:    []string{"aws"},
-			SupportsCVMM: true,
-			SupportsPC:   true,
-			Models: []ModelInfo{
-				{Identifier: "anthropic.claude-sonnet-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for agentic coding and knowledge work. via Bedrock",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "anthropic.claude-opus-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Bedrock",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "anthropic.claude-fable-5-1", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agentic work. via Bedrock",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "anthropic.claude-haiku-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive tasks. via Bedrock",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-			},
-		},
-		types.APIProviderVertex: {
-			Name:         "vertex",
-			DisplayName:  "Google Cloud Vertex AI",
-			Description:  "Claude via Google Cloud",
-			AuthType:     "gcp",
-			AuthTypes:    []string{"gcp"},
-			SupportsCVMM: true,
-			SupportsPC:   true,
-			Models: []ModelInfo{
-				{Identifier: "claude-sonnet-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for agentic coding and knowledge work. via Vertex",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "claude-opus-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Vertex",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "claude-fable-5-1", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agentic work. via Vertex",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "claude-haiku-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive tasks. via Vertex",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-			},
-		},
-		types.APIProviderFoundry: {
-			Name:         "foundry",
-			DisplayName:  "Azure AI Foundry",
-			Description:  "Claude via Microsoft Azure",
-			AuthType:     "api_key",
-			AuthTypes:    []string{"api_key"},
-			SupportsCVMM: true,
-			SupportsPC:   true,
-			Models: []ModelInfo{
-				{Identifier: "claude-sonnet-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for agentic coding and knowledge work. via Azure Foundry",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "claude-opus-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Azure Foundry",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "claude-fable-5-1", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agentic work. via Azure Foundry",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-				{Identifier: "claude-haiku-5-5", ContextWindow: 1000000, MaxOutput: 128000, DefaultTemperature: 1.0, SupportsPC: true, Description: "Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive tasks. via Azure Foundry",
-					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true, StructuredOutput: true}},
-			},
-		},
 		types.APIProviderKimi: {
 			Name:         "kimi",
 			DisplayName:  "Kimi (Moonshot AI)",
@@ -457,29 +400,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 					Capabilities: model.Capabilities{FunctionCalling: true, Streaming: true, PromptCaching: true}},
 				{Identifier: "kimi-k2.6", ContextWindow: 262144, MaxOutput: 262144, DefaultTemperature: 0.7, SupportsPC: true, Description: "Kimi K2.6 — Multimodal model with vision, thinking mode and agent orchestration.",
 					Capabilities: model.Capabilities{Vision: true, FunctionCalling: true, Streaming: true, PromptCaching: true}},
-			},
-		},
-		types.APIProviderWorkersAI: {
-			Name:         "workers-ai",
-			DisplayName:  "Cloudflare Workers AI",
-			Description:  "Edge AI inference",
-			AuthType:     "api_key",
-			AuthTypes:    []string{"api_key"},
-			SupportsCVMM: false,
-			SupportsPC:   false,
-			Models: []ModelInfo{
-				{Identifier: "@cf/zai-org/glm-5.3", ContextWindow: 1048576, MaxOutput: 131072, DefaultTemperature: 0.7, Description: "GLM-5.3 — 1M context, reasoning and function calling at the edge.",
-					Capabilities: model.Capabilities{FunctionCalling: true, Streaming: true}},
-				{Identifier: "@cf/moonshotai/kimi-k2.6", ContextWindow: 262144, MaxOutput: 32768, DefaultTemperature: 0.7, Description: "Kimi K2.6 — Agentic model at the edge.",
-					Capabilities: model.Capabilities{FunctionCalling: true, Streaming: true}},
-				{Identifier: "@cf/openai/gpt-oss-120b", ContextWindow: 128000, MaxOutput: 16384, DefaultTemperature: 0.7, Description: "gpt-oss-120B — Open-weight reasoning model at the edge.",
-					Capabilities: model.Capabilities{FunctionCalling: true, Streaming: true}},
-				{Identifier: "@cf/zai-org/glm-4.7-flash", ContextWindow: 131072, MaxOutput: 16384, DefaultTemperature: 0.7, Description: "GLM-4.7 Flash — Fast, cheap model with tool calling.",
-					Capabilities: model.Capabilities{FunctionCalling: true, Streaming: true}},
-				{Identifier: "@cf/meta/llama-4-scout-17b-16e-instruct", ContextWindow: 131072, MaxOutput: 4096, DefaultTemperature: 0.7, Description: "Llama 4 Scout 17B — Multimodal MoE at the edge.",
-					Capabilities: model.Capabilities{Streaming: true}},
-				{Identifier: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", ContextWindow: 80000, MaxOutput: 4096, DefaultTemperature: 0.7, Description: "DeepSeek-R1 Distill Qwen 32B — Reasoning model at the edge.",
-					Capabilities: model.Capabilities{Streaming: true}},
 			},
 		},
 	}
@@ -510,12 +430,6 @@ func ResolveProviderFromString(s string) types.APIProvider {
 		return types.APIProviderOpenAI
 	case "ollama":
 		return types.APIProviderOllama
-	case "bedrock", "aws":
-		return types.APIProviderBedrock
-	case "vertex", "gcp", "google-cloud":
-		return types.APIProviderVertex
-	case "foundry", "azure":
-		return types.APIProviderFoundry
 	case "gemini", "google-ai":
 		return types.APIProviderGemini
 	case "z-ai", "z.ai", "zai":
@@ -524,8 +438,6 @@ func ResolveProviderFromString(s string) types.APIProvider {
 		return types.APIProviderOpenRouter
 	case "minimax":
 		return types.APIProviderMiniMax
-	case "workers-ai", "workers", "cloudflare":
-		return types.APIProviderWorkersAI
 	case "mistral", "mistral-ai", "mistralai":
 		return types.APIProviderMistral
 	case "codex":

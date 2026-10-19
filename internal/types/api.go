@@ -22,15 +22,6 @@ const (
 	// Ollama - Local models
 	APIProviderOllama APIProvider = "ollama"
 
-	// AWS Bedrock - Claude via AWS
-	APIProviderBedrock APIProvider = "bedrock"
-
-	// Google Cloud Vertex AI - Claude via GCP
-	APIProviderVertex APIProvider = "vertex"
-
-	// Microsoft Azure AI Foundry - Claude via Azure
-	APIProviderFoundry APIProvider = "foundry"
-
 	// Google Gemini - Direct API
 	APIProviderGemini APIProvider = "gemini"
 
@@ -42,9 +33,6 @@ const (
 
 	// MiniMax - Chinese AI platform
 	APIProviderMiniMax APIProvider = "minimax"
-
-	// Cloudflare Workers AI
-	APIProviderWorkersAI APIProvider = "workers-ai"
 
 	// Mistral AI - Direct API (OpenAI-compatible)
 	APIProviderMistral APIProvider = "mistral"

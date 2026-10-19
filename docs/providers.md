@@ -16,10 +16,6 @@
 | `codex` | Codex | oauth | — | — | `OAuth` |
 | `z-ai` | Z.ai | api_key | ✓ | ✓ | `Z_AI_API_KEY` |
 | `minimax` | MiniMax | api_key | ✓ | ✓ | `MINIMAX_API_KEY` |
-| `bedrock` | AWS Bedrock | aws | ✓ | ✓ | `AWS_ACCESS_KEY_ID+AWS_REGION` |
-| `vertex` | Google Cloud Vertex AI | gcp | ✓ | ✓ | `ANTHROPIC_VERTEX_PROJECT_ID+CLOUD_ML_REGION` |
-| `foundry` | Azure AI Foundry | api_key | ✓ | ✓ | `ANTHROPIC_FOUNDRY_API_KEY` |
-| `workers-ai` | Cloudflare Workers AI | api_key | — | — | `CLOUDFLARE_API_KEY` |
 | `opencode` | OpenCode Zen | api_key | ✓ | — | `OPENCODE_API_KEY` |
 | `kimi` | Kimi (Moonshot AI) | api_key | ✓ | ✓ | `KIMI_API_KEY` |
 
@@ -36,6 +32,12 @@
 | `claude-opus-5` | 1M | 128K | ✓ | Claude Opus 5 — Previous-generation Opus. |
 | `claude-opus-4-8` | 1M | 128K | ✓ | Claude Opus 4.8 — Legacy Opus, still available. |
 | `claude-sonnet-4-6` | 1M | 128K | ✓ | Claude Sonnet 4.6 — Legacy Sonnet, still available. |
+| `claude-fable-5` | 1M | 128K | ✓ | Claude Fable 5 — 1M context, reasoning, image input. |
+| `claude-opus-4-7` | 1M | 128K | ✓ | Claude Opus 4.7 — 1M context, reasoning, image input. |
+| `claude-opus-4-6` | 1M | 128K | ✓ | Claude Opus 4.6 — 1M context, reasoning, image input. |
+| `claude-opus-4-5` | 200K | 64K | ✓ | Claude Opus 4.5 — 200k context, reasoning, image input. |
+| `claude-haiku-4-5` | 200K | 64K | ✓ | Claude Haiku 4.5 — 200k context, reasoning, image input. |
+| `claude-sonnet-4-5` | 200K | 64K | ✓ | Claude Sonnet 4.5 — 200k context, reasoning, image input. |
 | `claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
 
 ### OpenAI (`openai`)
@@ -47,6 +49,24 @@
 | `gpt-6-sol` | 1M | 128K | ✓ | GPT-6 Sol — Balanced GPT-6 model. |
 | `gpt-5.6-terra` | 1M | 128K | ✓ | GPT-5.6 Terra — Previous-generation mid-tier model. |
 | `gpt-5.5` | 272K | 32K | ✓ | GPT-5.5 — Previous-generation frontier model. |
+| `gpt-5.6` | 1M | 128K | ✓ | GPT-5.6 — 1.1M context, reasoning, image input. |
+| `gpt-5.6-sol` | 1M | 128K | ✓ | GPT-5.6 Sol — 1.1M context, reasoning, image input. |
+| `gpt-5.6-luna` | 1M | 128K | ✓ | GPT-5.6 Luna — 1.1M context, reasoning, image input. |
+| `gpt-5.4` | 1M | 128K | ✓ | GPT-5.4 — 1.1M context, reasoning, image input. |
+| `gpt-5.4-mini` | 400K | 128K | ✓ | GPT-5.4 mini — 400k context, reasoning, image input. |
+| `gpt-5.4-nano` | 400K | 128K | ✓ | GPT-5.4 nano — 400k context, reasoning, image input. |
+| `gpt-daybreak-blue-latest` | 1M | 128K | ✓ | Daybreak Blue |
+| `gpt-daybreak-red-latest` | 400K | 128K | ✓ | Daybreak Red |
+| `gpt-5.2` | 400K | 128K | ✓ | GPT-5.2 |
+| `gpt-5.1` | 400K | 128K | ✓ | GPT-5.1 |
+| `gpt-5` | 400K | 128K | ✓ | GPT-5 |
+| `gpt-5-mini` | 400K | 128K | ✓ | GPT-5 Mini |
+| `gpt-5-nano` | 400K | 128K | ✓ | GPT-5 Nano |
+| `o3` | 200K | 100K | ✓ | o3 |
+| `gpt-4.1` | 1M | 32K | ✓ | GPT-4.1 |
+| `gpt-4.1-mini` | 1M | 32K | ✓ | GPT-4.1 mini |
+| `gpt-4o-mini` | 128K | 16K | ✓ | GPT-4o mini |
+| `gpt-4o` | 128K | 16K | ✓ | GPT-4o |
 | `gpt-6-luna` | 1M | 128K | ✓ | GPT-6 Luna — Small, fast, and cost-efficient model. |
 
 ### Mistral AI (`mistral`)
@@ -58,6 +78,19 @@
 | `devstral-latest` | 262K | 209K | — | Devstral — Agentic coding model. |
 | `codestral-latest` | 256K | 204K | — | Codestral — Code generation and completion. |
 | `ministral-14b-latest` | 262K | 209K | — | Ministral 14B — Compact, capable open-weight model. |
+| `mistral-large-4` | 1M | 262K | — | Mistral Large 4 |
+| `zai-glm-5-3` | 1M | 131K | — | GLM-5.3 |
+| `mistral-medium-2604` | 262K | 8K | — | Mistral Medium 3.5 |
+| `mistral-small-2603` | 262K | 256K | — | Mistral Small 4 |
+| `ministral-14b-2512` | 262K | 8K | — | Ministral 3 14B |
+| `ministral-3b-2512` | 131K | 8K | — | Ministral 3 3B |
+| `ministral-8b-2512` | 262K | 8K | — | Ministral 3 8B |
+| `codestral-2508` | 256K | 8K | — | Codestral 25.08 |
+| `voxtral-small-2507` | 32K | 32K | — | Voxtral Small |
+| `voxtral-small-latest` | 32K | 32K | — | Voxtral Small (latest) |
+| `mistral-large-2512` | 262K | 8K | — | Mistral Large 3 |
+| `ministral-3b-latest` | 131K | 128K | — | Ministral 3B (latest) |
+| `ministral-8b-latest` | 262K | 128K | — | Ministral 8B (latest) |
 | `mistral-small-latest` | 262K | 209K | — | Mistral Small 4 — Efficient and capable at low cost and latency. |
 
 ### Google Gemini (`gemini`)
@@ -70,6 +103,19 @@
 | `gemini-3.1-pro-preview` | 1M | 65K | — | Gemini 3.1 Pro (preview) — Pro-tier reasoning. |
 | `gemini-2.5-pro` | 1M | 65K | — | Gemini 2.5 Pro — Stable Pro-tier model. |
 | `gemini-2.5-flash` | 1M | 65K | — | Gemini 2.5 Flash — Stable, fast model. |
+| `gemini-3.7-flash` | 1M | 65K | — | Gemini 3.7 Flash — 1.0M context, reasoning, image input. |
+| `gemini-3.5-flash` | 1M | 65K | — | Gemini 3.5 Flash — 1.0M context, reasoning, image input. |
+| `gemini-3.1-flash-lite` | 1M | 65K | — | Gemini 3.1 Flash Lite — 1.0M context, reasoning, image input. |
+| `gemini-flash-latest` | 1M | 65K | — | Gemini Flash Latest — 1.0M context, reasoning, image input. |
+| `gemini-flash-lite-latest` | 1M | 65K | — | Gemini Flash-Lite Latest — 1.0M context, reasoning, image input. |
+| `deep-research-max-preview-04-2026` | 131K | 65K | — | Deep Research Max Preview (Apr-21-2026) |
+| `gemma-4-26b-a4b-it` | 262K | 32K | — | Gemma 4 26B A4B IT |
+| `gemma-4-31b-it` | 262K | 32K | — | Gemma 4 31B IT |
+| `gemini-3.1-flash-live-preview` | 131K | 65K | — | Gemini 3.1 Flash Live Preview |
+| `gemini-3.1-pro-preview-customtools` | 1M | 65K | — | Gemini 3.1 Pro Preview Custom Tools |
+| `gemini-3-flash-preview` | 1M | 65K | — | Gemini 3 Flash Preview |
+| `gemini-2.5-computer-use-preview-10-2025` | 128K | 64K | — | Gemini 2.5 Computer Use Preview 10-2025 |
+| `gemini-2.5-flash-lite` | 1M | 65K | — | Gemini 2.5 Flash-Lite |
 | `gemini-3.5-flash-lite` | 1M | 65K | — | Gemini 3.5 Flash-Lite — Cheapest and fastest for high-volume tasks. |
 
 ### DeepSeek (`deepseek`)
@@ -92,6 +138,46 @@
 | `nvidia/nemotron-3-super-120b-a12b:free` | 262K | 65K | — | NVIDIA Nemotron 3 Super 120B (free tier, rate-limited) via OpenRouter. Tested... |
 | `cohere/north-mini-code:free` | 256K | 64K | — | Cohere North Mini Code (free tier, rate-limited) via OpenRouter. Agentic codi... |
 | `nvidia/nemotron-3.5-lightning:free` | 1M | 65K | — | NVIDIA Nemotron 3.5 Lightning (free tier, rate-limited) via OpenRouter. 1M co... |
+| `deepseek/deepseek-v4.1-flash-1017` | 1M | 393K | — | DeepSeek V4.1 Flash 1017 |
+| `elorian/glimpse` | 262K | 256K | — | Glimpse |
+| `reflection/beam-1.0-501b-a23b` | 1M | 943K | — | Beam 1.0 501B A23B |
+| `xingchen-agi/xing4.0-29b-a4b:free` | 262K | 235K | — | Xing4.0 29B A4B (free) |
+| `meta/muse-spark-open` | 1M | 943K | — | Muse Spark Open |
+| `nvidia/nemotron-3.5-super-vl` | 1M | 235K | — | Nemotron 3.5 Super VL |
+| `nvidia/nemotron-3.5-super-vl:free` | 1M | 131K | — | Nemotron 3.5 Super VL (free) |
+| `unbiased/pareto-26.10` | 1M | 131K | — | Pareto 26.10 |
+| `liquid/lfm-2.5-24b-a2b` | 128K | 8K | — | LFM2.5-24B-A2B |
+| `unbiased/pareto-26.9` | 262K | 131K | — | Pareto 26.9 |
+| `~unbiased/pareto-latest` | 1M | 131K | — | Pareto Latest |
+| `meta/muse-wonder` | 1M | 943K | — | Muse Wonder |
+| `google/gemini-nano-banana-2.1` | 65K | 58K | — | Nano Banana 2.1 |
+| `mistralai/mistral-large-4-0` | 1M | 262K | — | Mistral Large 4 |
+| `inclusionai/ling-3.1-flash` | 262K | 235K | — | Ling 3.1 Flash |
+| `openai/gpt-6.1-sol-pro` | 1M | 128K | — | GPT-6.1 Sol Pro |
+| `perceptron/perceptron-mk1.5` | 36K | 8K | — | Perceptron Mk1.5 |
+| `fireworks/ember-1` | 1M | 943K | — | Ember-1 |
+| `aion-labs/aion-3.5` | 262K | 32K | — | Aion 3.5 |
+| `aion-labs/aion-3.5-mini` | 262K | 32K | — | Aion 3.5 Mini |
+| `qwen/qwen3.8-max-prime` | 1M | 131K | — | Qwen 3.8 Max Prime |
+| `upstage/solar-mini4` | 524K | 131K | — | Solar Mini 4 |
+| `z-ai/glm-5.3-prime` | 1M | 131K | — | GLM 5.3 Prime |
+| `cohere/command-a-plus` | 192K | 64K | — | Command A+ |
+| `openai/gpt-6-luna` | 1M | 128K | — | GPT-6 Luna |
+| `openai/gpt-6-luna-pro` | 1M | 128K | — | GPT-6 Luna Pro |
+| `openai/gpt-6-sol` | 1M | 128K | — | GPT-6 Sol |
+| `openai/gpt-6-sol-pro` | 1M | 128K | — | GPT-6 Sol Pro |
+| `xiaomi/mimo-v2.6-flash` | 1M | 131K | — | MiMo-V2.6-Flash |
+| `xiaomi/mimo-v2.6-pro` | 1M | 131K | — | MiMo-V2.6-Pro |
+| `x-ai/grok-4.7` | 500K | 450K | — | Grok 4.7 |
+| `xiaomi/mimo-v2.6-pro-ultraspeed` | 1M | 131K | — | MiMo-V2.6-Pro-UltraSpeed |
+| `prism-ml/ternary-bonsai-2-27b` | 262K | 32K | — | Ternary Bonsai 2 27B |
+| `z-ai/glm-5.3-flashx` | 1M | 131K | — | GLM 5.3 FlashX |
+| `qwen/qwen3.8-omni-flash` | 1M | 131K | — | Qwen3.8 Omni Flash |
+| `stepfun/step-5-preview` | 1M | 64K | — | Step 5 Preview |
+| `~deepseek/deepseek-flash-latest` | 1M | 943K | — | DeepSeek Flash Latest |
+| `~deepseek/deepseek-pro-latest` | 1M | 393K | — | DeepSeek Pro Latest |
+| `sakana/fugu-max` | 1M | 128K | — | Fugu Max |
+| `sakana/fugu-ultra-v2` | 1M | 128K | — | Fugu Ultra v2 |
 | `anthropic/claude-haiku-5.5` | 1M | 128K | — | Claude Haiku 5.5 via OpenRouter — fast and cheap. |
 
 ### Codex (`codex`)
@@ -115,6 +201,17 @@
 | `glm-5` | 200K | 128K | — | GLM-5 — Agentic and coding model. |
 | `glm-4.7` | 200K | 128K | — | GLM-4.7 — Stable previous generation. |
 | `glm-5.3-flashx` | 1M | 131K | — | GLM-5.3 FlashX — Faster, cheaper GLM-5.3 tier. |
+| `glm-5v-turbo` | 200K | 131K | ✓ | GLM-5V-Turbo — 200k context, reasoning, image input. |
+| `glm-5-turbo` | 200K | 131K | ✓ | GLM-5-Turbo — 200k context, reasoning. |
+| `glm-4.7-flash` | 200K | 131K | ✓ | GLM-4.7-Flash — 200k context, reasoning. |
+| `glm-4.7-flashx` | 200K | 131K | ✓ | GLM-4.7-FlashX — 200k context, reasoning. |
+| `glm-4.6` | 204K | 131K | ✓ | GLM-4.6 — 205k context, reasoning. |
+| `glm-4.6v` | 128K | 32K | ✓ | GLM-4.6V — 128k context, reasoning, image input. |
+| `glm-4.5` | 131K | 98K | ✓ | GLM-4.5 — 131k context, reasoning. |
+| `glm-4.5-air` | 131K | 98K | ✓ | GLM-4.5-Air — 131k context, reasoning. |
+| `glm-4.5-flash` | 131K | 98K | ✓ | GLM-4.5-Flash — 131k context, reasoning. |
+| `glm-4.6v-flash` | 128K | 32K | ✓ | GLM-4.6V-Flash |
+| `glm-4.5v` | 64K | 16K | ✓ | GLM-4.5V |
 | `glm-5.3-flash` | 1M | 131K | — | GLM-5.3 Flash — Fastest and cheapest GLM-5.3 tier, image/video input. |
 
 ### MiniMax (`minimax`)
@@ -124,45 +221,10 @@
 | `MiniMax-M3` | 1M | 512K | ✓ | MiniMax M3 — Latest flagship. 1M context, multimodal input, long-horizon ag... |
 | `MiniMax-M2.7` | 204K | 128K | ✓ | MiniMax M2.7 — Strong long-horizon agentic model. |
 | `MiniMax-M2.5` | 204K | 128K | ✓ | MiniMax M2.5 — Complex multi-step tasks, coding and reasoning. |
+| `MiniMax-M2.7-highspeed` | 204K | 131K | ✓ | MiniMax-M2.7-highspeed — 205k context, reasoning. |
+| `MiniMax-M2.5-highspeed` | 204K | 131K | ✓ | MiniMax-M2.5-highspeed — 205k context, reasoning. |
+| `MiniMax-M2` | 204K | 131K | ✓ | MiniMax-M2 — 205k context, reasoning. |
 | `MiniMax-M2.1` | 204K | 128K | — | MiniMax M2.1 — Multilingual model for coding and analysis. |
-
-### AWS Bedrock (`bedrock`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `anthropic.claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for... |
-| `anthropic.claude-opus-5-5` | 1M | 128K | ✓ | Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Bedrock |
-| `anthropic.claude-fable-5-1` | 1M | 128K | ✓ | Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agent... |
-| `anthropic.claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
-
-### Google Cloud Vertex AI (`vertex`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for... |
-| `claude-opus-5-5` | 1M | 128K | ✓ | Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Vertex |
-| `claude-fable-5-1` | 1M | 128K | ✓ | Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agent... |
-| `claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
-
-### Azure AI Foundry (`foundry`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `claude-sonnet-5-5` | 1M | 128K | ✓ | Claude Sonnet 5.5 — Best combination of speed and intelligence. Default for... |
-| `claude-opus-5-5` | 1M | 128K | ✓ | Claude Opus 5.5 — Long-running agentic coding and knowledge work. via Azure... |
-| `claude-fable-5-1` | 1M | 128K | ✓ | Claude Fable 5.1 — Most capable: demanding reasoning and long-horizon agent... |
-| `claude-haiku-5-5` | 1M | 128K | ✓ | Claude Haiku 5.5 — Fastest Claude model for high-volume, latency-sensitive ... |
-
-### Cloudflare Workers AI (`workers-ai`)
-
-| Model ID | Context | Max output | Cache | Description |
-|---|---|---|:---:|---|
-| `@cf/zai-org/glm-5.3` | 1M | 131K | — | GLM-5.3 — 1M context, reasoning and function calling at the edge. |
-| `@cf/moonshotai/kimi-k2.6` | 262K | 32K | — | Kimi K2.6 — Agentic model at the edge. |
-| `@cf/openai/gpt-oss-120b` | 128K | 16K | — | gpt-oss-120B — Open-weight reasoning model at the edge. |
-| `@cf/zai-org/glm-4.7-flash` | 131K | 16K | — | GLM-4.7 Flash — Fast, cheap model with tool calling. |
-| `@cf/meta/llama-4-scout-17b-16e-instruct` | 131K | 4K | — | Llama 4 Scout 17B — Multimodal MoE at the edge. |
-| `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b` | 80K | 4K | — | DeepSeek-R1 Distill Qwen 32B — Reasoning model at the edge. |
 
 ### OpenCode Zen (`opencode`)
 
@@ -177,6 +239,46 @@
 | `glm-5.3` | 1M | 131K | — | GLM-5.3 via OpenCode Zen. |
 | `deepseek-v4-pro` | 1M | 384K | — | DeepSeek V4 Pro via OpenCode Zen. |
 | `minimax-m3` | 1M | 131K | — | MiniMax M3 via OpenCode Zen. |
+| `nemotron-3.5-super-vl-free` | 1M | 131K | — | Nemotron 3.5 Super VL Free |
+| `mistral-large-4` | 524K | 262K | — | Mistral Large 4 |
+| `beam-free` | 1M | 131K | — | Beam Free |
+| `longcat-2.5-preview-free` | 1M | 131K | — | LongCat 2.5 Preview Free |
+| `space-bunny-free` | 1M | 524K | — | Space Bunny Free |
+| `gpt-6-luna` | 1M | 128K | — | GPT-6 Luna |
+| `gpt-6-sol` | 1M | 128K | — | GPT-6 Sol |
+| `mimo-v2.6-flash-free` | 200K | 32K | — | MiMo-V2.6-Flash Free |
+| `deepseek-v4.1-flash` | 1M | 384K | — | DeepSeek V4.1 Flash |
+| `deepseek-v4.1-flash-free` | 200K | 32K | — | DeepSeek V4.1 Flash Free |
+| `gpt-6-astra` | 1M | 128K | — | GPT-6 Astra |
+| `gemini-3.8-flash` | 1M | 65K | — | Gemini 3.8 Flash |
+| `muse-spark-1.3` | 1M | 131K | — | Muse Spark 1.3 |
+| `claude-fable-5-1` | 1M | 128K | — | Claude Fable 5.1 |
+| `glm-5.3-flash` | 1M | 131K | — | GLM-5.3-Flash |
+| `glm-5.3-flash-free` | 200K | 32K | — | GLM-5.3-Flash Free |
+| `qwen3.8-flash` | 1M | 131K | — | Qwen3.8 Flash |
+| `deepseek-v4-flash-vision-exp` | 1M | 384K | — | DeepSeek V4 Flash Vision Exp |
+| `gemini-3.7-flash` | 1M | 65K | — | Gemini 3.7 Flash |
+| `grok-4.6` | 500K | 8K | — | Grok 4.6 |
+| `nemotron-3.5-lightning-free` | 262K | 8K | — | Nemotron 3.5 Lightning Free |
+| `muse-spark-1.2` | 1M | 131K | — | Muse Spark 1.2 |
+| `qwen3.8-max` | 262K | 131K | — | Qwen3.8 Max |
+| `deepseek-v4-flash` | 1M | 384K | — | DeepSeek V4 Flash |
+| `claude-opus-5` | 1M | 128K | — | Claude Opus 5 |
+| `gemini-3.5-flash-lite` | 1M | 65K | — | Gemini 3.5 Flash Lite |
+| `gemini-3.6-flash` | 1M | 65K | — | Gemini 3.6 Flash |
+| `gpt-5.6-luna` | 1M | 128K | — | GPT-5.6 Luna |
+| `gpt-5.6-sol` | 1M | 128K | — | GPT-5.6 Sol |
+| `gpt-5.6-terra` | 1M | 128K | — | GPT-5.6 Terra |
+| `grok-4.5` | 500K | 8K | — | Grok 4.5 |
+| `claude-sonnet-5` | 1M | 128K | — | Claude Sonnet 5 |
+| `glm-5.2` | 1M | 131K | — | GLM-5.2 |
+| `kimi-k2.7-code` | 262K | 8K | — | Kimi K2.7 Code |
+| `claude-fable-5` | 1M | 128K | — | Claude Fable 5 |
+| `nemotron-3-ultra-free` | 1M | 128K | — | Nemotron 3 Ultra Free |
+| `claude-opus-4-8` | 1M | 128K | — | Claude Opus 4.8 |
+| `gemini-3.5-flash` | 1M | 65K | — | Gemini 3.5 Flash |
+| `gpt-5.5-pro` | 1M | 128K | — | GPT-5.5 Pro |
+| `gpt-5.5` | 1M | 128K | — | GPT-5.5 |
 | `claude-haiku-5-5` | 1M | 128K | — | Claude Haiku 5.5 via OpenCode Zen. |
 
 ### Kimi (Moonshot AI) (`kimi`)
