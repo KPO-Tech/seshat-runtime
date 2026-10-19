@@ -46,7 +46,10 @@ type runtimeOptions struct {
 	// MemoryConsolidate also lets memory be rewritten smaller. Both are off until the user opts in.
 	MemoryEnabled     bool
 	MemoryConsolidate bool
-	Debug             bool
+	// RefreshCatalog lets the client download the public models.dev catalog (providers and models) in the background when the cached
+	// one is more than a day old. Off until the user opts in; the cache and the catalog embedded in the program are always used.
+	RefreshCatalog bool
+	Debug          bool
 
 	// RAGService is the embedded HNSW-backed RAG service.
 	// Nil when the embedding provider is not configured (RAG_EMBEDDING_URL / RAG_EMBEDDING_MODEL absent).
@@ -154,6 +157,7 @@ func loadRuntimeOptions(overrides runtimeOverrides) (runtimeOptions, error) {
 		StorageGCNamespaces:     splitCommaList(config.StorageGCNamespaces),
 		MemoryEnabled:           config.MemoryEnabled,
 		MemoryConsolidate:       config.MemoryConsolidate,
+		RefreshCatalog:          config.RefreshCatalog,
 		Debug:                   config.Debug,
 		RAGService:              buildRAGService(config, hnswDir, ragSQLitePath),
 		Companion:               companionPtr,
@@ -243,6 +247,8 @@ func newClient(
 		ProviderConfig:           providerConfig,
 		PlanStore:                planStore,
 		LongTermMemory:           ltMemory,
+		CatalogCacheDir:          sdk.CatalogCacheDir(),
+		RefreshCatalog:           options.RefreshCatalog,
 		ExtractMemories:          options.MemoryEnabled,
 		RecallMemories:           options.MemoryEnabled,
 		ConsolidateMemories:      options.MemoryEnabled && options.MemoryConsolidate,
