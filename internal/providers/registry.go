@@ -44,11 +44,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			AuthTypes:    []string{"api_key"},
 			SupportsCVMM: true,
 			SupportsPC:   true,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "claude-sonnet-5-5"},
-				{Identifier: "claude-haiku-5-5"},
-			},
 		},
 		types.APIProviderOpenAI: {
 			Name:         "openai",
@@ -58,11 +53,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			AuthTypes:    []string{"api_key"},
 			SupportsCVMM: true,
 			SupportsPC:   true,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "gpt-6.1-sol"},
-				{Identifier: "gpt-6-luna"},
-			},
 		},
 		types.APIProviderCodex: {
 			Name:         "codex",
@@ -106,11 +96,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			AuthTypes:    []string{"api_key"},
 			SupportsCVMM: true,
 			SupportsPC:   false,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "mistral-large-latest"},
-				{Identifier: "mistral-small-latest"},
-			},
 		},
 		types.APIProviderGemini: {
 			Name:         "gemini",
@@ -120,11 +105,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			AuthTypes:    []string{"api_key"},
 			SupportsCVMM: true,
 			SupportsPC:   false,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "gemini-4-argon"},
-				{Identifier: "gemini-3.5-flash-lite"},
-			},
 		},
 		types.APIProviderMiniMax: {
 			Name:         "minimax",
@@ -134,11 +114,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			AuthTypes:    []string{"api_key"},
 			SupportsCVMM: true,
 			SupportsPC:   true,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "MiniMax-M3"},
-				{Identifier: "MiniMax-M2.1"},
-			},
 		},
 		types.APIProviderOpenRouter: {
 			Name:         "openrouter",
@@ -156,11 +131,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			// cached today. false reflects what's actually implemented,
 			// not what OpenRouter could theoretically support.
 			SupportsPC: false,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "anthropic/claude-sonnet-5.5"},
-				{Identifier: "anthropic/claude-haiku-5.5"},
-			},
 		},
 		types.APIProviderDeepSeek: {
 			Name:         "deepseek",
@@ -175,11 +145,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			// DeepSeek's own pricing docs (api-docs.deepseek.com, checked
 			// 2026-08-28) list only the V4 lineup below, with no mention of
 			// the old names at all.
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "deepseek-flash"},
-				{Identifier: "deepseek-v4-pro"},
-			},
 		},
 		types.APIProviderOpenCode: {
 			Name:         "opencode",
@@ -189,11 +154,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			AuthTypes:    []string{"api_key"},
 			SupportsCVMM: true,
 			SupportsPC:   false,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "claude-sonnet-5-5"},
-				{Identifier: "claude-haiku-5-5"},
-			},
 		},
 		types.APIProviderZAi: {
 			Name:         "z-ai",
@@ -203,11 +163,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			AuthTypes:    []string{"api_key"},
 			SupportsCVMM: true,
 			SupportsPC:   true,
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "glm-5.3"},
-				{Identifier: "glm-5.3-flash"},
-			},
 		},
 		// Ollama: no static model list — models are discovered dynamically from the
 		// local Ollama API (/api/tags). The frontend shows an empty list until the
@@ -240,11 +195,6 @@ func curatedProvidersInfo() map[types.APIProvider]ProviderInfo {
 			// Moonshot (new registrations already blocked, full platform
 			// sunset ~Aug 31 2026) in favor of the kimi-k2.6/k2.7/k3 lineup -
 			// see https://platform.kimi.ai/docs/models.
-			// Only the default large (first) and small (last) models are named here; the rest is the catalog's.
-			Models: []ModelInfo{
-				{Identifier: "kimi-k3"},
-				{Identifier: "kimi-k2.6"},
-			},
 		},
 	}
 }

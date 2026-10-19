@@ -167,62 +167,76 @@ func TestAProviderOnlyADownloadedCatalogKnowsGetsNoConfigOfItsOwn(t *testing.T) 
 	}
 }
 
-func TestBuiltInProviderListsGainTheCatalogModelsWithoutLosingTheirEnds(t *testing.T) {
+func TestBuiltInProviderListsAreTheCatalogModels(t *testing.T) {
 	original := Catalog()
 	t.Cleanup(func() { SetCatalog(original) })
-	before := AllProvidersInfo()[types.APIProviderAnthropic]
-	if len(before.Models) < 3 {
-		t.Fatal("the curated Anthropic list is expected to have models")
-	}
-	large, small := before.Models[0].Identifier, before.Models[len(before.Models)-1].Identifier
 
 	fake := &catalog.Catalog{Source: "test", Providers: map[string]catalog.Provider{
 		"anthropic": {ID: "anthropic", Name: "Anthropic", Models: map[string]catalog.Model{
-			"claude-future-9":  {ID: "claude-future-9", Name: "Claude Future 9", ContextWindow: 2000000, MaxOutput: 200000, ReleaseDate: "2027-01-01", InputModalities: []string{"image"}},
+			"claude-future-9":  {ID: "claude-future-9", Name: "Claude Future 9", ContextWindow: 2000000, MaxOutput: 200000, ReleaseDate: "2027-01-01", InputModalities: []string{"image"}, Cost: catalog.Cost{Input: 10, Output: 50}},
 			"claude-retired-1": {ID: "claude-retired-1", Name: "Retired", ContextWindow: 100000, ReleaseDate: "2027-02-01", Status: "deprecated"},
-			large:              {ID: large, Name: "Overridden name", ContextWindow: 5},
+			"claude-mid-1":     {ID: "claude-mid-1", Name: "Mid", ContextWindow: 200000, ReleaseDate: "2026-06-01", Cost: catalog.Cost{Input: 3, Output: 15}},
+			"claude-tiny-1":    {ID: "claude-tiny-1", Name: "Tiny", ContextWindow: 100000, ReleaseDate: "2026-01-01", Cost: catalog.Cost{Input: 0.5, Output: 2}},
 		}},
 	}}
 	SetCatalog(fake)
 
 	got := AllProvidersInfo()[types.APIProviderAnthropic]
-	if got.Models[0].Identifier != large || got.Models[len(got.Models)-1].Identifier != small {
-		t.Fatalf("the ends of the list moved: first %q last %q, want %q and %q (they are the default large and small models)", got.Models[0].Identifier, got.Models[len(got.Models)-1].Identifier, large, small)
-	}
-	if got.Models[0].Description != "Overridden name" || got.Models[0].ContextWindow != 5 {
-		t.Fatalf("a default model takes its data from the catalog: %+v", got.Models[0])
-	}
-	var future, retired bool
+	var ids []string
 	for _, m := range got.Models {
-		future = future || m.Identifier == "claude-future-9"
-		retired = retired || m.Identifier == "claude-retired-1"
+		ids = append(ids, m.Identifier)
 	}
-	if !future {
-		t.Error("a model only the catalog has must be listed")
+	want := []string{"claude-future-9", "claude-mid-1", "claude-tiny-1"}
+	if len(ids) != len(want) {
+		t.Fatalf("models = %v, want %v (the deprecated one is left out)", ids, want)
 	}
-	if retired {
-		t.Error("a deprecated model must not be listed")
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("models = %v, want %v", ids, want)
+		}
 	}
 	if info, ok := GetModelInfo(types.APIProviderAnthropic, "claude-future-9"); !ok || info.ContextWindow != 2000000 || !info.Capabilities.Vision {
 		t.Errorf("GetModelInfo = %+v, %v, want the catalog model with its window and image input", info, ok)
 	}
+	if def, ok := DefaultModelIdentifier(types.APIProviderAnthropic); !ok || def.Model != "claude-future-9" {
+		t.Errorf("default = %+v, %v", def, ok)
+	}
 }
 
-func TestEveryBuiltInProviderThatTheCatalogExtendsKeepsItsCuratedModels(t *testing.T) {
-	curated := curatedProvidersInfo()
+func TestEveryBuiltInProviderThatTheCatalogExtendsHasModelsFromIt(t *testing.T) {
 	for provider, info := range AllProvidersInfo() {
-		have := map[string]bool{}
-		for _, m := range info.Models {
-			have[m.Identifier] = true
+		if _, extended := catalogExtended()[provider]; !extended {
+			continue
 		}
-		for _, m := range curated[provider].Models {
-			if !have[m.Identifier] {
-				t.Errorf("%s lost its curated model %s", provider, m.Identifier)
+		if len(info.Models) == 0 {
+			t.Errorf("%s has no model: the registry names none, so the catalog must supply them", provider)
+		}
+		for _, m := range info.Models {
+			if m.ContextWindow <= 0 {
+				t.Errorf("%s: model %s has no context window", provider, m.Identifier)
 			}
 		}
-		if len(info.Models) > len(curated[provider].Models)+maxCatalogModelsPerProvider {
-			t.Errorf("%s has %d models, more than curated plus the cap", provider, len(info.Models))
+	}
+}
+
+func TestRankModelsPutsTheDearestRecentModelFirstAndTheCheapestLast(t *testing.T) {
+	models := []catalog.Model{ // newest first
+		{ID: "mid", Cost: catalog.Cost{Input: 1, Output: 4}},
+		{ID: "flagship", Cost: catalog.Cost{Input: 5, Output: 20}},
+		{ID: "tiny", Cost: catalog.Cost{Input: 0.1, Output: 0.4}},
+		{ID: "old", Cost: catalog.Cost{Input: 2, Output: 8}},
+	}
+	got := rankModels(models)
+	ids := []string{got[0].ID, got[1].ID, got[2].ID, got[3].ID}
+	want := []string{"flagship", "mid", "old", "tiny"}
+	for i := range want {
+		if ids[i] != want[i] {
+			t.Fatalf("order = %v, want %v", ids, want)
 		}
+	}
+	unpriced := rankModels([]catalog.Model{{ID: "new"}, {ID: "older"}, {ID: "oldest"}})
+	if unpriced[0].ID != "new" || unpriced[2].ID != "oldest" {
+		t.Fatalf("without prices the newest is large and the oldest small: %v", unpriced)
 	}
 }
 
@@ -310,8 +324,6 @@ func TestContextWindowUsesTheInputLimitWhenItIsBelowTheWindow(t *testing.T) {
 	}
 }
 
-// The registry names only each provider's default large and small model; everything else about them comes from the catalog, so both
-// must exist there or they would be listed with no limits.
 func TestRegistryDefaultsExistInTheCatalog(t *testing.T) {
 	for provider, info := range curatedProvidersInfo() {
 		catalogID, native := "", false
