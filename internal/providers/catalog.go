@@ -134,36 +134,63 @@ func CatalogProviders() []ProviderInfo {
 		if _, builtIn := nativeProviders[cp.ID]; builtIn {
 			continue
 		}
-		info := ProviderInfo{
-			Name:        cp.ID,
-			DisplayName: cp.Name,
-			Description: "OpenAI-compatible provider from the models.dev catalog (" + cp.BaseURL + ")",
-			AuthType:    "api_key",
-			AuthTypes:   []string{"api_key"},
-		}
-		if cp.Unverified {
-			info.Description = "Unverified provider from a downloaded catalog: confirm " + cp.BaseURL + " before sending a key"
-		}
-		for _, m := range cp.SortedModels() {
-			if m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(types.APIProvider(cp.ID), m.ID, cp.Models) {
-				continue
-			}
-			maxOutput := defaultCatalogMaxOutput
-			if m.OutputIsKnown() {
-				maxOutput = m.MaxOutput
-			}
-			info.Models = append(info.Models, ModelInfo{
-				Identifier:         m.ID,
-				ContextWindow:      m.ContextWindow,
-				MaxOutput:          maxOutput,
-				DefaultTemperature: 1.0,
-				Description:        m.Name,
-				Capabilities:       catalogModelMetadata(cp.ID, m).Capabilities,
-			})
-		}
-		out = append(out, info)
+		out = append(out, catalogProviderInfo(cp))
 	}
 	return out
+}
+
+// catalogProviderInfo describes a generic provider of the catalog: its name, how it authenticates and its models, newest first.
+func catalogProviderInfo(cp catalog.Provider) ProviderInfo {
+	info := ProviderInfo{
+		Name:        cp.ID,
+		DisplayName: cp.Name,
+		Description: "OpenAI-compatible provider from the models.dev catalog (" + cp.BaseURL + ")",
+		AuthType:    "api_key",
+		AuthTypes:   []string{"api_key"},
+	}
+	if cp.Unverified {
+		info.Description = "Unverified provider from a downloaded catalog: confirm " + cp.BaseURL + " before sending a key"
+	}
+	for _, m := range cp.SortedModels() {
+		if m.Deprecated() || m.ContextWindow <= 0 || unsuitableForChat(types.APIProvider(cp.ID), m.ID, cp.Models) {
+			continue
+		}
+		maxOutput := defaultCatalogMaxOutput
+		if m.OutputIsKnown() {
+			maxOutput = m.MaxOutput
+		}
+		info.Models = append(info.Models, ModelInfo{
+			Identifier:         m.ID,
+			ContextWindow:      m.ContextWindow,
+			MaxOutput:          maxOutput,
+			DefaultTemperature: 1.0,
+			Description:        m.Name,
+			Capabilities:       catalogModelMetadata(cp.ID, m).Capabilities,
+		})
+	}
+	return info
+}
+
+// catalogInfoFor returns the description of a provider that is not built in but that the catalog has, models included.
+func catalogInfoFor(p types.APIProvider) (ProviderInfo, bool) {
+	cp, ok := catalogProvider(p)
+	if !ok {
+		return ProviderInfo{}, false
+	}
+	return catalogProviderInfo(cp), true
+}
+
+// catalogBaseURL is the base URL of a generic provider as the catalog gives it, with its variables filled in, or "" when the provider is
+// not a generic one or a variable is still missing (a URL with a hole in it must not be called).
+func catalogBaseURL(p types.APIProvider) string {
+	cp, ok := catalogProvider(p)
+	if !ok {
+		return ""
+	}
+	if url := expandCatalogURL(cp.BaseURL); !strings.Contains(url, "${") {
+		return url
+	}
+	return ""
 }
 
 // ConfigForCatalogProvider returns the configuration to call a generic catalog provider: its id and its base URL. It refuses a
