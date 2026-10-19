@@ -25,6 +25,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The generated provider page lists the default large and small model of each provider and the number of models the catalog holds**, instead of hundreds of rows that change every week. `docs/providers.md` no longer mentions the removed cloud providers.
 - **Specialised models of the catalog (`type: "decision"`) are left out.** models.dev keeps them out of its default file already (they are classifiers that answer typed questions, not chat models); a catalog fetched with `?type=all` no longer puts them in the pickers.
 - **Our own choice of default models, by family.** The catalog snapshot (version 3) keeps the `family` of each model (`claude-sonnet`, `gpt-sol`...), and a small table (`familyDefaults`) names, per provider, the family of the default large and small model. The newest stable model of that family is taken, so a new version is picked up without editing anything. A provider the table does not cover keeps the price rule.
 - **The registry names no model at all.** The model list of each built-in provider is the models.dev catalog's (no cap any more), newest first. When nothing is chosen, the default large model is the dearest of the ten newest stable models (price follows capability) and the default small one the cheapest; agent-only models (deep research, computer use) are left out of the lists. The terminal app's pickers show every model of the provider.
