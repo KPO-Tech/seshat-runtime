@@ -40,6 +40,7 @@ type fullModel struct {
 	// Interleaved is true, false, or an object {"field": "reasoning_content"}.
 	Interleaved json.RawMessage `json:"interleaved"`
 	OpenWeights bool            `json:"open_weights"`
+	Family      string          `json:"family"`
 	Knowledge   string          `json:"knowledge"`
 	LastUpdated string          `json:"last_updated"`
 	Limit       struct {
@@ -88,7 +89,7 @@ func Parse(raw []byte, source string) (*Catalog, error) {
 				ID: mid, Name: fm.Name, ContextWindow: fm.Limit.Context, MaxInput: fm.Limit.Input, MaxOutput: fm.Limit.Output,
 				Reasoning: fm.Reasoning, Attachment: fm.Attachment, StructuredOutput: fm.StructuredOutput,
 				NoTemperature: fm.Temperature != nil && !*fm.Temperature, Interleaved: interleavedField(fm.Interleaved),
-				OpenWeights: fm.OpenWeights, Knowledge: fm.Knowledge, Status: fm.Status, ReleaseDate: fm.ReleaseDate, LastUpdated: fm.LastUpdated,
+				OpenWeights: fm.OpenWeights, Family: fm.Family, Knowledge: fm.Knowledge, Status: fm.Status, ReleaseDate: fm.ReleaseDate, LastUpdated: fm.LastUpdated,
 			}
 			for _, in := range fm.Modalities.Input {
 				if in != "text" {

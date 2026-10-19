@@ -226,7 +226,7 @@ func TestRankModelsPutsTheDearestRecentModelFirstAndTheCheapestLast(t *testing.T
 		{ID: "tiny", Cost: catalog.Cost{Input: 0.1, Output: 0.4}},
 		{ID: "old", Cost: catalog.Cost{Input: 2, Output: 8}},
 	}
-	got := rankModels(models)
+	got := rankModels("", models)
 	ids := []string{got[0].ID, got[1].ID, got[2].ID, got[3].ID}
 	want := []string{"flagship", "mid", "old", "tiny"}
 	for i := range want {
@@ -234,7 +234,7 @@ func TestRankModelsPutsTheDearestRecentModelFirstAndTheCheapestLast(t *testing.T
 			t.Fatalf("order = %v, want %v", ids, want)
 		}
 	}
-	unpriced := rankModels([]catalog.Model{{ID: "new"}, {ID: "older"}, {ID: "oldest"}})
+	unpriced := rankModels("", []catalog.Model{{ID: "new"}, {ID: "older"}, {ID: "oldest"}})
 	if unpriced[0].ID != "new" || unpriced[2].ID != "oldest" {
 		t.Fatalf("without prices the newest is large and the oldest small: %v", unpriced)
 	}
@@ -353,6 +353,44 @@ func TestProvidersWithoutACatalogURLAreCallableThroughTheEndpointTable(t *testin
 		cfg, ok := ConfigForCatalogProvider(p)
 		if !ok || !strings.HasPrefix(cfg.BaseURL, "https://") {
 			t.Errorf("%s: config = %+v, %v", id, cfg, ok)
+		}
+	}
+}
+
+func TestFamilyDefaultsPickTheNewestStableModelOfOurFamily(t *testing.T) {
+	models := []catalog.Model{ // newest first
+		{ID: "claude-opus-9", Family: "claude-opus", Cost: catalog.Cost{Input: 15, Output: 75}},
+		{ID: "claude-sonnet-beta", Family: "claude-sonnet", Status: "beta", Cost: catalog.Cost{Input: 3, Output: 15}},
+		{ID: "claude-sonnet-9", Family: "claude-sonnet", Cost: catalog.Cost{Input: 3, Output: 15}},
+		{ID: "claude-haiku-9", Family: "claude-haiku", Cost: catalog.Cost{Input: 1, Output: 5}},
+		{ID: "claude-sonnet-8", Family: "claude-sonnet", Cost: catalog.Cost{Input: 3, Output: 15}},
+	}
+	got := rankModels("anthropic", models)
+	if got[0].ID != "claude-sonnet-9" || got[len(got)-1].ID != "claude-haiku-9" {
+		t.Fatalf("large %q small %q, want claude-sonnet-9 and claude-haiku-9", got[0].ID, got[len(got)-1].ID)
+	}
+	// A provider the table does not know falls back to the price rule: the dearest recent model first.
+	if got := rankModels("nobody", models); got[0].ID != "claude-opus-9" {
+		t.Fatalf("without a table entry the dearest recent model leads, got %q", got[0].ID)
+	}
+}
+
+// Every family the table names must exist in the embedded catalog, or the entry silently does nothing.
+func TestFamilyDefaultsNameFamiliesThatExist(t *testing.T) {
+	for id, d := range familyDefaults {
+		cp, ok := Catalog().Provider(id)
+		if !ok {
+			t.Errorf("%s: no such provider in the catalog", id)
+			continue
+		}
+		have := map[string]bool{}
+		for _, m := range cp.Models {
+			have[m.Family] = true
+		}
+		for _, f := range append(append([]string{}, d.Large...), d.Small...) {
+			if !have[f] {
+				t.Errorf("%s: family %q is not in the catalog", id, f)
+			}
 		}
 	}
 }
