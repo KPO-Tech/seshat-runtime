@@ -347,6 +347,23 @@ func (m *Models) isSelectedConfigured() bool {
 	return isConfigured
 }
 
+// providerFilter says which providers the picker lists: the configured ones, or the main providers when none is configured yet and
+// during onboarding, when there is nothing to pick from and the user has to be able to set one up. A disabled provider is never listed.
+func (m *Models) providerFilter(cfg *config.Config) func(providerID string) bool {
+	anyConfigured := slices.ContainsFunc(m.providers, func(p catwalk.Provider) bool {
+		return capabilityProviderConfigured(cfg, string(p.ID))
+	})
+	enabled := func(id string) bool {
+		pc, ok := cfg.Providers.Get(id)
+		return !ok || !pc.Disable
+	}
+	if m.isOnboarding || !anyConfigured {
+		mainIDs := config.MainProviderIDs()
+		return func(id string) bool { return mainIDs[id] && enabled(id) }
+	}
+	return func(id string) bool { return capabilityProviderConfigured(cfg, id) && enabled(id) }
+}
+
 // setProviderItems sets the provider items in the list.
 func (m *Models) setProviderItems() error {
 	t := m.com.Styles
@@ -414,10 +431,7 @@ func (m *Models) setProviderItems() error {
 	//
 	// The picker lists the models of the providers that are configured, not those of the ~200 providers the catalog knows. When none
 	// is configured yet (or while onboarding) there is nothing to pick from, so it offers the main providers to set one up.
-	mainIDs := config.MainProviderIDs()
-	anyConfigured := slices.ContainsFunc(m.providers, func(p catwalk.Provider) bool {
-		return capabilityProviderConfigured(cfg, string(p.ID))
-	})
+	listed := m.providerFilter(cfg)
 	for _, provider := range m.providers {
 		providerID := string(provider.ID)
 		if addedProviders[providerID] {
@@ -425,14 +439,7 @@ func (m *Models) setProviderItems() error {
 		}
 
 		providerConfig, providerConfigured := cfg.Providers.Get(providerID)
-		if providerConfigured && providerConfig.Disable {
-			continue
-		}
-		if m.isOnboarding || !anyConfigured {
-			if !mainIDs[providerID] {
-				continue
-			}
-		} else if !capabilityProviderConfigured(cfg, providerID) {
+		if !listed(providerID) {
 			continue
 		}
 

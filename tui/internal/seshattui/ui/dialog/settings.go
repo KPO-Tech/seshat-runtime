@@ -1276,11 +1276,7 @@ func (s *Settings) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 		s.provInput.SetWidth(inputW)
 		rc.AddPart(t.Dialog.InputPrompt.Render(s.provInput.View()))
 		rc.AddPart(sep)
-		if s.provMore {
-			rc.AddPart(t.Dialog.SecondaryText.Render("  providers of the models.dev catalog, most of them not tried yet — configure first, then choose a model"))
-		} else {
-			rc.AddPart(t.Dialog.SecondaryText.Render("  select a provider — configure first, then choose a model (type to search them all)"))
-		}
+		rc.AddPart(t.Dialog.SecondaryText.Render(s.providerListSubtitle()))
 		rc.Parts = append(rc.Parts, "")
 		rc.AddPart(t.Dialog.List.Height(s.provList.Height()).Render(s.provList.Render()))
 
@@ -1364,6 +1360,14 @@ func (s *Settings) Draw(scr uv.Screen, area uv.Rectangle) *tea.Cursor {
 	cur := s.Cursor()
 	DrawCenterCursor(scr, area, view, cur)
 	return cur
+}
+
+// providerListSubtitle is the line under the provider search box.
+func (s *Settings) providerListSubtitle() string {
+	if s.provMore {
+		return "  providers of the models.dev catalog, most of them not tried yet — configure first, then choose a model"
+	}
+	return "  select a provider — configure first, then choose a model (type to search them all)"
 }
 
 func (s *Settings) viewTitle() string {

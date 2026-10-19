@@ -37,7 +37,7 @@ var knownComplex = map[string]int{
 	"tui/internal/seshattui/ui/chat/docker_mcp.go DockerMCPToolRenderContext.RenderTool":  34,
 	"tui/internal/seshattui/ui/chat/tools.go NewToolMessageItem":                          60,
 	"tui/internal/seshattui/ui/chat/tools.go baseToolMessageItem.formatParametersForCopy": 47,
-	"tui/internal/seshattui/ui/dialog/models.go Models.setProviderItems":                  40,
+	"tui/internal/seshattui/ui/dialog/models.go Models.setProviderItems":                  39,
 	"tui/internal/seshattui/ui/dialog/settings.go Settings.Draw":                          32,
 	"tui/internal/seshattui/ui/diffview/diffview.go DiffView.renderSplit":                 40,
 	"tui/internal/seshattui/ui/model/ui.go UI.Update":                                     157,
