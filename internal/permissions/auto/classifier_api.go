@@ -30,6 +30,9 @@ type ClassifierAPIRequest struct {
 	Messages      []types.Message
 	StopSequences []string
 	Thinking      bool
+	// DisableThinking asks a provider that can switch reasoning off to answer at once. The fast stage needs a verdict, not a
+	// chain of thought: on a reasoning model it otherwise spends seconds thinking before it writes one word.
+	DisableThinking bool
 }
 
 type ClassifierAPIResponse struct {
@@ -41,13 +44,21 @@ type ClassifierAPIResponse struct {
 }
 
 type ClassifierAPIClient struct {
-	client *providers.Client
+	client   *providers.Client
+	provider types.APIProvider
 }
 
 func NewClassifierAPIClient(client *providers.Client) *ClassifierAPIClient {
 	return &ClassifierAPIClient{
 		client: client,
 	}
+}
+
+// WithProvider names the provider the client talks to. The request carries it so that provider-specific options (turning
+// reasoning off) reach the right adapter; without it the request is addressed to Anthropic.
+func (c *ClassifierAPIClient) WithProvider(provider types.APIProvider) *ClassifierAPIClient {
+	c.provider = provider
+	return c
 }
 
 func (c *ClassifierAPIClient) Classify(ctx context.Context, req *ClassifierAPIRequest) (*ClassifierAPIResponse, error) {
@@ -71,17 +82,7 @@ func (c *ClassifierAPIClient) Classify(ctx context.Context, req *ClassifierAPIRe
 
 	temp := req.Temperature
 
-	apiReq := types.APIRequest{
-		Model: types.ModelIdentifier{
-			Provider: types.APIProviderAnthropic,
-			Model:    req.Model,
-		},
-		MaxTokens:     req.MaxTokens,
-		Temperature:   &temp,
-		SystemPrompt:  systemPrompt,
-		Messages:      messages,
-		StopSequences: req.StopSequences,
-	}
+	apiReq := c.buildAPIRequest(req, messages, systemPrompt, &temp)
 
 	response, err := c.client.CreateMessage(ctx, apiReq)
 	if err != nil {
@@ -111,6 +112,26 @@ func (c *ClassifierAPIClient) Classify(ctx context.Context, req *ClassifierAPIRe
 		MessageID:  string(response.ID),
 		StopReason: response.StopReason,
 	}, nil
+}
+
+// buildAPIRequest turns a classifier request into a provider request.
+func (c *ClassifierAPIClient) buildAPIRequest(req *ClassifierAPIRequest, messages []types.Message, systemPrompt string, temp *float64) types.APIRequest {
+	provider := c.provider
+	if provider == "" {
+		provider = types.APIProviderAnthropic
+	}
+	return types.APIRequest{
+		Model: types.ModelIdentifier{
+			Provider: provider,
+			Model:    req.Model,
+		},
+		MaxTokens:       req.MaxTokens,
+		Temperature:     temp,
+		SystemPrompt:    systemPrompt,
+		Messages:        messages,
+		StopSequences:   req.StopSequences,
+		DisableThinking: req.DisableThinking,
+	}
 }
 
 func generateID() string {
