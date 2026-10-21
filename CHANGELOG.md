@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.4] - 2026-10-21
+
+### Fixed
+
+- **The first context figure of a turn no longer overshoots.** The session kept no memory of what the provider had counted, so the first `context.usage` event of every turn after the first was a pure estimate of the whole conversation, which overshot and then fell back at the first provider report. The size the provider counted at the end of a turn (`RunResult.UsageAnchor`) is now kept by the session and handed to the next turn (`RunRequest.UsageAnchor`), so the first figure is that count plus an estimate of the new messages. It is dropped when the messages are rewritten (compaction, replacement) and not used when the model changed.
+
 ## [1.11.3] - 2026-10-21
 
 ### Security
