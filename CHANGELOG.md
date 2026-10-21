@@ -9,6 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.7] - 2026-10-21
+
+### Added
+
+- **The skill folders of other tools can be made available in place.** `skills.SetExternalDirs(userID, dirs)` hands the loader folders of skills that belong to another tool (Claude Code's `~/.claude/skills`, Codex's `~/.codex/skills`) or to the person. Every sub-folder holding a `SKILL.md` is a skill, read where it lies and never copied, so there is one copy of each and an edit is what the agent uses at its next turn. They rank below the project's, the user's and the installed collections' skills of the same name; folders set for the blank user reach every user of the device; a folder that does not exist is ignored. Each skill keeps where it came from in `LoadedFrom`.
+
+### Fixed
+
+- **The auto-mode classifier no longer lets a reasoning model think.** In Execute mode every call to a tool outside the small safe list goes through a two-stage classifier. On a reasoning model (z.ai glm-5.1) the two stages took about 9 s and 25 s for a harmless MCP call, because the provider's hidden reasoning ran on top of the verdict of the first stage and of the reasoning the second stage already writes in its answer. Both stages now ask for no hidden reasoning, and the request is addressed to the provider the client really talks to (it was always addressed to Anthropic, so a provider-specific switch never reached the adapter). Measured in the desktop app: classification 34 s to 10 s, the whole turn 74 s to 33 s.
+
 ## [1.11.6] - 2026-10-21
 
 ### Fixed
