@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.6] - 2026-10-21
+
+### Fixed
+
+- **MCP tools are found and usable by an agent limited to a list of tools.** The MCP wrapper never flagged the tools it builds as MCP tools (`Definition.IsMCP` was read in several places and set nowhere), so they were not deferred: `tool_search` could not find them, and the general agent of the desktop application (`MainAgentTools`) was never offered them. A server the person had added was connected and its tools registered, but the agent answered that no such server existed. The tool builder gains `AsMCP`, used for MCP tools, resources and prompts. Checked end to end against a stdio server: the agent found the tool with `tool_search`, called it and returned what the server produced.
+
 ## [1.11.5] - 2026-10-21
 
 ### Fixed
