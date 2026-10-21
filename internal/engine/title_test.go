@@ -136,3 +136,17 @@ func TestTheFirstMessageIsHandedOverAsTextToTitleNotAsAnInstruction(t *testing.T
 		t.Fatalf("the request must carry the framed message, got %q", text)
 	}
 }
+
+func TestTheConfiguredTitleModelIsAskedOnTheChatClientBeforeTheChatModel(t *testing.T) {
+	chat := providers.NewClientWithConfig("k", &providers.Config{Provider: types.APIProviderOpenAI, BaseURL: "http://127.0.0.1:2"})
+	chatModel := types.ModelIdentifier{Provider: types.APIProviderOpenAI, Model: "chat"}
+	titleModel := types.ModelIdentifier{Provider: types.APIProviderOpenAI, Model: "cheap"}
+
+	targets := (&Engine{apiClient: chat, config: &Config{Model: chatModel, TitleModel: titleModel}}).titleTargets()
+	if len(targets) != 2 || targets[0].model.Model != "cheap" || targets[1].model.Model != "chat" {
+		t.Fatalf("expected the title model then the chat model on the chat client, got %+v", targets)
+	}
+	if targets[0].dedicated {
+		t.Fatal("a title model on the chat client is not known to be small: it keeps the budget that leaves room to reason")
+	}
+}

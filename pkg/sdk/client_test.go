@@ -2283,7 +2283,7 @@ func TestSessionAutoTitleGeneration(t *testing.T) {
 		}
 
 		systemPrompt, _ := payload["system"].(string)
-		if strings.Contains(systemPrompt, "ultra-short session titles") {
+		if strings.Contains(systemPrompt, "short titles for conversations") {
 			if model, _ := payload["model"].(string); model != "" {
 				titleModelChan <- model
 			}

@@ -282,21 +282,46 @@ type titleTarget struct {
 	dedicated bool
 }
 
-// titleTargets lists the models to try for a title, in order: the dedicated title model when one is configured, then the chat model, so
-// a title model that is down or too slow does not leave the session unnamed.
+// titleTargets lists the models to try for a title, in order, without asking the same one twice:
+//
+//  1. the dedicated title model, when the host gave the engine a client of its own for titles;
+//  2. the configured title model on the chat client, when one is set and there is no dedicated client;
+//  3. the chat model itself,
+//
+// so a title model that is down or too slow does not leave the session unnamed.
 func (e *Engine) titleTargets() []titleTarget {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	var targets []titleTarget
+	titleModel := e.config.TitleModel
+	hasTitleModel := strings.TrimSpace(titleModel.Model) != "" && titleModel.Provider != ""
+
+	var candidates []titleTarget
 	if e.titleAPIClient != nil {
-		model := e.config.TitleModel
-		if strings.TrimSpace(model.Model) == "" || model.Provider == "" {
-			model = e.config.Model
+		model := e.config.Model
+		if hasTitleModel {
+			model = titleModel
 		}
-		targets = append(targets, titleTarget{client: e.titleAPIClient, model: model, dedicated: true})
+		candidates = append(candidates, titleTarget{client: e.titleAPIClient, model: model, dedicated: true})
 	}
-	if e.apiClient != nil && (e.titleAPIClient == nil || e.titleAPIClient != e.apiClient) {
-		targets = append(targets, titleTarget{client: e.apiClient, model: e.config.Model})
+	if e.apiClient != nil {
+		// The title model names a model of the dedicated client when there is one; only without it does it name one of the chat client.
+		if hasTitleModel && e.titleAPIClient == nil {
+			candidates = append(candidates, titleTarget{client: e.apiClient, model: titleModel})
+		}
+		candidates = append(candidates, titleTarget{client: e.apiClient, model: e.config.Model})
+	}
+
+	var targets []titleTarget
+	for _, candidate := range candidates {
+		duplicate := false
+		for _, kept := range targets {
+			if kept.client == candidate.client && kept.model == candidate.model {
+				duplicate = true
+			}
+		}
+		if !duplicate {
+			targets = append(targets, candidate)
+		}
 	}
 	return targets
 }
