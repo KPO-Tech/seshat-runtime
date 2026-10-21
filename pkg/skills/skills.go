@@ -13,6 +13,21 @@ type (
 	Skill = internalskills.Skill
 )
 
+// ExternalDir is a folder of skills read where it lies (see SetExternalDirs).
+type ExternalDir = internalskills.ExternalDir
+
+// SetExternalDirs makes the skills of other folders available to the agent of a user: Claude Code's
+// and Codex's skill folders, or one of the person's own. They are read in place, never copied, and rank below the project's, the
+// user's and the installed collections' skills of the same name. The folders set for the blank user are shared by every user. Call it again to change the list; an empty list removes it.
+func SetExternalDirs(userID string, dirs []ExternalDir) {
+	internalskills.SetExternalDirs(userID, dirs)
+}
+
+// ExternalDirsFor returns the external skill folders set for a user.
+func ExternalDirsFor(userID string) []ExternalDir {
+	return internalskills.ExternalDirsFor(userID)
+}
+
 // All returns the skills available for the working directory cwd: those found in files, with the project's overriding the managed, user and built-in ones, then the bundled skills, which have the lowest priority.
 func All(cwd string) ([]Skill, error) {
 	return internalskills.GetAllSkills(cwd)

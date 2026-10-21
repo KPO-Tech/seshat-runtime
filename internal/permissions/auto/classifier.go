@@ -422,6 +422,8 @@ func (c *TwoStageClassifier) callStage1(ctx context.Context, systemPrompt, userC
 			Messages:      messages,
 			StopSequences: stopSeqs,
 			Thinking:      !flags.ThinkingEnabled,
+			// Stage 1 only has to say block or allow. Stage 2 is the one that thinks.
+			DisableThinking: true,
 		}
 
 		start := time.Now()
@@ -458,6 +460,9 @@ func (c *TwoStageClassifier) callStage2(ctx context.Context, systemPrompt, userC
 			Temperature: temp,
 			Messages:    messages,
 			Thinking:    !flags.ThinkingEnabled,
+			// This stage reasons in its answer: the prompt asks for a <thinking> section that is read back (ParseThinking). The
+			// provider's own hidden reasoning on top of it took 25 seconds on a reasoning model for a harmless call.
+			DisableThinking: true,
 		}
 
 		start := time.Now()
