@@ -314,6 +314,7 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 		EventQueue:              s.eventQueue,
 		DenialTracking:          s.state.DenialTrackingState(),
 		AutoCompactFailureCount: s.state.AutoCompactFailureCount,
+		UsageAnchor:             s.state.UsageAnchorFor(s.config.Model),
 	}
 
 	turnCtx, cancel := context.WithCancel(ctx)
@@ -371,6 +372,7 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 	}
 
 	s.state.AdvanceTurn(loopResult.Usage, loopResult.Messages)
+	s.state.RememberUsageAnchor(loopResult.UsageAnchor, s.config.Model)
 	recordGoalTokenUsage(s.state.SessionID, loopResult.Usage)
 	if err := s.persistSessionState(persistedMessages); err != nil {
 		return nil, fmt.Errorf("failed to persist session state after turn: %w", err)
