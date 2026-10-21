@@ -9,6 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.3] - 2026-10-21
+
+### Security
+
+- **Go 1.26.10**: the standard library fix for GO-2026-6809 in `crypto/x509`, reachable from `reranker.HTTPReranker.Rerank`. `govulncheck` reported the runtime as affected on 1.26.9; it reports none now.
+
+### Fixed
+
+- **Session titles from the small local title model.** The title budget had been raised from 50 to 512 tokens for reasoning models. Given a task as the first message, a small model answered the task instead of titling it, wrote up to 512 tokens (about 40 seconds on a CPU) and was cancelled by the 30 second limit, so the session got no generated title. A dedicated title model now gets 48 tokens and stops at the end of the line, the first message is handed over as text to give a title to, and the chat model is tried when the dedicated model fails, each attempt with its own time limit. The chat model keeps 512 tokens, for its reasoning.
+
 ## [1.11.2] - 2026-10-20
 
 ### Security
