@@ -198,3 +198,36 @@ func TestSessionStateDropsTheAnchorWhenMessagesOrModelChange(t *testing.T) {
 		t.Error("rewriting the messages must drop the anchor")
 	}
 }
+
+func TestUsageAnchorSurvivesALoadOfTheSession(t *testing.T) {
+	model := types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "a"}
+	other := types.ModelIdentifier{Provider: types.APIProviderOpenAI, Model: "b"}
+	messages := []types.Message{types.UserMessage("m1", "hi"), types.UserMessage("m2", "again")}
+
+	metadata := &types.SessionMetadata{ID: "s1"}
+	live := NewSessionState("s1", "t1", messages, nil, 1, 0, metadata)
+	live.RememberUsageAnchor(&compact.UsageAnchor{Tokens: 1234, MessageCount: len(messages)}, model)
+
+	// A host that keeps no live session loads it again from the stored metadata and messages.
+	loaded := NewSessionState("s1", "t2", messages, nil, 1, 0, metadata)
+	loaded.restoreUsageAnchor()
+	if got := loaded.UsageAnchorFor(model); got == nil || got.Tokens != 1234 {
+		t.Fatalf("anchor after a load = %+v, want 1234 tokens", got)
+	}
+	if loaded.UsageAnchorFor(other) != nil {
+		t.Error("the model was switched between two turns: the anchor counted by the first model must not be used")
+	}
+
+	// Messages that no longer match what the anchor covered drop it.
+	changed := NewSessionState("s1", "t2", messages[:1], nil, 1, 0, metadata)
+	changed.restoreUsageAnchor()
+	if changed.UsageAnchorFor(model) != nil {
+		t.Error("an anchor that covers more messages than were loaded must be dropped")
+	}
+
+	// Rewriting the messages (compaction) clears what is stored too.
+	live.ReplaceMessages(messages[:1])
+	if metadata.UsageAnchorTokens != 0 || metadata.UsageAnchorModel != "" {
+		t.Errorf("metadata still holds the anchor after the messages were rewritten: %+v", metadata)
+	}
+}
