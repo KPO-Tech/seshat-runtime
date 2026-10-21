@@ -9,6 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.5] - 2026-10-21
+
+### Fixed
+
+- **Compaction thresholds inside small context windows.** The summary reserve and the two buffers were flat token counts with a floor above the window of a small model. On an 8k window the blocking limit (12,000) lay past the window, so the provider refused the request before compaction could act, and on 16k the auto-compact threshold fell to 2,000 tokens, which compacted at nearly every turn. The reserve is now at most an eighth of the window, the auto-compact buffer at most a quarter of the effective window and the manual buffer at most a tenth. Windows of 64k and above are unchanged; a 32k window now compacts at 22,500 tokens instead of 17,000.
+- **The usage anchor survives a load of the session.** A host that loads the session again for every turn lost the provider's token count between turns, so the first context figure of each turn was an estimate again. The anchor is stored in the session metadata (`usage_anchor_tokens`, `usage_anchor_messages`, `usage_anchor_model`) and restored only when it covers exactly the messages loaded.
+
+### Changed
+
+- **A model switched between two turns is followed.** The session metadata names the model that answered last, and the token count counted by another model is not used for the first figure of the next turn.
+
 ## [1.11.4] - 2026-10-21
 
 ### Fixed
