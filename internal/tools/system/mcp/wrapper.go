@@ -156,6 +156,7 @@ func (w *Wrapper) WrapTool(mcpTool Tool) (tool.Tool, error) {
 	builtTool, err := tool.NewBuilder(def.Name).
 		WithDescription(def.Description).
 		WithCategory(def.Category).
+		AsMCP().
 		WithInputSchema(def.InputSchema).
 		WithAliases(aliases...).
 		WithHandler(handler).
@@ -282,6 +283,7 @@ func (w *Wrapper) WrapResource(resource Resource) (tool.Tool, error) {
 	builtTool, err := tool.NewBuilder(def.Name).
 		WithDescription(def.Description).
 		WithCategory(def.Category).
+		AsMCP().
 		WithInputSchema(def.InputSchema).
 		ReadOnly().
 		WithHandler(handler).
@@ -358,6 +360,7 @@ func (w *Wrapper) WrapPrompt(prompt Prompt) (tool.Tool, error) {
 	builtTool, err := tool.NewBuilder(def.Name).
 		WithDescription(def.Description).
 		WithCategory(def.Category).
+		AsMCP().
 		WithInputSchema(def.InputSchema).
 		ReadOnly().
 		WithHandler(handler).
