@@ -91,6 +91,14 @@ type SessionMetadata struct {
 	// LastCompactedAt tracks when we last compacted
 	LastCompactedAt *time.Time `json:"last_compacted_at,omitempty"`
 
+	// UsageAnchorTokens is the size of the conversation as the provider counted it at the end of the last completed turn,
+	// UsageAnchorMessages how many messages that covered and UsageAnchorModel the model that counted. A session that is loaded
+	// again for its next turn (a host that keeps no live session) starts the turn's first context figure from them. Cleared
+	// whenever the messages are rewritten.
+	UsageAnchorTokens   int    `json:"usage_anchor_tokens,omitempty"`
+	UsageAnchorMessages int    `json:"usage_anchor_messages,omitempty"`
+	UsageAnchorModel    string `json:"usage_anchor_model,omitempty"`
+
 	// Additional metadata
 	Additional map[string]any `json:"additional,omitempty"`
 

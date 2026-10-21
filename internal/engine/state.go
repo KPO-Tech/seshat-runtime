@@ -143,7 +143,7 @@ type SessionState struct {
 	// rewrites the messages (ReplaceMessages) drops it, since it described the messages before; UsageAnchorModel is the model that
 	// counted, because another model counts differently.
 	UsageAnchor      *compact.UsageAnchor
-	UsageAnchorModel types.ModelIdentifier
+	UsageAnchorModel string
 }
 
 func NewSessionState(sessionID types.SessionID, turnID types.TurnID, messages []types.Message, tools map[string]tool.Tool, turnNumber int, totalTokens int, metadata *types.SessionMetadata) *SessionState {
@@ -174,6 +174,7 @@ func (s *SessionState) CloneMessages() []types.Message {
 func (s *SessionState) ReplaceMessages(messages []types.Message) {
 	s.Messages = append([]types.Message(nil), messages...)
 	s.UsageAnchor = nil
+	s.persistUsageAnchor()
 	canonicalMessages := types.CanonicalTranscriptMessages(messages)
 	s.CanonicalTranscript = len(canonicalMessages)
 	s.LastCompaction = types.CompactionMetadataFromMessages(canonicalMessages)
@@ -218,24 +219,50 @@ func (s *SessionState) AdvanceTurn(usage *types.TokenUsage, updatedMessages []ty
 	s.TurnID = nextTurnID(s.Messages)
 }
 
-// RememberUsageAnchor keeps the provider's count at the end of a completed turn for the next one. Call it after AdvanceTurn, which
-// drops the anchor along with any other rewrite of the messages.
+// RememberUsageAnchor keeps the provider's count at the end of a completed turn for the next one, in memory and in the session
+// metadata (so a host that loads the session again for each turn gets it too). Call it after AdvanceTurn, which drops the anchor
+// along with any other rewrite of the messages.
 func (s *SessionState) RememberUsageAnchor(anchor *compact.UsageAnchor, model types.ModelIdentifier) {
 	if anchor == nil {
 		s.UsageAnchor = nil
+		s.persistUsageAnchor()
 		return
 	}
 	copied := *anchor
-	s.UsageAnchor, s.UsageAnchorModel = &copied, model
+	s.UsageAnchor, s.UsageAnchorModel = &copied, model.String()
+	s.persistUsageAnchor()
 }
 
-// UsageAnchorFor is the anchor to seed a turn with, or nil when none is known or it was counted by another model.
+// UsageAnchorFor is the anchor to seed a turn with, or nil when none is known or it was counted by another model: a session whose
+// model was switched between two turns starts from an estimate, since another model counts the same text differently.
 func (s *SessionState) UsageAnchorFor(model types.ModelIdentifier) *compact.UsageAnchor {
-	if s.UsageAnchor == nil || s.UsageAnchorModel != model {
+	if s.UsageAnchor == nil || s.UsageAnchorModel != model.String() {
 		return nil
 	}
 	copied := *s.UsageAnchor
 	return &copied
+}
+
+func (s *SessionState) persistUsageAnchor() {
+	if s.Metadata == nil {
+		return
+	}
+	if s.UsageAnchor == nil {
+		s.Metadata.UsageAnchorTokens, s.Metadata.UsageAnchorMessages, s.Metadata.UsageAnchorModel = 0, 0, ""
+		return
+	}
+	s.Metadata.UsageAnchorTokens, s.Metadata.UsageAnchorMessages, s.Metadata.UsageAnchorModel = s.UsageAnchor.Tokens, s.UsageAnchor.MessageCount, s.UsageAnchorModel
+}
+
+// restoreUsageAnchor reads the anchor back from the metadata of a loaded session. It is kept only when it covers exactly the
+// messages that were loaded; anything else means the transcript changed behind it.
+func (s *SessionState) restoreUsageAnchor() {
+	m := s.Metadata
+	if m == nil || m.UsageAnchorTokens <= 0 || m.UsageAnchorModel == "" || m.UsageAnchorMessages != len(s.Messages) {
+		return
+	}
+	s.UsageAnchor = &compact.UsageAnchor{Tokens: m.UsageAnchorTokens, MessageCount: m.UsageAnchorMessages}
+	s.UsageAnchorModel = m.UsageAnchorModel
 }
 
 func (s *SessionState) MarkInterrupted() {
