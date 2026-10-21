@@ -52,7 +52,7 @@ func TestFileSkillLoaderLoadsSkillMarkdownFile(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	files, err := findSkillMarkdownFiles(base)
+	files, err := findSkillMarkdownFiles(base, false)
 	if err != nil {
 		t.Fatalf("findSkillMarkdownFiles: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestFindSkillMarkdownFiles_RootLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := findSkillMarkdownFiles(base)
+	files, err := findSkillMarkdownFiles(base, false)
 	if err != nil {
 		t.Fatalf("findSkillMarkdownFiles: %v", err)
 	}

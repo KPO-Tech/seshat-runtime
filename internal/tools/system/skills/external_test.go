@@ -96,3 +96,43 @@ func TestSharedExternalDirsReachEveryUser(t *testing.T) {
 		}
 	}
 }
+
+// Another tool keeps its deleted skills (.trash) and its own bundled ones (.system) in hidden folders: they are not skills the
+// person chose and must not reach the agent.
+func TestExternalDirsLeaveOutHiddenFolders(t *testing.T) {
+	cwd := t.TempDir()
+	root := t.TempDir()
+	writeSkill(t, root, "chosen", "A skill the person has")
+	writeSkill(t, filepath.Join(root, ".trash", "1792149802225-3656-abc"), "deleted-one", "Deleted long ago")
+	writeSkill(t, filepath.Join(root, ".system"), "tool-internal", "Bundled by the tool")
+	t.Cleanup(func() { SetExternalDirs("hid-user", nil) })
+	SetExternalDirs("hid-user", []ExternalDir{{Path: root, Source: "claudeCode"}})
+
+	all, _ := NewFileSkillLoader("").GetSkillDirCommandsForUser(cwd, "hid-user")
+	if skillByName(all, "chosen") == nil {
+		t.Fatal("the skill the person has must be available")
+	}
+	for _, name := range []string{"deleted-one", "tool-internal"} {
+		if skillByName(all, name) != nil {
+			t.Errorf("%s lies in a hidden folder and must not be read", name)
+		}
+	}
+	loaded, err := LoadExternalDir(root, "claudeCode")
+	if err != nil || len(loaded) != 1 {
+		t.Errorf("LoadExternalDir must skip hidden folders too: %d skills, err %v", len(loaded), err)
+	}
+}
+
+func TestExternalDirSkipFilterLeavesSkillsOut(t *testing.T) {
+	cwd := t.TempDir()
+	root := t.TempDir()
+	writeSkill(t, root, "keep-me", "Generic")
+	writeSkill(t, root, "app-only", "Depends on the other tool's app")
+	t.Cleanup(func() { SetExternalDirs("skip-user", nil) })
+	SetExternalDirs("skip-user", []ExternalDir{{Path: root, Source: "claudeCode", Skip: func(s Skill) bool { return s.Name == "app-only" }}})
+
+	all, _ := NewFileSkillLoader("").GetSkillDirCommandsForUser(cwd, "skip-user")
+	if skillByName(all, "keep-me") == nil || skillByName(all, "app-only") != nil {
+		t.Errorf("Skip must leave out exactly the skills it returns true for: keep=%v app-only=%v", skillByName(all, "keep-me") != nil, skillByName(all, "app-only") != nil)
+	}
+}

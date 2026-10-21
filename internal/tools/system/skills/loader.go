@@ -68,6 +68,11 @@ type FileSkillLoader struct {
 	// collection. It is injected into skill prompts so the AI can resolve
 	// paths relative to the repo root (e.g. data/, scripts/).
 	CollectionRoot string
+	// SkipHidden leaves out every folder whose name starts with a dot (.trash, .git, .system...). A folder of another tool keeps
+	// its deleted skills and its own bundled ones there: they are not skills the person chose.
+	SkipHidden bool
+	// Skip, when set, leaves out the skills it returns true for.
+	Skip func(Skill) bool
 }
 
 func NewFileSkillLoader(directory string) *FileSkillLoader {
@@ -94,7 +99,7 @@ func (l *FileSkillLoader) LoadSkills() ([]Skill, error) {
 		return []Skill{}, nil
 	}
 
-	skillFiles, err := findSkillMarkdownFiles(l.Directory)
+	skillFiles, err := findSkillMarkdownFiles(l.Directory, l.SkipHidden)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +110,9 @@ func (l *FileSkillLoader) LoadSkills() ([]Skill, error) {
 		skill, err := l.loadSkillFile(skillFile, l.Source)
 		if err != nil {
 			slog.Warn("skills: error loading skill file", "file", skillFile, "err", err)
+			continue
+		}
+		if l.Skip != nil && l.Skip(skill) {
 			continue
 		}
 		skills = append(skills, skill)
@@ -235,7 +243,7 @@ func isSkillFile(filePath string) bool {
 	return base == "skill.md"
 }
 
-func findSkillMarkdownFiles(basePath string) ([]string, error) {
+func findSkillMarkdownFiles(basePath string, skipHidden bool) ([]string, error) {
 	var skillFiles []string
 	var topLevelDirs []string
 
@@ -249,6 +257,10 @@ func findSkillMarkdownFiles(basePath string) ([]string, error) {
 
 	for _, entry := range entries {
 		entryPath := filepath.Join(basePath, entry.Name())
+
+		if skipHidden && strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
 
 		if entry.IsDir() {
 			topLevelDirs = append(topLevelDirs, entryPath)
@@ -268,7 +280,7 @@ func findSkillMarkdownFiles(basePath string) ([]string, error) {
 	}
 
 	for _, dir := range topLevelDirs {
-		files, err := walkSkillDir(dir)
+		files, err := walkSkillDir(dir, skipHidden)
 		if err != nil {
 			continue
 		}
@@ -279,7 +291,7 @@ func findSkillMarkdownFiles(basePath string) ([]string, error) {
 	return skillFiles, nil
 }
 
-func walkSkillDir(dir string) ([]string, error) {
+func walkSkillDir(dir string, skipHidden bool) ([]string, error) {
 	var files []string
 
 	entries, err := os.ReadDir(dir)
@@ -290,8 +302,12 @@ func walkSkillDir(dir string) ([]string, error) {
 	for _, entry := range entries {
 		entryPath := filepath.Join(dir, entry.Name())
 
+		if skipHidden && strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+
 		if entry.IsDir() {
-			subFiles, err := walkSkillDir(entryPath)
+			subFiles, err := walkSkillDir(entryPath, skipHidden)
 			if err != nil {
 				continue
 			}
@@ -300,7 +316,7 @@ func walkSkillDir(dir string) ([]string, error) {
 		}
 
 		if isSymlink, err := isSymlinkDir(entryPath); err == nil && isSymlink {
-			subFiles, err := walkSkillDir(entryPath)
+			subFiles, err := walkSkillDir(entryPath, skipHidden)
 			if err != nil {
 				continue
 			}
