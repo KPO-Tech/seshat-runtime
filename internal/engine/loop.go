@@ -211,6 +211,12 @@ type RunRequest struct {
 	// to zero every Run. The caller (Session.SubmitMessage) is responsible
 	// for threading RunResult.AutoCompactFailureCount back in on the next turn.
 	AutoCompactFailureCount int `json:"auto_compact_failure_count,omitempty"`
+
+	// UsageAnchor is the size of the conversation as the provider counted it at the end of the previous turn, with how many messages
+	// that covered. Seeding it makes the first figure of this turn the provider's number plus an estimate of the new messages, where
+	// without it the first call of every turn was a pure estimate, which overshoots and then falls back at the first report. The
+	// caller owns the anchor and must drop it when it changes the messages or the model (see SessionState.UsageAnchor).
+	UsageAnchor *compact.UsageAnchor `json:"-"`
 }
 
 // RunResult represents the result of running the loop.
@@ -237,6 +243,9 @@ type RunResult struct {
 	// RunRequest.AutoCompactFailureCount for the circuit breaker to work
 	// across turns.
 	AutoCompactFailureCount int `json:"auto_compact_failure_count,omitempty"`
+	// UsageAnchor is the size of the conversation as the provider last counted it, at the end of a completed turn. The caller
+	// passes it back as the next turn's RunRequest.UsageAnchor.
+	UsageAnchor *compact.UsageAnchor `json:"-"`
 }
 
 type PromptRefresh struct {
@@ -463,6 +472,7 @@ func (l *Loop) Run(ctx context.Context, req RunRequest) RunResult {
 		DiscoveredDeferred:      append([]string(nil), state.DiscoveredDeferred...),
 		RecoveryContext:         state.RecoveryContext,
 		AutoCompactFailureCount: state.AutoCompactFailureCount,
+		UsageAnchor:             state.UsageAnchor,
 	}
 }
 
@@ -782,6 +792,9 @@ func (l *Loop) initializeState(req RunRequest) *MutableState {
 	// zero value, otherwise the auto-compact circuit breaker can never
 	// accumulate failures past one turn (see compact.Engine.AutoCompact).
 	state.AutoCompactFailureCount = req.AutoCompactFailureCount
+	// The previous turn's figure still describes the messages that came with the request, so the first estimate of this turn starts
+	// from what the provider counted.
+	state.UsageAnchor = req.UsageAnchor
 	return state
 }
 
