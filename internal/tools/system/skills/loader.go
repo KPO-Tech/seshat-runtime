@@ -198,6 +198,9 @@ func (l *FileSkillLoader) GetSkillDirCommandsForUser(cwd string, userID string) 
 		}
 	}
 
+	// The folders of other tools come last, so what the person made here wins over a skill of the same name there.
+	sources = append(sources, externalLoaders(userID)...)
+
 	for _, source := range sources {
 		loaded, err := source.LoadSkills()
 		if err != nil {
