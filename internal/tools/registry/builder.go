@@ -73,6 +73,13 @@ func (b *Builder) WithSearchHint(hint string) *Builder {
 	return b
 }
 
+// AsMCP marks the tool as one that comes from an MCP server. Such a tool is deferred: tool_search finds it and it is loaded when
+// the model asks for it, instead of every request carrying the definitions of every server.
+func (b *Builder) AsMCP() *Builder {
+	b.definition.IsMCP = true
+	return b
+}
+
 // WithCategory sets the category
 func (b *Builder) WithCategory(category string) *Builder {
 	b.definition.Category = category
