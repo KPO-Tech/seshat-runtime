@@ -148,3 +148,53 @@ func TestNoCompactingEventWhenNothingIsDue(t *testing.T) {
 		Model: types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "claude-3-5-sonnet-20241022"},
 	})
 }
+
+func TestFirstFigureOfATurnStartsFromTheAnchorOfThePreviousTurn(t *testing.T) {
+	loop := NewLoop(nil, nil, compact.NewEngine(nil, nil), nil, permissions.NewIntegrator(permissions.NewEngine()), nil,
+		&LoopConfig{MaxIterations: 1, AutoCompact: true, EnableStreaming: false}, nil)
+	loop.callModelFn = func(ctx context.Context, state *MutableState, req RunRequest) (*types.APIResponse, error) {
+		return &types.APIResponse{
+			Role: types.RoleAssistant, Content: []types.ContentBlock{types.TextContent{Text: "done"}},
+			StopReason: types.StopReasonEndTurn, Model: req.Model, ID: "r1", Usage: types.TokenUsage{InputTokens: 40_000, OutputTokens: 100},
+		}, nil
+	}
+	var events []*types.ContextUsageRuntimeEvent
+	ctx := context.WithValue(context.Background(), types.RuntimeEventEmitterKey, func(ev types.RuntimeEvent) {
+		if ev.Type == types.RuntimeEventTypeContextUsage {
+			events = append(events, ev.ContextUsageEvent)
+		}
+	})
+	result := loop.Run(ctx, RunRequest{
+		Messages:    []types.Message{types.UserMessage("m1", "hi")},
+		SessionID:   types.SessionID("s1"),
+		TurnID:      types.TurnID("t2"),
+		Model:       types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "claude-3-5-sonnet-20241022"},
+		UsageAnchor: &compact.UsageAnchor{Tokens: 30_000, MessageCount: 1},
+	})
+	if result.Error != nil {
+		t.Fatalf("Run failed: %v", result.Error)
+	}
+	if len(events) == 0 || events[0].Source != "reported" || events[0].UsedTokens != 30_000 {
+		t.Errorf("first figure = %+v, want the carried-over 30,000 reported", events)
+	}
+	if result.UsageAnchor == nil || result.UsageAnchor.Tokens != 40_100 {
+		t.Errorf("result anchor = %+v, want the new reported 40,100", result.UsageAnchor)
+	}
+}
+
+func TestSessionStateDropsTheAnchorWhenMessagesOrModelChange(t *testing.T) {
+	a := types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "a"}
+	b := types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "b"}
+	s := &SessionState{}
+	s.RememberUsageAnchor(&compact.UsageAnchor{Tokens: 10, MessageCount: 2}, a)
+	if got := s.UsageAnchorFor(a); got == nil || got.Tokens != 10 {
+		t.Fatalf("same model: %+v", got)
+	}
+	if s.UsageAnchorFor(b) != nil {
+		t.Error("another model counts differently, the anchor must not carry over")
+	}
+	s.ReplaceMessages(nil)
+	if s.UsageAnchorFor(a) != nil {
+		t.Error("rewriting the messages must drop the anchor")
+	}
+}
