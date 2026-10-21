@@ -2,8 +2,10 @@ package memory
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/model"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
@@ -13,17 +15,13 @@ import (
 // of with a clear, typed, local error.
 
 func TestCheckBlockingLimit_ReturnsTypedErrorWhenOverLimit(t *testing.T) {
-	cfg := DefaultConfig()
-	// Drives the blocking limit deep negative regardless of the real model's
-	// context window size, so a short test message is enough to exceed it
-	// without needing to generate a huge amount of content or hardcode the
-	// window size of whatever model the test happens to use.
-	cfg.ManualCompactBufferTokens = 1 << 30
-	engine := NewEngine(nil, cfg)
-	model := types.ModelIdentifier{Provider: types.APIProviderAnthropic, Model: "claude-3-5-sonnet-20241022"}
-	messages := []types.Message{types.UserMessage("m1", "this message alone is already more than ten tokens long")}
+	// A model with a small window, so that a plain long message is enough to exceed its blocking limit.
+	model.Global.Register(model.Metadata{ID: "blocking-limit-small", Provider: "test-small", ContextWindow: model.ContextWindow{MaxTokens: 4_096}})
+	engine := NewEngine(nil, DefaultConfig())
+	m := types.ModelIdentifier{Provider: "test-small", Model: "blocking-limit-small"}
+	messages := []types.Message{types.UserMessage("m1", strings.Repeat("this message is far longer than the window of the model. ", 1_000))}
 
-	err := engine.CheckBlockingLimit("", messages, model, nil)
+	err := engine.CheckBlockingLimit("", messages, m, nil)
 	if err == nil {
 		t.Fatal("expected a blocking-limit error")
 	}

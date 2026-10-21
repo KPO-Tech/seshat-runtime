@@ -12,9 +12,14 @@ import (
 )
 
 const (
-	defaultAutoCompactBufferTokens      = 13_000
-	defaultManualCompactBufferTokens    = 3_000
-	defaultMaxSummaryTokens             = 2_000
+	defaultAutoCompactBufferTokens   = 13_000
+	defaultManualCompactBufferTokens = 3_000
+	defaultMaxSummaryTokens          = 2_000
+
+	// Caps that keep the reserve and the buffers proportionate on a small window.
+	maxReserveDivisor                   = 8
+	autoBufferDivisor                   = 4
+	manualBufferDivisor                 = 10
 	defaultMaxConsecutiveCompactFailure = 3
 
 	// summaryAttempts is how many times a summary is requested when the model returns no text, and summaryBudgetGrowth
@@ -71,26 +76,33 @@ func NewEngine(apiClient *providers.Client, config *Config) *Engine {
 	}
 }
 
-// EffectiveContextWindow returns the effective context window after reserving summary output budget.
+// EffectiveContextWindow returns the effective context window after reserving summary output budget. The reserve is at most an
+// eighth of the window, so a small model keeps most of its window (a flat 2,000 tokens is a quarter of an 8k window).
 func (e *Engine) EffectiveContextWindow(model types.ModelIdentifier) int {
 	window := types.GetContextWindow(model)
-	reserved := e.config.MaxSummaryTokens
+	reserved := min(e.config.MaxSummaryTokens, window.MaxTokens/maxReserveDivisor)
 	if window.MaxOutputTokens > 0 && window.MaxOutputTokens < reserved {
 		reserved = window.MaxOutputTokens
 	}
-	effective := window.MaxTokens - reserved
-	minimum := reserved + e.config.AutoCompactBufferTokens
-	if effective < minimum {
-		return minimum
-	}
-	return effective
+	return window.MaxTokens - reserved
+}
+
+// autoCompactBuffer is the room kept under the window for the next tool result: the configured buffer, but never more than a
+// quarter of the effective window, which on a small model would otherwise put the threshold at nearly zero.
+func (e *Engine) autoCompactBuffer(effective int) int {
+	return min(e.config.AutoCompactBufferTokens, effective/autoBufferDivisor)
+}
+
+// manualCompactBuffer is the same for the hard blocking limit, capped at a tenth of the effective window.
+func (e *Engine) manualCompactBuffer(effective int) int {
+	return min(e.config.ManualCompactBufferTokens, effective/manualBufferDivisor)
 }
 
 // AutoCompactThresholdTokens returns the absolute token threshold for auto-compaction.
 func (e *Engine) AutoCompactThresholdTokens(model types.ModelIdentifier) int {
 	effective := e.EffectiveContextWindow(model)
 	threshold := int(float64(effective) * e.config.AutoCompactThreshold)
-	hardCap := effective - e.config.AutoCompactBufferTokens
+	hardCap := effective - e.autoCompactBuffer(effective)
 	if threshold > hardCap {
 		return hardCap
 	}
@@ -100,7 +112,7 @@ func (e *Engine) AutoCompactThresholdTokens(model types.ModelIdentifier) int {
 // BlockingLimitTokens returns the hard blocking limit for the current model.
 func (e *Engine) BlockingLimitTokens(model types.ModelIdentifier) int {
 	effective := e.EffectiveContextWindow(model)
-	return effective - e.config.ManualCompactBufferTokens
+	return effective - e.manualCompactBuffer(effective)
 }
 
 // CheckBlockingLimit implements CompactionStrategy.CheckBlockingLimit.

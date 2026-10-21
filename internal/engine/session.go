@@ -154,6 +154,7 @@ func (e *Engine) NewSessionFromState(
 	turnID := nextTurnID(messageCopy)
 
 	sessionState := NewSessionState(sessionID, turnID, messageCopy, tools, turnNumber, metadata.TotalTokens, metadata)
+	sessionState.restoreUsageAnchor()
 	sessionState.SetPermissionContext(normalizePermissionContext(sessionState.PermissionContextSnapshot(), e.defaultPermissionContext()))
 	if surfaceProfile == tool.ToolSurfaceProfileMonoRun {
 		sessionState.DeferredScope = append([]string(nil), e.config.MainAgentDeferredTools...)
@@ -373,6 +374,11 @@ func (s *Session) submitWithMessage(ctx context.Context, userMsg types.Message, 
 
 	s.state.AdvanceTurn(loopResult.Usage, loopResult.Messages)
 	s.state.RememberUsageAnchor(loopResult.UsageAnchor, s.config.Model)
+	// The model may have changed since the session was created (the host builds the client of each turn): the metadata names the
+	// model that answered last.
+	if s.state.Metadata != nil {
+		s.state.Metadata.Model = s.config.Model.String()
+	}
 	recordGoalTokenUsage(s.state.SessionID, loopResult.Usage)
 	if err := s.persistSessionState(persistedMessages); err != nil {
 		return nil, fmt.Errorf("failed to persist session state after turn: %w", err)
