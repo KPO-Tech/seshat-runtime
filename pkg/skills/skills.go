@@ -23,6 +23,12 @@ func SetExternalDirs(userID string, dirs []ExternalDir) {
 	internalskills.SetExternalDirs(userID, dirs)
 }
 
+// LoadExternalDir loads the skills of a folder as the agent would, without the host's Skip filter, so a host can show what it leaves
+// out and why. Hidden folders (.trash, .system...) are not read.
+func LoadExternalDir(path string, source string) ([]Skill, error) {
+	return internalskills.LoadExternalDir(path, internalskills.SettingSource(source))
+}
+
 // ExternalDirsFor returns the external skill folders set for a user.
 func ExternalDirsFor(userID string) []ExternalDir {
 	return internalskills.ExternalDirsFor(userID)

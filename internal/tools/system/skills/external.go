@@ -14,6 +14,8 @@ type ExternalDir struct {
 	Path string
 	// Source names where the skills come from. It is shown with each skill (Skill.LoadedFrom), for example "claudeCode".
 	Source SettingSource
+	// Skip, when set, leaves out the skills it returns true for: a host keeps out the ones that only make sense inside the other tool.
+	Skip func(Skill) bool
 }
 
 var externalDirs = struct {
@@ -55,7 +57,18 @@ func externalLoaders(userID string) []SkillLoader {
 		if info, err := os.Stat(dir.Path); err != nil || !info.IsDir() {
 			continue
 		}
-		loaders = append(loaders, NewCollectionSkillLoader(filepath.Clean(dir.Path), dir.Source))
+		loader := NewCollectionSkillLoader(filepath.Clean(dir.Path), dir.Source)
+		loader.SkipHidden = true
+		loader.Skip = dir.Skip
+		loaders = append(loaders, loader)
 	}
 	return loaders
+}
+
+// LoadExternalDir loads the skills of a folder the way the agent would, without the host's Skip filter, so a host can show what it
+// leaves out and why.
+func LoadExternalDir(path string, source SettingSource) ([]Skill, error) {
+	loader := NewCollectionSkillLoader(filepath.Clean(path), source)
+	loader.SkipHidden = true
+	return loader.LoadSkills()
 }
