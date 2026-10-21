@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 )
 
 func capsTool(name string, descLen int) Tool {
@@ -59,5 +61,25 @@ func TestWrapToolsCapsCanBeConfiguredOrRemoved(t *testing.T) {
 	}
 	if got := wrapNames(t, ServerConfig{MaxToolSpecBytes: 50}, []Tool{capsTool("a", 100)}); len(got) != 0 {
 		t.Errorf("a lowered cap leaves the tool out, got %v", got)
+	}
+}
+
+// An MCP tool is deferred: without that flag, tool_search never finds it and an agent restricted to a list of tools never sees it,
+// so a server added by the person would be invisible to the agent.
+func TestWrappedMCPToolsAreDeferred(t *testing.T) {
+	wrapper := NewWrapper(nil, ServerConfig{Name: "srv"}, nil)
+	wrapped, err := wrapper.WrapTools([]Tool{capsTool("get_secret_code", 100)})
+	if err != nil || len(wrapped) != 1 {
+		t.Fatalf("WrapTools: %v (%d tools)", err, len(wrapped))
+	}
+	if !wrapped[0].Definition().IsMCP {
+		t.Error("a wrapped MCP tool must be flagged IsMCP")
+	}
+	if !registry.IsDeferred(wrapped[0]) {
+		t.Error("a wrapped MCP tool must be deferred")
+	}
+	resource, err := wrapper.WrapResource(Resource{URI: "file:///a", Name: "a"})
+	if err != nil || !resource.Definition().IsMCP {
+		t.Errorf("a wrapped MCP resource must be flagged IsMCP (err %v)", err)
 	}
 }
