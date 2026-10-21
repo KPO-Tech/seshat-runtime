@@ -422,7 +422,7 @@ func (i *Integrator) SetAutoModeProviderClient(apiClient *providers.Client, mode
 	}
 	classifierConfig := automode.DefaultTwoStageConfig()
 	classifierConfig.Model = model.ProviderModelName()
-	autoClassifier := automode.NewTwoStageClassifierWithAPI(classifierConfig, automode.NewClassifierAPIClient(apiClient))
+	autoClassifier := automode.NewTwoStageClassifierWithAPI(classifierConfig, automode.NewClassifierAPIClient(apiClient).WithProvider(model.Provider))
 	i.engine.SetClassifier(providerBackedAutoModeClassifier{classifier: autoClassifier})
 	i.engine.SetAdvancedClassifier(autoClassifier)
 }
