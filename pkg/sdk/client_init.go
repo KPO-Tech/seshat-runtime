@@ -222,6 +222,9 @@ func initImageGenerator(config *ClientConfig) image.Generation {
 		if custom {
 			opts = append(opts, imageproviders.WithGeminiBaseURL(ensureGeminiBaseURL(baseURL)))
 		}
+		if ratio := strings.TrimSpace(cfg.AspectRatio); ratio != "" {
+			opts = append(opts, imageproviders.WithGeminiAspectRatio(ratio))
+		}
 		return imageproviders.NewGemini(apiKey, opts...)
 	case imageproviders.APIOpenRouter:
 		opts := []imageproviders.OpenRouterOption{}
@@ -231,6 +234,9 @@ func initImageGenerator(config *ClientConfig) image.Generation {
 		if custom {
 			opts = append(opts, imageproviders.WithOpenRouterBaseURL(ensureOpenAIBaseURL(baseURL)))
 		}
+		if ratio := strings.TrimSpace(cfg.AspectRatio); ratio != "" {
+			opts = append(opts, imageproviders.WithOpenRouterAspectRatio(ratio))
+		}
 		return imageproviders.NewOpenRouter(apiKey, opts...)
 	default:
 		opts := []imageproviders.OpenAIOption{imageproviders.WithOpenAIProviderName(providerID)}
@@ -239,6 +245,12 @@ func initImageGenerator(config *ClientConfig) image.Generation {
 		}
 		if custom {
 			opts = append(opts, imageproviders.WithOpenAIBaseURL(ensureOpenAIBaseURL(baseURL)))
+		}
+		if size := strings.TrimSpace(cfg.Size); size != "" {
+			opts = append(opts, imageproviders.WithOpenAISize(size))
+		}
+		if quality := strings.TrimSpace(cfg.Quality); quality != "" {
+			opts = append(opts, imageproviders.WithOpenAIQuality(quality))
 		}
 		return imageproviders.NewOpenAI(apiKey, opts...)
 	}
