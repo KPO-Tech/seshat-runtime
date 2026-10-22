@@ -249,6 +249,7 @@ Always registered; `IsEnabled()` returns `false` when no provider is configured.
 
 | Tool | Env var | Description |
 |---|---|---|
+| `present_artifact` | none | Show a file the agent made (image, audio, video, PDF, document, spreadsheet, slides, web page) in the conversation. The file must be in the working folder. |
 | `generate_image` | `OPENAI_API_KEY` / Gemini key | Generate an image from a text prompt. Returns base64 or URL. |
 | `text_to_speech` | provider key | Synthesise speech audio from text. Returns base64-encoded audio. |
 | `speech_to_text` | provider key | Transcribe audio to text. Input: base64-encoded audio. |

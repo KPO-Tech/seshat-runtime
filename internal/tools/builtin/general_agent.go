@@ -17,6 +17,8 @@ func GeneralAgentToolNames() []string {
 		"web_search", "web_fetch",
 		// Dialogue, plan and permissions.
 		"ask_user_question", "enter_plan_mode", "exit_plan_mode", "submit_plan", "request_permissions",
+		// Showing the person a file that was made.
+		"present_artifact",
 		// Visible progress.
 		"task_create", "task_update", "task_list", "task_get",
 		// Sub-agents.

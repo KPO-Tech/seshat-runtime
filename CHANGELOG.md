@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`present_artifact`, to show a file the agent made.** The agent calls it with the path of a finished image, audio clip, video, PDF, document, spreadsheet, slide deck or web page (made with code, a render or a conversion), and the host shows it to the person in the conversation. The tool checks that the file is a non-empty regular file of at most 500 MB inside the working folder and answers with its relative path, kind, MIME type, size and title; it is one of the general agent's core tools.
+
 ## [1.11.11] - 2026-10-22
 
 ### Fixed
