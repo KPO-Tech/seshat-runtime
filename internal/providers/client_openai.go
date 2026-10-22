@@ -516,6 +516,7 @@ func parseOpenAISSEStream(ctx context.Context, body io.Reader, model types.Model
 					}
 					if !state.Started && (state.ID != "" || state.Name != "" || toolCall.Function.Arguments != "") {
 						state.Started = true
+						blockIndex := toolCall.Index
 						streamChunk := types.APIResponseChunk{
 							Type: types.APIChunkTypeContentBlockStart,
 							ContentBlock: types.ToolUseContent{
@@ -523,16 +524,19 @@ func parseOpenAISSEStream(ctx context.Context, body io.Reader, model types.Model
 								Name:  state.Name,
 								Input: nil,
 							},
+							BlockIndex: &blockIndex,
 						}
 						emitStreamChunk(onChunk, streamChunk)
 						collected = append(collected, streamChunk)
 					}
 					if toolCall.Function.Arguments != "" {
 						state.Args.WriteString(toolCall.Function.Arguments)
+						blockIndex := toolCall.Index
 						streamChunk := types.APIResponseChunk{
 							Type:        types.APIChunkTypeContentBlockDelta,
 							DeltaType:   "input_json_delta",
 							PartialJSON: toolCall.Function.Arguments,
+							BlockIndex:  &blockIndex,
 						}
 						emitStreamChunk(onChunk, streamChunk)
 						collected = append(collected, streamChunk)
