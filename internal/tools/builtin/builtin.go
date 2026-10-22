@@ -176,6 +176,7 @@ func RegisterBuiltinToolsWithConfig(reg *tool.Registry, config *Config) error {
 		ragTool.NewDeleteTool(config.RAGService),
 		multimediaTool.NewImageGenTool(config.ImageGenerator),
 		multimediaTool.NewTTSTool(config.TTSGenerator),
+		multimediaTool.NewPresentTool(),
 		multimediaTool.NewSTTTool(config.STTTranscriber),
 		fimtool.New(config.FIMCompleter),
 		requestPermissionsTool.NewTool(),
