@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.14] - 2026-10-22
+
 ### Added
 
 - **Image generation can be told the size, the quality and the aspect ratio.** `ImageGenerationConfig` takes `Size` and `Quality` (OpenAI image API and compatible servers) and `AspectRatio` (Gemini and OpenRouter); the providers already supported them, the host had no way to set them. `sdk.ImageProviders()` lists the image providers of the catalog with their models, the default first, so a host can offer them.
