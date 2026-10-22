@@ -142,3 +142,24 @@ func TestTaskGetCutsAHugeOutput(t *testing.T) {
 		t.Fatalf("output = %d runes, truncated = %v", len([]rune(out)), task["outputTruncated"])
 	}
 }
+
+// What the model reads is the formatted text, not the data: a finished agent's answer that is in the data but not in the text is an
+// answer the parent agent never sees. A real conversation had two sub-agents answer correctly and the parent say their output was not
+// included in the results.
+func TestTaskGetTextCarriesTheAnswerOfAFinishedAgent(t *testing.T) {
+	rt := runningAgent()
+	rt.finishes = true
+	task := getBackground(t, rt, map[string]any{"wait_seconds": float64(90)})
+
+	text := (&TaskGetTool{}).FormatResult(map[string]any{"task": task})
+	for _, want := range []string{"Status: completed", "Description: Research how OpenCode", "Output:", rt.output} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the text the model reads must contain %q, got:\n%s", want, text)
+		}
+	}
+
+	running := getBackground(t, runningAgent(), map[string]any{"wait_seconds": float64(5)})
+	if text := (&TaskGetTool{}).FormatResult(map[string]any{"task": running}); !strings.Contains(text, "call task_get again") {
+		t.Errorf("a wait that ran out must say so in the text, got:\n%s", text)
+	}
+}

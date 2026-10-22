@@ -246,6 +246,11 @@ type APIResponseChunk struct {
 	// PartialJSON carries an incremental tool_use input payload.
 	PartialJSON string `json:"partial_json,omitempty"`
 
+	// BlockIndex says which tool call a start or an input delta belongs to, for providers that stream several tool calls at once and
+	// interleave their pieces (the OpenAI wire format does: every piece names its call by index). Nil when the provider closes each
+	// block before it opens the next, in which case the order of the chunks is enough.
+	BlockIndex *int `json:"block_index,omitempty"`
+
 	// ContentBlock is a complete content block
 	ContentBlock ContentBlock `json:"content_block,omitempty"`
 

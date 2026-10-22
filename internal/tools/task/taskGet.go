@@ -316,11 +316,38 @@ func (t *TaskGetTool) FormatResult(data any) string {
 		fmt.Sprintf("Command: %s", cmd),
 		fmt.Sprintf("Started: %s", time.Unix(startTime, 0).Format(time.RFC3339)),
 	}
-	if endTime, ok := rawTask["endTime"].(int64); ok && endTime > 0 {
-		lines = append(lines, fmt.Sprintf("Ended: %s", time.Unix(endTime, 0).Format(time.RFC3339)))
+	if description, _ := rawTask["description"].(string); description != "" {
+		lines = append(lines, fmt.Sprintf("Description: %s", description))
 	}
-	if exitCode, ok := rawTask["exitCode"].(int); ok {
+	// The details carry the end time and the exit code as pointers (absent while the task runs).
+	switch endTime := rawTask["endTime"].(type) {
+	case *int64:
+		if endTime != nil && *endTime > 0 {
+			lines = append(lines, fmt.Sprintf("Ended: %s", time.Unix(*endTime, 0).Format(time.RFC3339)))
+		}
+	case int64:
+		if endTime > 0 {
+			lines = append(lines, fmt.Sprintf("Ended: %s", time.Unix(endTime, 0).Format(time.RFC3339)))
+		}
+	}
+	switch exitCode := rawTask["exitCode"].(type) {
+	case *int:
+		if exitCode != nil {
+			lines = append(lines, fmt.Sprintf("Exit Code: %d", *exitCode))
+		}
+	case int:
 		lines = append(lines, fmt.Sprintf("Exit Code: %d", exitCode))
+	}
+	if timedOut, _ := rawTask["timedOut"].(bool); timedOut {
+		lines = append(lines, "The wait ran out before the task ended: call task_get again to keep waiting.")
+	}
+	// What the task produced is the point of asking: for a background agent it is its final answer, which the model only gets if it
+	// is in this text.
+	if output, _ := rawTask["output"].(string); output != "" {
+		lines = append(lines, "", "Output:", output)
+		if cut, _ := rawTask["outputTruncated"].(bool); cut {
+			lines = append(lines, "(The output was cut: read the rest from the task's output file.)")
+		}
 	}
 	return JoinLines(lines)
 }
