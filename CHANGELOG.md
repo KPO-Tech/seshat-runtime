@@ -9,6 +9,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.10] - 2026-10-22
+
+### Fixed
+
+- **Two tool calls in one answer keep their own inputs and results.** Providers that stream tool calls interleaved by index (OpenAI format) had their arguments and results mixed: both calls ran with the arguments of the last one and answered under its id. Each streamed block now carries its index.
+- **A finished background agent's answer reaches the model.** `task_get` showed the status of an agent but not what it had answered, so the parent invented a summary. The text now carries the output, the exit code and the end time.
+- **A data race between tool calls running side by side.** Each call normalizes its own copy of the permission context instead of writing to the caller's.
+
 ## [1.11.9] - 2026-10-22
 
 ### Changed
