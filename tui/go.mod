@@ -8,7 +8,7 @@ require (
 	charm.land/catwalk v0.52.59
 	charm.land/glamour/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
-	github.com/KPO-Tech/seshat-runtime v1.11.8
+	github.com/KPO-Tech/seshat-runtime v1.11.10
 	github.com/MakeNowJust/heredoc v1.0.0
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/atotto/clipboard v0.1.4
