@@ -105,9 +105,10 @@ var builtinShortDescriptions = map[string]string{
 	"memory_open_nodes":       "Get specific memory entities by exact name, with their relations.",
 	"memory_search_nodes":     "Search long-term memory by name, type or content.",
 	// Media.
-	"generate_image": "Generate an image from a text prompt.",
-	"speech_to_text": "Transcribe audio to text.",
-	"text_to_speech": "Turn text into spoken audio.",
+	"generate_image":   "Generate an image from a text prompt.",
+	"present_artifact": "Show a finished image, audio, video or document to the person in the conversation.",
+	"speech_to_text":   "Transcribe audio to text.",
+	"text_to_speech":   "Turn text into spoken audio.",
 	// Configuration and MCP resources.
 	"get_config":         "Show the effective security policy: approvals, protected paths, limits.",
 	"mcp_list_resources": "List the resources of the connected MCP servers.",
