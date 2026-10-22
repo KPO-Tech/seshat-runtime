@@ -17,15 +17,14 @@ import (
 
 // Two tool calls in one streamed answer, each with its own input, must each get their own result under their own id. A real
 // conversation showed two glob calls on different folders both answered with the files of the second folder, the second call's id on
-// both results.
+// both results. Two reads of different files stand for them here: they need nothing installed.
 func TestParallelToolCallsKeepTheirInputsAndResults(t *testing.T) {
-	dirA, dirB := t.TempDir(), t.TempDir()
-	for _, name := range []string{"a1.go", "a2.go", "a3.go"} {
-		if err := os.WriteFile(filepath.Join(dirA, name), []byte("package a"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+	dir := t.TempDir()
+	fileA, fileB := filepath.Join(dir, "a.txt"), filepath.Join(dir, "b.txt")
+	if err := os.WriteFile(fileA, []byte("content of the first file ALPHA"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dirB, "b1.go"), []byte("package b"), 0o644); err != nil {
+	if err := os.WriteFile(fileB, []byte("content of the second file BRAVO"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,15 +57,15 @@ func TestParallelToolCallsKeepTheirInputsAndResults(t *testing.T) {
 			}
 		}
 		if n == 1 {
-			argA, _ := json.Marshal(map[string]string{"pattern": "*.go", "path": dirA})
-			argB, _ := json.Marshal(map[string]string{"pattern": "*.go", "path": dirB})
+			argA, _ := json.Marshal(map[string]string{"file_path": fileA})
+			argB, _ := json.Marshal(map[string]string{"file_path": fileB})
 			quote := func(b []byte) string { q, _ := json.Marshal(string(b)); return string(q) }
 			// Each call opens with its id and name and gets its arguments in two pieces, the way providers stream them.
 			half := func(b []byte) (string, string) { m := len(b) / 2; return quote(b[:m]), quote(b[m:]) }
 			a1, a2 := half(argA)
 			b1, b2 := half(argB)
-			chunk(`{"role":"assistant","tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"glob","arguments":`+a1+`}}]}`, "null")
-			chunk(`{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"glob","arguments":`+b1+`}}]}`, "null")
+			chunk(`{"role":"assistant","tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"read_file","arguments":`+a1+`}}]}`, "null")
+			chunk(`{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"read_file","arguments":`+b1+`}}]}`, "null")
 			chunk(`{"tool_calls":[{"index":0,"function":{"arguments":`+a2+`}}]}`, "null")
 			chunk(`{"tool_calls":[{"index":1,"function":{"arguments":`+b2+`}}]}`, "null")
 			chunk(`{}`, `"tool_calls"`)
@@ -92,7 +91,7 @@ func TestParallelToolCallsKeepTheirInputsAndResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SubmitMessage(t.Context(), "count the go files in two folders"); err != nil {
+	if _, err := s.SubmitMessage(t.Context(), "read the two files"); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	if secondRequest == nil {
@@ -119,11 +118,11 @@ func TestParallelToolCallsKeepTheirInputsAndResults(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("want one result for each of the two calls, got %v", results)
 	}
-	if got := results["call_a"]; !strings.Contains(got, "a1.go") || strings.Contains(got, "b1.go") {
-		t.Errorf("call_a must list the files of its own folder (a1.go..a3.go), got %q", got)
+	if got := results["call_a"]; !strings.Contains(got, "ALPHA") || strings.Contains(got, "BRAVO") {
+		t.Errorf("call_a must return its own file (ALPHA), got %q", got)
 	}
-	if got := results["call_b"]; !strings.Contains(got, "b1.go") || strings.Contains(got, "a1.go") {
-		t.Errorf("call_b must list the files of its own folder (b1.go), got %q", got)
+	if got := results["call_b"]; !strings.Contains(got, "BRAVO") || strings.Contains(got, "ALPHA") {
+		t.Errorf("call_b must return its own file (BRAVO), got %q", got)
 	}
 }
 
