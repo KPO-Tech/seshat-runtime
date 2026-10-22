@@ -100,6 +100,9 @@ func normalizeExecuteRequest(req ExecuteRequest) ExecuteRequest {
 			IsAutoModeAvailable:              req.PermissionMode == types.PermissionModeAuto,
 		}
 	}
+	// The request owns its own copy: tools run side by side and share the caller's context, which they would otherwise all write to.
+	permissionContext := *req.PermissionContext
+	req.PermissionContext = &permissionContext
 	if req.PermissionContext.Mode == "" {
 		req.PermissionContext.Mode = req.PermissionMode
 	}
