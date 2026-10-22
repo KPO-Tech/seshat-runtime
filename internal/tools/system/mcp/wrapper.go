@@ -26,6 +26,8 @@ type Wrapper struct {
 	serverName string
 	nameMode   ToolNameMode
 	config     ServerConfig
+	// eager is set when the tools of the server are small enough to be loaded with every request (see EagerServerBytes).
+	eager bool
 
 	// mu guards client - every wrapped tool/resource/prompt handler reads it
 	// through activeClient, which may swap it for a freshly reconnected one
@@ -157,6 +159,7 @@ func (w *Wrapper) WrapTool(mcpTool Tool) (tool.Tool, error) {
 		WithDescription(def.Description).
 		WithCategory(def.Category).
 		AsMCP().
+		WithAlwaysLoad(w.eager).
 		WithInputSchema(def.InputSchema).
 		WithAliases(aliases...).
 		WithHandler(handler).
@@ -173,6 +176,17 @@ func (w *Wrapper) WrapTool(mcpTool Tool) (tool.Tool, error) {
 func (w *Wrapper) WrapTools(mcpTools []Tool) ([]tool.Tool, error) {
 	perTool := resolveSpecCap(w.config.MaxToolSpecBytes, DefaultMaxToolSpecBytes)
 	perServer := resolveSpecCap(w.config.MaxServerSpecBytes, DefaultMaxServerSpecBytes)
+	// A small server is loaded with every request instead of being found with tool_search: the search costs a whole round trip to the
+	// model (several seconds) each time the person's request needs one of its tools, and the definitions cost less than that in
+	// tokens. A server over the budget stays deferred.
+	candidate := 0
+	for _, mcpTool := range mcpTools {
+		if size := toolSpecBytes(mcpTool); (perTool == 0 || size <= perTool) && (perServer == 0 || candidate+size <= perServer) {
+			candidate += size
+		}
+	}
+	w.eager = candidate > 0 && candidate <= EagerServerBytes
+
 	wrapped := make([]tool.Tool, 0, len(mcpTools))
 	total := 0
 	for _, mcpTool := range mcpTools {
@@ -194,6 +208,10 @@ func (w *Wrapper) WrapTools(mcpTools []Tool) ([]tool.Tool, error) {
 	}
 	return wrapped, nil
 }
+
+// EagerServerBytes is the size, in bytes of name, description and schema, under which the tools of one MCP server are loaded with every
+// request. About 750 tokens: the cost of the definitions of a server of a few small tools.
+const EagerServerBytes = 3000
 
 // toolSpecBytes is the size of what the model is sent for a tool: its name, description and input schema.
 func toolSpecBytes(t Tool) int {

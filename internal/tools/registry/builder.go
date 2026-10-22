@@ -80,6 +80,13 @@ func (b *Builder) AsMCP() *Builder {
 	return b
 }
 
+// WithAlwaysLoad keeps the tool in the definitions every request carries even when it comes from an MCP server (which are otherwise
+// deferred): a small server costs less than the round trip tool_search needs to load it.
+func (b *Builder) WithAlwaysLoad(always bool) *Builder {
+	b.definition.AlwaysLoad = always
+	return b
+}
+
 // WithCategory sets the category
 func (b *Builder) WithCategory(category string) *Builder {
 	b.definition.Category = category

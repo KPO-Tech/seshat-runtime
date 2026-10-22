@@ -9,6 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.9] - 2026-10-22
+
+### Changed
+
+- **Fewer model round trips for the tools a person asks for.** A deferred tool costs a whole round trip to the model (5 to 10 s on a slow provider) each time it is used: `tool_search`, then the call. An MCP server whose definitions fit in 3,000 bytes (about 750 tokens) is now loaded with every request, even for a host that lists the tools of its agent (`MainAgentTools`); a larger server stays deferred. The `skill` tool is loaded when there are skills to offer (its description is the index of them, already capped at 8,000 characters) and stays deferred when there are none. Measured in the desktop application: a turn calling a one-tool MCP server 33 s to 21 s, a turn using a skill 28.8 s to 12.1 s. `registry.Builder.WithAlwaysLoad` is new.
+
+### Added
+
+- **A performance audit** (docs/audits/performance-2026-10.md): where the time of a turn goes, what a one-word request carries (about 20k tokens, 16.8k of them in 36 tool definitions), and what is left, by value. `pkg/sdk/perf_audit_test.go` (`AUDIT=1`) reproduces the numbers.
+
 ## [1.11.8] - 2026-10-22
 
 ### Fixed
