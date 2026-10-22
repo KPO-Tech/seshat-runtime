@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"regexp"
 	"strings"
 )
@@ -67,7 +68,8 @@ func sanitizeToolResult(content string) (sanitized string, detected bool, reason
 
 	// Secondary heuristic: extremely long single-paragraph content that contains
 	// no newlines is unusual for real tool output and may be an injected prompt.
-	if !strings.Contains(content, "\n") && len(content) > 4000 {
+	// A JSON document (an image a tool returns as base64, say) is data, not prose.
+	if !strings.Contains(content, "\n") && len(content) > 4000 && !json.Valid([]byte(content)) {
 		quarantined := injectionWarningPrefix + content + injectionWarningSuffix
 		return quarantined, true, "suspiciously long single-line tool result"
 	}
