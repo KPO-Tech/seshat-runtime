@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **An image a tool returns no longer goes into the model's context.** `generate_image` and `browser_screenshot` return their picture as base64 inside the result, which the interface draws; the model was sent all of it too (a megabyte image is hundreds of thousands of tokens it cannot use). A long `*_base64` field is now replaced by a note in the request, the stored message keeps the image. A JSON result is also no longer taken for a prompt injection because it is one long line (an image result was quarantined for that).
+
 ## [1.11.10] - 2026-10-22
 
 ### Fixed
