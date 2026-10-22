@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/KPO-Tech/seshat-runtime/internal/execution"
@@ -12,6 +13,12 @@ import (
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
+// streamedBlock is a tool call whose pieces are still arriving.
+type streamedBlock struct {
+	toolUse   types.ToolUseContent
+	inputJSON strings.Builder
+}
+
 type streamingToolCoordinator struct {
 	executor    *execution.StreamingExecutor
 	tools       map[string]registry.Tool
@@ -19,6 +26,10 @@ type streamingToolCoordinator struct {
 	currentTool *types.ToolUseContent
 	inputJSON   strings.Builder
 	submitted   map[int]types.ToolUseContent
+	// indexed holds the tool calls of a provider that interleaves them (see types.APIResponseChunk.BlockIndex), by the index the
+	// provider gave each. They are all submitted when the message stops, in index order, which is the order of the tool calls in the
+	// message that is built from the same stream.
+	indexed map[int]*streamedBlock
 }
 
 func newStreamingToolCoordinator(
@@ -43,21 +54,34 @@ func newStreamingToolCoordinator(
 func (c *streamingToolCoordinator) observe(chunk types.APIResponseChunk) {
 	switch chunk.Type {
 	case types.APIChunkTypeContentBlockStart:
-		c.startBlock(chunk.ContentBlock)
+		c.startBlock(chunk)
 	case types.APIChunkTypeContentBlockDelta:
 		c.applyDelta(chunk)
 	case types.APIChunkTypeContentBlockStop:
 		c.finishCurrentTool()
 	case types.APIChunkTypeMessageStop:
 		c.finishCurrentTool()
+		c.finishIndexedTools()
 	}
 }
 
-func (c *streamingToolCoordinator) startBlock(block types.ContentBlock) {
+func (c *streamingToolCoordinator) startBlock(chunk types.APIResponseChunk) {
+	toolUse, isTool := chunk.ContentBlock.(types.ToolUseContent)
+	if isTool && chunk.BlockIndex != nil {
+		if c.indexed == nil {
+			c.indexed = make(map[int]*streamedBlock)
+		}
+		if _, exists := c.indexed[*chunk.BlockIndex]; !exists {
+			c.indexed[*chunk.BlockIndex] = &streamedBlock{toolUse: toolUse}
+		}
+		return
+	}
+	// A block that opens while another is still open closes it: a provider that does not send a stop between two tool calls must not
+	// lose the first.
+	c.finishCurrentTool()
 	c.currentTool = nil
 	c.inputJSON.Reset()
-	toolUse, ok := block.(types.ToolUseContent)
-	if !ok {
+	if !isTool {
 		return
 	}
 	cloned := toolUse
@@ -65,7 +89,16 @@ func (c *streamingToolCoordinator) startBlock(block types.ContentBlock) {
 }
 
 func (c *streamingToolCoordinator) applyDelta(chunk types.APIResponseChunk) {
-	if c.currentTool == nil || chunk.DeltaType != "input_json_delta" {
+	if chunk.DeltaType != "input_json_delta" {
+		return
+	}
+	if chunk.BlockIndex != nil {
+		if block := c.indexed[*chunk.BlockIndex]; block != nil {
+			block.inputJSON.WriteString(chunk.PartialJSON)
+		}
+		return
+	}
+	if c.currentTool == nil {
 		return
 	}
 	c.inputJSON.WriteString(chunk.PartialJSON)
@@ -74,13 +107,33 @@ func (c *streamingToolCoordinator) applyDelta(chunk types.APIResponseChunk) {
 	}
 }
 
+// finishIndexedTools submits the tool calls that were streamed with indexes, in index order.
+func (c *streamingToolCoordinator) finishIndexedTools() {
+	if len(c.indexed) == 0 {
+		return
+	}
+	order := make([]int, 0, len(c.indexed))
+	for index := range c.indexed {
+		order = append(order, index)
+	}
+	sort.Ints(order)
+	for _, blockIndex := range order {
+		block := c.indexed[blockIndex]
+		toolUse := block.toolUse
+		if block.inputJSON.Len() > 0 {
+			if input, ok := parseStreamingToolInput(block.inputJSON.String()); ok {
+				toolUse.Input = input
+			}
+		}
+		c.submit(toolUse)
+	}
+	c.indexed = nil
+}
+
 func (c *streamingToolCoordinator) finishCurrentTool() {
 	if c.currentTool == nil {
 		return
 	}
-
-	index := c.toolIndex
-	c.toolIndex++
 
 	toolUse := *c.currentTool
 	c.currentTool = nil
@@ -91,7 +144,13 @@ func (c *streamingToolCoordinator) finishCurrentTool() {
 		}
 	}
 	c.inputJSON.Reset()
+	c.submit(toolUse)
+}
 
+// submit gives a finished tool call its place in the order of the message and starts it when it may run before the stream ends.
+func (c *streamingToolCoordinator) submit(toolUse types.ToolUseContent) {
+	index := c.toolIndex
+	c.toolIndex++
 	if !c.canStreamExecute(toolUse) {
 		return
 	}
