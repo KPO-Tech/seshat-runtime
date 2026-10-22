@@ -53,6 +53,12 @@ type ImageGenerationConfig struct {
 	Model    string `json:"model,omitempty"`
 	APIKey   string `json:"api_key,omitempty"`
 	BaseURL  string `json:"base_url,omitempty"`
+	// Size is the dimensions of the image ("1024x1024"); it applies to the OpenAI image API and compatible servers.
+	Size string `json:"size,omitempty"`
+	// Quality is the quality level of the OpenAI image API (low, medium, high or auto for GPT Image models; standard or hd for DALL-E).
+	Quality string `json:"quality,omitempty"`
+	// AspectRatio is the shape of the image ("16:9") for Gemini and OpenRouter.
+	AspectRatio string `json:"aspect_ratio,omitempty"`
 }
 
 // TextToSpeechConfig controls the text_to_speech built-in tool.

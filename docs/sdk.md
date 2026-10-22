@@ -505,6 +505,6 @@ Permanent errors (auth, invalid input) are never retried. Transient errors (rate
 
 ### Multimodal Tool Providers
 
-- `ImageGeneration *ImageGenerationConfig`: Selects the provider/model/base URL used by the `generate_image` built-in tool.
+- `ImageGeneration *ImageGenerationConfig`: Selects the provider/model/base URL used by the `generate_image` built-in tool, and optionally its `Size` and `Quality` (OpenAI image API and compatible servers) or `AspectRatio` (Gemini, OpenRouter). `sdk.ImageProviders()` lists the providers of the catalog with their models.
 - `TextToSpeech *TextToSpeechConfig`: Selects the provider/options used by the `text_to_speech` built-in tool.
 - `SpeechToText *SpeechToTextConfig`: Selects the provider/options used by the `speech_to_text` built-in tool.
