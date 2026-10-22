@@ -77,3 +77,42 @@ func TestPresentArtifactRefusesWhatIsNotAFileOfTheFolder(t *testing.T) {
 		}
 	}
 }
+
+func TestPresentArtifactShowsAYouTubeVideoByItsLink(t *testing.T) {
+	for link, want := range map[string]string{
+		"https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=42s": "dQw4w9WgXcQ",
+		"https://youtu.be/dQw4w9WgXcQ?si=abc":               "dQw4w9WgXcQ",
+		"https://m.youtube.com/watch?v=dQw4w9WgXcQ":         "dQw4w9WgXcQ",
+		"https://www.youtube.com/embed/dQw4w9WgXcQ":         "dQw4w9WgXcQ",
+		"https://www.youtube.com/shorts/dQw4w9WgXcQ":        "dQw4w9WgXcQ",
+	} {
+		result := presentCall(t, t.TempDir(), map[string]any{"url": link})
+		if result.IsError() {
+			t.Errorf("%s must be accepted, got %v", link, result.Error)
+			continue
+		}
+		var got map[string]any
+		if err := json.Unmarshal([]byte(result.Content), &got); err != nil {
+			t.Fatal(err)
+		}
+		if got["kind"] != "youtube" || got["video_id"] != want || got["url"] != "https://www.youtube.com/watch?v="+want {
+			t.Errorf("%s: unexpected description %v", link, got)
+		}
+	}
+}
+
+func TestPresentArtifactRefusesALinkThatIsNotAYouTubeVideo(t *testing.T) {
+	for _, link := range []string{
+		"https://evil.example.com/watch?v=dQw4w9WgXcQ",
+		"https://www.youtube.com.evil.example.com/watch?v=dQw4w9WgXcQ",
+		"https://www.youtube.com/watch?v=short",
+		"https://www.youtube.com/watch?v=dQw4w9WgXcQ%22%3E%3Cscript%3E",
+		"https://www.youtube.com/results?search_query=cats",
+		"javascript:alert(1)",
+		"ftp://youtu.be/dQw4w9WgXcQ",
+	} {
+		if result := presentCall(t, t.TempDir(), map[string]any{"url": link}); !result.IsError() {
+			t.Errorf("%q must be refused, got %s", link, result.Content)
+		}
+	}
+}
