@@ -12,6 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **An image a tool returns no longer goes into the model's context.** `generate_image` and `browser_screenshot` return their picture as base64 inside the result, which the interface draws; the model was sent all of it too (a megabyte image is hundreds of thousands of tokens it cannot use). A long `*_base64` field is now replaced by a note in the request, the stored message keeps the image. A JSON result is also no longer taken for a prompt injection because it is one long line (an image result was quarantined for that).
+- **The auto-mode classifier no longer refuses a tool because it is not about code.** Its instructions described a coding assistant, so a request to read a text aloud with `text_to_speech` was blocked as "outside the scope of a coding assistant" while the same kind of request for an image was allowed. The classifier is now told the assistant also produces documents, images, audio and video, that a tool the person named is what they asked for, and media tools are listed as always allowed.
 
 ## [1.11.10] - 2026-10-22
 
