@@ -3,6 +3,7 @@ package skills
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -134,5 +135,30 @@ func TestExternalDirSkipFilterLeavesSkillsOut(t *testing.T) {
 	all, _ := NewFileSkillLoader("").GetSkillDirCommandsForUser(cwd, "skip-user")
 	if skillByName(all, "keep-me") == nil || skillByName(all, "app-only") != nil {
 		t.Errorf("Skip must leave out exactly the skills it returns true for: keep=%v app-only=%v", skillByName(all, "keep-me") != nil, skillByName(all, "app-only") != nil)
+	}
+}
+
+// With skills to offer the skill tool is loaded with every request (its description is the index of the skills, and finding it with
+// tool_search would cost a round trip to the model each time a skill is used); with none it stays deferred.
+func TestSkillToolIsLoadedOnlyWhenThereAreSkillsToOffer(t *testing.T) {
+	t.Setenv("SESHAT_RUNTIME_ROOT", t.TempDir())
+	cwd := t.TempDir()
+	tool := NewSkillTool(nil)
+	tool.SetCwd(cwd)
+	tool.SetUserID("defer-user")
+	if !tool.Definition().ShouldDefer {
+		t.Error("with no skill the tool stays deferred")
+	}
+
+	writeSkill(t, filepath.Join(cwd, ".claude", "skills"), "offered", "A skill to offer")
+	fresh := NewSkillTool(nil)
+	fresh.SetCwd(cwd)
+	fresh.SetUserID("defer-user")
+	def := fresh.Definition()
+	if def.ShouldDefer {
+		t.Error("with a skill to offer the tool must be loaded, not deferred")
+	}
+	if !strings.Contains(def.Description, "offered") {
+		t.Errorf("the description must carry the index of the skills: %q", def.Description)
 	}
 }

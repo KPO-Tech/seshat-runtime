@@ -58,7 +58,7 @@ func (b *SurfaceBuilder) Build(ctx context.Context, req SurfaceBuildRequest) (*S
 
 	tools := make([]ToolDefinition, 0, len(baseSurface.Tools))
 	for _, def := range baseSurface.Tools {
-		if len(allowed) > 0 && !allowed[def.Name] {
+		if len(allowed) > 0 && !allowed[def.Name] && !b.isEagerMCPTool(def.Name) {
 			continue
 		}
 		if blocked[def.Name] {
@@ -68,6 +68,21 @@ func (b *SurfaceBuilder) Build(ctx context.Context, req SurfaceBuildRequest) (*S
 	}
 	sort.SliceStable(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 	return &Surface{Tools: tools}, nil
+}
+
+// isEagerMCPTool reports whether a tool comes from an MCP server small enough to be loaded with every request. A host's list of
+// tools for its agent names built-in tools only: the tools of a server the person added are not on it, and a server that is small
+// is offered without the search tool_search would otherwise need.
+func (b *SurfaceBuilder) isEagerMCPTool(name string) bool {
+	if b.registry == nil {
+		return false
+	}
+	resolved, ok := b.registry.Resolve(name)
+	if !ok || resolved == nil {
+		return false
+	}
+	def := resolved.Definition()
+	return def.IsMCP && def.AlwaysLoad
 }
 
 func (b *SurfaceBuilder) BuildToolMap(ctx context.Context, req SurfaceBuildRequest) (map[string]Tool, error) {
