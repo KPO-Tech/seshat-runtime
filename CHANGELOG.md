@@ -9,6 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.8] - 2026-10-22
+
+### Fixed
+
+- **External skill folders no longer read hidden folders.** Reading a tool's skill folder as a collection went into the folders whose name starts with a dot: Claude's `.trash` (every skill the person ever deleted, one timestamped folder each) and Codex's `.system` (the tool's own bundled skills), so 58 skills came out as 126. They are skipped now.
+
+### Added
+
+- **A host can leave out skills of an external folder.** `ExternalDir` carries a `Skip` filter, evaluated on each loaded skill, so a host keeps only the skills the person chose, or leaves out the ones that only make sense inside the other tool. `skills.LoadExternalDir` loads a folder as the agent would, without the filter, so a host can list what a folder holds for the person to review.
+
 ## [1.11.7] - 2026-10-21
 
 ### Added
