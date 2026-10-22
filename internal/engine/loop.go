@@ -1019,7 +1019,7 @@ func (l *Loop) tryFallbackModel(
 func (l *Loop) buildAPIRequest(state *MutableState, req RunRequest, model types.ModelIdentifier) types.APIRequest {
 	apiReq := types.APIRequest{
 		Model:              model,
-		Messages:           state.Messages,
+		Messages:           withoutBinaryPayloads(state.Messages),
 		MaxTokens:          req.MaxTokens,
 		SystemPrompt:       req.SystemPrompt,
 		SystemPromptBlocks: append([]types.SystemPromptBlock(nil), req.SystemPromptBlocks...),
