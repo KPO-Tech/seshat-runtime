@@ -126,6 +126,12 @@ func (t *SkillTool) Definition() contract.Definition {
 	skills, _ := GetAllSkillsForUser(t.cwd, t.userID)
 	skills = t.filterAllowed(skills)
 	skillList := FormatSkillsList(skills)
+	visible := 0
+	for _, sk := range skills {
+		if !sk.IsHidden {
+			visible++
+		}
+	}
 
 	def := contract.Definition{
 		Name:        SkillToolName,
@@ -147,7 +153,10 @@ func (t *SkillTool) Definition() contract.Definition {
 		}),
 		IsReadOnly:        false,
 		IsConcurrencySafe: false,
-		ShouldDefer:       true,
+		// With skills to offer the tool is loaded with every request: its description is the index of the skills (within its budget),
+		// which is how the model knows what exists, and finding the tool with tool_search first costs a round trip to the model
+		// each time a skill is used. Without any skill there is nothing to offer and it stays deferred.
+		ShouldDefer: visible == 0,
 	}
 	t.defCache = &skillDefCache{def: def, cachedAt: time.Now(), cwd: t.cwd}
 	return def

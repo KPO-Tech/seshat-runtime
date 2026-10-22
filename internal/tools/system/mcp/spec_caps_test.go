@@ -64,11 +64,12 @@ func TestWrapToolsCapsCanBeConfiguredOrRemoved(t *testing.T) {
 	}
 }
 
-// An MCP tool is deferred: without that flag, tool_search never finds it and an agent restricted to a list of tools never sees it,
+// An MCP tool of a server over the eager budget is deferred: without that flag, tool_search never finds it and an agent restricted to a list of tools never sees it,
 // so a server added by the person would be invisible to the agent.
 func TestWrappedMCPToolsAreDeferred(t *testing.T) {
 	wrapper := NewWrapper(nil, ServerConfig{Name: "srv"}, nil)
-	wrapped, err := wrapper.WrapTools([]Tool{capsTool("get_secret_code", 100)})
+	// A server over the eager budget, so that the tool is deferred.
+	wrapped, err := wrapper.WrapTools([]Tool{capsTool("get_secret_code", EagerServerBytes+500)})
 	if err != nil || len(wrapped) != 1 {
 		t.Fatalf("WrapTools: %v (%d tools)", err, len(wrapped))
 	}
@@ -81,5 +82,35 @@ func TestWrappedMCPToolsAreDeferred(t *testing.T) {
 	resource, err := wrapper.WrapResource(Resource{URI: "file:///a", Name: "a"})
 	if err != nil || !resource.Definition().IsMCP {
 		t.Errorf("a wrapped MCP resource must be flagged IsMCP (err %v)", err)
+	}
+}
+
+// A small server is loaded with every request: loading it with tool_search costs a round trip to the model, which costs more than its
+// definitions. A server over the budget stays deferred.
+func TestSmallMCPServersAreLoadedWithEveryRequestAndBigOnesStayDeferred(t *testing.T) {
+	small := NewWrapper(nil, ServerConfig{Name: "small"}, nil)
+	wrapped, err := small.WrapTools([]Tool{capsTool("one", 200), capsTool("two", 300)})
+	if err != nil || len(wrapped) != 2 {
+		t.Fatalf("WrapTools: %v (%d tools)", err, len(wrapped))
+	}
+	for _, w := range wrapped {
+		if !w.Definition().AlwaysLoad || registry.IsDeferred(w) {
+			t.Errorf("%s: a small server's tool must be loaded, not deferred", w.Definition().Name)
+		}
+	}
+
+	big := NewWrapper(nil, ServerConfig{Name: "big"}, nil)
+	var tools []Tool
+	for i := 0; i < 10; i++ {
+		tools = append(tools, capsTool(fmt.Sprintf("tool%d", i), 600))
+	}
+	wrapped, err = big.WrapTools(tools)
+	if err != nil {
+		t.Fatalf("WrapTools: %v", err)
+	}
+	for _, w := range wrapped {
+		if w.Definition().AlwaysLoad || !registry.IsDeferred(w) {
+			t.Errorf("%s: a server over the budget must stay deferred", w.Definition().Name)
+		}
 	}
 }
