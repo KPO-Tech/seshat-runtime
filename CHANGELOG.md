@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.13] - 2026-10-22
+
+### Added
+
+- **`present_artifact` shows a YouTube video.** Pass `url` instead of `path`: a watch, short, embed, shorts or live link of youtube.com, youtu.be or youtube-nocookie.com is checked (the host and an 11 character video id, nothing else is accepted) and answered with `kind: youtube`, the id and the canonical link, so the host can play it in the conversation.
+
 ## [1.11.12] - 2026-10-22
 
 ### Added

@@ -17,7 +17,8 @@ import (
 const (
 	presentToolName = "present_artifact"
 	presentDesc     = `Show a file you made to the person, in the conversation: an image, an audio clip, a video, a PDF, a document, a spreadsheet, a slide deck, a web page.
-Call it once when the file is finished (after the code, the render or the conversion that made it), with the path of the file. The person plays or opens it there; do not describe how to open it. The file must be inside the working folder.`
+Call it once when the file is finished (after the code, the render or the conversion that made it), with the path of the file. The person plays or opens it there; do not describe how to open it. The file must be inside the working folder.
+For a YouTube video, pass its link as url instead of a path: the person watches it in the conversation.`
 
 	// maxPresentedBytes is the largest file the tool agrees to present.
 	maxPresentedBytes = 500 << 20
@@ -40,6 +41,7 @@ func (t *PresentTool) Definition() tool.Definition {
 			"type": "object",
 			"properties": map[string]any{
 				"path":    map[string]any{"type": "string", "description": "Path of the finished file, relative to the working folder or absolute inside it."},
+				"url":     map[string]any{"type": "string", "description": "Link of a YouTube video to show, instead of a path."},
 				"title":   map[string]any{"type": "string", "description": "A short title for the person (optional)."},
 				"summary": map[string]any{"type": "string", "description": "One sentence on what the file is (optional)."},
 				"kind": map[string]any{
@@ -48,7 +50,6 @@ func (t *PresentTool) Definition() tool.Definition {
 					"description": "Leave out to take it from the file extension.",
 				},
 			},
-			"required": []string{"path"},
 		}),
 		Metadata: map[string]any{"surface_profiles": []string{"mono_run"}},
 	}
@@ -64,9 +65,12 @@ var artifactKinds = map[string]string{
 }
 
 func (t *PresentTool) Call(_ context.Context, input tool.CallInput, _ types.CanUseToolFn) (tool.CallResult, error) {
+	if link, _ := input.Parsed["url"].(string); strings.TrimSpace(link) != "" {
+		return presentYouTube(link, input.Parsed)
+	}
 	raw, _ := input.Parsed["path"].(string)
 	if strings.TrimSpace(raw) == "" {
-		return tool.NewErrorResult(fmt.Errorf("present_artifact: path is required")), nil
+		return tool.NewErrorResult(fmt.Errorf("present_artifact: give the path of a file, or the url of a YouTube video")), nil
 	}
 	workDir := ""
 	if input.ToolContext != nil {
