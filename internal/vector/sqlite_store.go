@@ -10,6 +10,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"unicode"
 
 	dbpkg "github.com/KPO-Tech/seshat-runtime/internal/db"
 )
@@ -259,18 +260,32 @@ func (s *SQLiteStore) searchTextOnly(ctx context.Context, query Query, topK int)
 	return results, nil
 }
 
-// sanitizeFTSQuery removes FTS5-special characters that could cause parse errors.
+// maxFTSTerms bounds the words of a text search: a pasted paragraph must not become a query of hundreds of terms.
+const maxFTSTerms = 32
+
+// sanitizeFTSQuery turns free text into an FTS5 query that finds a chunk holding any of its words.
+//
+// The words are cut where the index cuts them (anything that is not a letter or a digit), each is quoted so that FTS5 reads it as a
+// plain word (never as AND, OR, NOT or NEAR, nor as a column filter or a prefix), and they are joined with OR. FTS5's default would
+// require every word, so a question written as a sentence ("notice period for termination") found nothing as soon as one of its words,
+// "for", was missing from the chunk. With OR the ranking does the work: bm25 gives a rare word a high weight and a word found in most
+// chunks almost none, so a chunk that holds the rare words comes first and the filler words do not decide anything.
 func sanitizeFTSQuery(q string) string {
-	var sb strings.Builder
-	for _, r := range q {
-		switch r {
-		case '"', '(', ')', '*', '^', '-', '+':
-			sb.WriteByte(' ')
-		default:
-			sb.WriteRune(r)
+	words := strings.FieldsFunc(q, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	seen := make(map[string]bool, len(words))
+	terms := make([]string, 0, len(words))
+	for _, word := range words {
+		word = strings.ToLower(word)
+		if seen[word] {
+			continue
+		}
+		seen[word] = true
+		terms = append(terms, `"`+word+`"`)
+		if len(terms) == maxFTSTerms {
+			break
 		}
 	}
-	return strings.TrimSpace(sb.String())
+	return strings.Join(terms, " OR ")
 }
 
 // Get retrieves records by key. If keys is nil/empty, all records in the namespace
