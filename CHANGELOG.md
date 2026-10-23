@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.15] - 2026-10-23
+
 ### Fixed
 
 - **A text search finds a chunk that holds any word of the query, not every word.** The vectorless (no embedder) search and the keyword half of the hybrid search of the SQLite store passed the query to FTS5 as it was, which requires every word: a question written as a sentence ("notice period for termination") found nothing when a single word, "for", was not in the chunk. The words are now quoted and joined with OR, and bm25 ranks the chunks that hold the rare words first. The quoting also stops a word such as AND, OR, NOT or NEAR, or a colon, from being read as FTS5 syntax. At most 32 words are used.
