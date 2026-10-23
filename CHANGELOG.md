@@ -12,6 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 
 - **A PDF whose text is drawn by a form is read, not taken for a scan.** The page reader did not follow the `Do` operator, so a page that only draws a form (what HTML to PDF converters such as EVO PDF and Aspose write, one call and the whole page inside the form) gave no text at all, and the document was refused as having no extractable text. Forms are now read, with their own matrix and resources, and a form that draws itself is cut at a depth of 8. On 20 contracts of the CUAD set, 19 had no text and now all are read (word recall against their text version 0.997, precision 1.000).
+- **A table followed by a space is not lost.** The text of a page keeps one stand-in glyph where a table was found, and the page builder adds the spaces drawn after it to its line, so the line was no longer recognised as the table's and the page showed an invisible character in place of the table, all its cells gone. On a paper of the Open RAG Benchmark this lost half of the numbers of the tables (0.50 recall, 1.00 now); over its 12 papers the recall of table numbers goes from 0.942 to 0.983.
 - **The glyphs of a composite font no longer pile up.** A Type0 font (two bytes a glyph, `Identity-H`) has no `/Widths`: every glyph advanced by zero, so a string was drawn at a single point and the words of a line could not be told apart. The advance now comes from `/W` and `/DW` of the descendant font, and the two byte codes are decoded one at a time.
 
 ### Changed

@@ -280,8 +280,8 @@ func layoutMarkdownPage(texts []pdf.Text, skip map[int]bool, rul rulings, models
 	}
 	var prose []*line
 	for _, l := range lines {
-		if len(l.glyphs) == 1 && l.glyphs[0].table > 0 {
-			l.kind, l.text = kindTable, tables[l.glyphs[0].table-1].markdown
+		if t := tableOfLine(l); t > 0 {
+			l.kind, l.text = kindTable, tables[t-1].markdown
 			continue
 		}
 		prose = append(prose, l)
@@ -293,6 +293,23 @@ func layoutMarkdownPage(texts []pdf.Text, skip map[int]bool, rul rulings, models
 	cols := pageColumns(prose, body)
 	classify(prose, body, cols)
 	return assemble(lines, body, cols)
+}
+
+// tableOfLine says which table a line stands for (counting from 1), or 0 when it is text. The line of a table is its stand-in glyph, and
+// the spaces drawn after it: buildLines adds a space to the line it follows, so a line of one glyph was not the whole rule, and a
+// table followed by a space was written as the invisible stand-in character, with all its cells lost.
+func tableOfLine(l *line) int {
+	table := 0
+	for _, g := range l.glyphs {
+		switch {
+		case g.table > 0 && table == 0:
+			table = g.table
+		case g.isSpace():
+		default:
+			return 0
+		}
+	}
+	return table
 }
 
 func pageWidth(glyphs []glyph) float64 {
