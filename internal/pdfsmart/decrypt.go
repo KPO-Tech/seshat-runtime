@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	pdfcpumodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	gopdf "github.com/razvandimescu/gopdf/pdf"
