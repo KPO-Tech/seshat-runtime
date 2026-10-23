@@ -2,8 +2,10 @@ package vector
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	dbpkg "github.com/KPO-Tech/seshat-runtime/internal/db"
@@ -1006,5 +1008,64 @@ func TestHNSWStore_Vectorless_RequiresQueryText(t *testing.T) {
 	}
 	if _, err := store.Search(context.Background(), Query{Namespace: "vl", TopK: 5}); err == nil {
 		t.Error("expected an error when both Vector and QueryText are empty")
+	}
+}
+
+func TestSanitizeFTSQuery(t *testing.T) {
+	cases := map[string]string{
+		"notice period for termination": `"notice" OR "period" OR "for" OR "termination"`,
+		"Terms AND Conditions":          `"terms" OR "and" OR "conditions"`,
+		"not near":                      `"not" OR "near"`,
+		`a "quoted" (phrase)* -x`:       `"a" OR "quoted" OR "phrase" OR "x"`,
+		"title:contract":                `"title" OR "contract"`,
+		"résumé du dossier":             `"résumé" OR "du" OR "dossier"`,
+		"repeat repeat":                 `"repeat"`,
+		"  ...  ":                       ``,
+	}
+	for in, want := range cases {
+		if got := sanitizeFTSQuery(in); got != want {
+			t.Errorf("sanitizeFTSQuery(%q) = %q, want %q", in, got, want)
+		}
+	}
+	long := strings.Repeat("w", 1)
+	for i := 0; i < 100; i++ {
+		long += fmt.Sprintf(" word%d", i)
+	}
+	if got := strings.Count(sanitizeFTSQuery(long), " OR ") + 1; got != maxFTSTerms {
+		t.Errorf("a long text keeps %d words, got %d", maxFTSTerms, got)
+	}
+}
+
+func TestSQLiteStore_VectorlessSearchFindsASentenceQuestion(t *testing.T) {
+	// A question written as a sentence has words the chunk does not hold ("for", "what"): the chunk must still be found,
+	// and the one with the rare words must come before one that only shares filler words.
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	_ = store.Upsert(ctx, []Record{
+		{Namespace: "v", Key: "contract", Text: "Either party may terminate with ninety days written notice. The notice period is ninety days."},
+		{Namespace: "v", Key: "payment", Text: "Payment terms are net 30 days from the invoice date."},
+		{Namespace: "v", Key: "other", Text: "The office is open for visitors on weekdays."},
+	})
+	results, err := store.Search(ctx, Query{Namespace: "v", TopK: 3, QueryText: "what is the notice period for termination"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(results) == 0 || results[0].Record.Key != "contract" {
+		t.Fatalf("the contract chunk must come first, got %v", results)
+	}
+}
+
+func TestSQLiteStore_VectorlessSearchTreatsOperatorsAsWords(t *testing.T) {
+	store := openTestSQLiteStore(t)
+	ctx := context.Background()
+	_ = store.Upsert(ctx, []Record{{Namespace: "op", Key: "a", Text: "General terms and conditions apply."}})
+	for _, q := range []string{"terms AND conditions", "NOT conditions", `conditions "`, "terms NEAR conditions", "text:conditions"} {
+		results, err := store.Search(ctx, Query{Namespace: "op", TopK: 3, QueryText: q})
+		if err != nil {
+			t.Fatalf("Search(%q) must not fail: %v", q, err)
+		}
+		if len(results) != 1 {
+			t.Fatalf("Search(%q) must find the chunk, got %d results", q, len(results))
+		}
 	}
 }
