@@ -25,7 +25,6 @@ const (
 	recH        = 48
 	recW        = 320
 	recSeqLen   = 40
-	recVocab    = 6625
 	recMaxBatch = 1
 )
 
@@ -116,8 +115,8 @@ func RunOCRRecBatchReal(ctx context.Context, modelDir string, imgs []*Image) ([]
 		copy(batch[i*lineStride:(i+1)*lineStride], b)
 	}
 
-	sess, release, err := getRecSession(ctx, filepath.Join(modelDir, "rec.ort"), "x",
-		[]int64{int64(n), 3, recH, int64(imgW)}, "softmax_11.tmp_0")
+	sess, release, err := getRecSession(ctx, recModelPath(modelDir), "x",
+		[]int64{int64(n), 3, recH, int64(imgW)}, recOutputName(recModelPath(modelDir)))
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +128,7 @@ func RunOCRRecBatchReal(ctx context.Context, modelDir string, imgs []*Image) ([]
 	}
 	// Output layout: [N, seqLen, recVocab]; seqLen is dynamic (scales with
 	// imgW), so derive it from the tensor length.
+	recVocab := len(chars)
 	seqLen := len(out) / (n * recVocab)
 	if seqLen <= 0 {
 		return nil, fmt.Errorf("recSession: unexpected batch output len %d for n=%d vocab=%d", len(out), n, recVocab)
@@ -157,8 +157,8 @@ func recognizeLine(ctx context.Context, modelDir string, img *Image, maxWhRatio 
 		resizedW = imgW
 	}
 	blob := ocrRecPreprocess(img, resizedW, imgW)
-	sess, release, err := getRecSession(ctx, filepath.Join(modelDir, "rec.ort"), "x",
-		[]int64{recMaxBatch, 3, recH, int64(imgW)}, "softmax_11.tmp_0")
+	sess, release, err := getRecSession(ctx, recModelPath(modelDir), "x",
+		[]int64{recMaxBatch, 3, recH, int64(imgW)}, recOutputName(recModelPath(modelDir)))
 	if err != nil {
 		return OCRRecResult{}, err
 	}
@@ -190,6 +190,40 @@ func ocrRecPreprocess(img *Image, resizedW, imgW int) []float32 {
 		}
 	}
 	return blob
+}
+
+// recModelPath is rec.ort, or rec.onnx when only that exists (ONNX Runtime takes a file named .ort for the ORT format, so a plain ONNX
+// model keeps its own extension).
+func recModelPath(modelDir string) string {
+	ort := filepath.Join(modelDir, "rec.ort")
+	if _, err := os.Stat(ort); err == nil {
+		return ort
+	}
+	if onnx := filepath.Join(modelDir, "rec.onnx"); fileExists(onnx) {
+		return onnx
+	}
+	return ort
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// recOutputNames memoises the first output name of each recognizer model: the name depends on how the model was exported
+// ("softmax_11.tmp_0" for the PP-OCRv4 export, "fetch_name_0" for the PP-OCRv5 ones).
+var recOutputNames sync.Map // map[string]string, keyed by model path
+
+func recOutputName(modelPath string) string {
+	if v, ok := recOutputNames.Load(modelPath); ok {
+		return v.(string)
+	}
+	name := "softmax_11.tmp_0"
+	if _, outputs, err := ort.GetInputOutputInfo(modelPath); err == nil && len(outputs) > 0 {
+		name = outputs[0].Name
+	}
+	recOutputNames.Store(modelPath, name)
+	return name
 }
 
 // charDictCache memoises loadCharDict by the ocr.res path. RunOCRRec is called
@@ -232,6 +266,7 @@ func ocrRecCTCDecode(out []float32, chars []string) OCRRecResult {
 	// out layout: [recMaxBatch, seqLen, recVocab]; take batch 0. The sequence
 	// length is dynamic (scales with the input width), so derive it from the
 	// tensor length rather than a fixed constant.
+	recVocab := len(chars)
 	seqLen := len(out) / recVocab
 	var text strings.Builder
 	var probs []float32
