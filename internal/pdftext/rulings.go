@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // A table drawn with ruling lines says where its cells are better than any amount of guessing from the text, so

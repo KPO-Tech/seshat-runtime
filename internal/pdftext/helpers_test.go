@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 func readTestdata(t *testing.T, name string) []byte {

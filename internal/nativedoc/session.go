@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 
 	ort "github.com/infiniflow/onnxruntime_go"
@@ -34,7 +35,12 @@ import (
 // thread, which is what makes the process ceiling a plain concurrency budget:
 // the capacity registered in inference_limit.go bounds how many Runs may be in
 // flight, and each of them costs exactly one thread.
-const intraOpThreads = 1
+var intraOpThreads = func() int {
+	if n, err := strconv.Atoi(os.Getenv("SESHAT_NATIVEDOC_THREADS")); err == nil && n > 0 {
+		return n
+	}
+	return 1
+}()
 
 var (
 	ortOnce    sync.Once

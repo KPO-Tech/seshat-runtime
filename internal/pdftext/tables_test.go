@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // testdata/tables.pdf was written with fpdf2, line by line, so each page is exactly one kind of layout:

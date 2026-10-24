@@ -39,6 +39,9 @@ linters-settings:
       - os.RemoveAll
 
 issues:
+  # Code kept from github.com/ledongthuc/pdf (see NOTICE): its style is its own.
+  exclude-dirs:
+    - internal/pdfread
   max-issues-per-linter: 0
   max-same-issues: 0
 

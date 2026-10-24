@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // Two things happen to the ligatures of a PDF between the file and the text a reader searches in.

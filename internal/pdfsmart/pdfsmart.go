@@ -40,7 +40,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	pdfcpumodel "github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 

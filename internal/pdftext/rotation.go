@@ -5,7 +5,7 @@ import (
 	"sort"
 	"unicode/utf8"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // A page with /Rotate 90, 180 or 270 is shown turned, and a landscape table in a portrait document is drawn that way: its

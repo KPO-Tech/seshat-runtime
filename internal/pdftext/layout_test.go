@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // The helpers draw text the way the library reports it for many real PDFs: one x for a whole string and

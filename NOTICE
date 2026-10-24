@@ -19,3 +19,9 @@ licence text is at https://github.com/charmbracelet/crush/blob/main/LICENSE.md.
 
 The files of tui/internal/seshattui that come from Crush remain subject to that
 licence, in addition to the terms above. See docs/licensing.md.
+
+The PDF reader in internal/pdfread comes from github.com/ledongthuc/pdf, itself
+derived from the PDF reader of rsc.io/pdf, Copyright 2009 The Go Authors, under
+the BSD 3-clause licence kept in internal/pdfread/LICENSE. It is kept in this
+repository, and changed, so that the reader can follow forms and read composite
+fonts (see the changelog of 1.11.16).
