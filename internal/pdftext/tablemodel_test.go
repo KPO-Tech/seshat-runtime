@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // testdata/borderless.pdf has a table with no lines at all (page 1, with one label that wraps onto a second line)

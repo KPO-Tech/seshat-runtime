@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // MinCharsPerPage is the threshold below which extracted text is treated as

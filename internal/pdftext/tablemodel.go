@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 
 	"github.com/KPO-Tech/seshat-runtime/internal/mdtable"
 )

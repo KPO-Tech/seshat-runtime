@@ -21,7 +21,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/infiniflow/onnxruntime_go v1.29.0
-	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/lib/pq v1.12.3
 	github.com/opensearch-project/opensearch-go/v5 v5.0.0
 	github.com/pdfcpu/pdfcpu v0.16.1

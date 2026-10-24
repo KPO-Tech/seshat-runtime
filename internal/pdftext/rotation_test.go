@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ledongthuc/pdf"
+	"github.com/KPO-Tech/seshat-runtime/internal/pdfread"
 )
 
 // rotatedPDF is a one page PDF, shown rotated by `rotate`, whose lines are drawn with the text matrix that makes them upright
