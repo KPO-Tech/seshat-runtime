@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.11.16] - 2026-10-24
+
 ### Added
 
 - **The native OCR reads other models than the Chinese and English one.** The size of the vocabulary comes from the character file, the name of the output of the recognizer is read from the model, and a `rec.onnx` is taken when there is no `rec.ort`. With the PP-OCRv5 Latin recognizer (8 MB, `rec.onnx` and its `ocr.res`) the accents are kept (é, è, ê, ç, œ...: the default `ocr.res` has 17 accented letters and no ê, ç, ù, ô, î, œ) and the spaces between words are no longer lost: on 18 synthetic scans the words found go from 0.75 to 0.99 (clean) and from 0.58 to 0.98 (low resolution); on 6 real scans (3 English, 3 French) they go from 0.66-0.84 to 0.83-0.99.
