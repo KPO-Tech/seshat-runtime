@@ -9,15 +9,23 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The native OCR reads other models than the Chinese and English one.** The size of the vocabulary comes from the character file, the name of the output of the recognizer is read from the model, and a `rec.onnx` is taken when there is no `rec.ort`. With the PP-OCRv5 Latin recognizer (8 MB, `rec.onnx` and its `ocr.res`) the accents are kept (é, è, ê, ç, œ...: the default `ocr.res` has 17 accented letters and no ê, ç, ù, ô, î, œ) and the spaces between words are no longer lost: on 18 synthetic scans the words found go from 0.75 to 0.99 (clean) and from 0.58 to 0.98 (low resolution); on 6 real scans (3 English, 3 French) they go from 0.66-0.84 to 0.83-0.99.
+- `SESHAT_NATIVEDOC_THREADS` sets the number of threads of each ONNX session (default 1, as before). On a 6-core CPU a page took 47 s with 1 thread and 23 s with 4; more than 4 did not help.
+
 ### Fixed
 
 - **A PDF whose text is drawn by a form is read, not taken for a scan.** The page reader did not follow the `Do` operator, so a page that only draws a form (what HTML to PDF converters such as EVO PDF and Aspose write, one call and the whole page inside the form) gave no text at all, and the document was refused as having no extractable text. Forms are now read, with their own matrix and resources, and a form that draws itself is cut at a depth of 8. On 20 contracts of the CUAD set, 19 had no text and now all are read (word recall against their text version 0.997, precision 1.000).
 - **A table followed by a space is not lost.** The text of a page keeps one stand-in glyph where a table was found, and the page builder adds the spaces drawn after it to its line, so the line was no longer recognised as the table's and the page showed an invisible character in place of the table, all its cells gone. On a paper of the Open RAG Benchmark this lost half of the numbers of the tables (0.50 recall, 1.00 now); over its 12 papers the recall of table numbers goes from 0.942 to 0.983.
 - **The glyphs of a composite font no longer pile up.** A Type0 font (two bytes a glyph, `Identity-H`) has no `/Widths`: every glyph advanced by zero, so a string was drawn at a single point and the words of a line could not be told apart. The advance now comes from `/W` and `/DW` of the descendant font, and the two byte codes are decoded one at a time.
+- **A scanned page that is a little crooked is read.** The native reader cut each detected line with its bounding rectangle: on a page turned by 1.2 degrees, a line 1,275 pixels wide climbs 27 pixels, as much as its own height, so the crop held two lines and the recognizer returned fragments (a photocopy scored 0.05 of the words, on 18 synthetic scans). A tilted line is now straightened before it is read (`warpBox`); an upright line is cut as before. On the same scans the words found go from 0.05 to 0.72 for the photocopies, and the clean and low-resolution scans also gain (0.95 to 0.99 and 0.93 to 0.98, together with the batching below).
+- **The OCR session of a line no longer depends on the width of the line.** The pool of recognizer sessions was keyed by the width of the input, so every line of a new width built a new session and loaded the model again (250 to 650 ms each); one session now serves every width.
 
 ### Changed
 
 - The PDF reader of `github.com/ledongthuc/pdf` is now part of this repository as `internal/pdfread` (BSD licence, see NOTICE), because the two fixes above are in its page interpreter.
+- The native OCR reads the lines of a page by batches of 6, sorted by width so that a batch is not padded out to its widest line, instead of one model run per line.
 
 ## [1.11.15] - 2026-10-23
 

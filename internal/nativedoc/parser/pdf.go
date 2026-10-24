@@ -108,15 +108,14 @@ func (c *Converter) ocrPDFPage(ctx context.Context, pdfData []byte, pageIdx int)
 	boxes := append([]nativedoc.DetBox(nil), det.Boxes...)
 	sortReadingOrder(boxes)
 
+	recs := c.recognizeBoxes(ctx, img, boxes)
 	var items []pageItem
-	for _, box := range boxes {
-		crop := cropBox(img, box)
-		rec, recErr := nativedoc.RunOCRRec(ctx, c.ModelDir, crop)
-		if recErr != nil || strings.TrimSpace(rec.Text) == "" {
+	for i, box := range boxes {
+		if strings.TrimSpace(recs[i].Text) == "" {
 			continue
 		}
 		x0, y0, x1, y1 := boxBounds(box)
-		items = append(items, pageItem{x0: x0, y0: y0, x1: x1, y1: y1, text: rec.Text})
+		items = append(items, pageItem{x0: x0, y0: y0, x1: x1, y1: y1, text: recs[i].Text})
 	}
 	items = c.withTables(ctx, pdfData, pageIdx, img, items)
 
@@ -233,10 +232,14 @@ func sortReadingOrder(boxes []nativedoc.DetBox) {
 
 // cropBox extracts the axis-aligned bounding rectangle of a detected box
 // from the source image. DetBox quads from this document type are
-// typically already axis-aligned (horizontal text); a rotated/skewed quad
-// would need a perspective-corrected crop instead, which isn't implemented
-// here yet.
+// typically already axis-aligned (horizontal text); a tilted quad (a page
+// scanned crooked) is straightened by warpBox instead.
 func cropBox(img *nativedoc.Image, box nativedoc.DetBox) *nativedoc.Image {
+	if isTilted(box) {
+		if warped, ok := warpBox(img, box); ok {
+			return warped
+		}
+	}
 	minX, minY := box.Pts[0][0], box.Pts[0][1]
 	maxX, maxY := box.Pts[0][0], box.Pts[0][1]
 	for _, p := range box.Pts {
@@ -300,4 +303,44 @@ func (f finderOnly) ConvertURL(context.Context, string) (*documentreader.Convers
 
 func (f finderOnly) FindTables(ctx context.Context, data []byte, page int) ([]pdftext.TableStructure, error) {
 	return f.c.FindTables(ctx, data, page)
+}
+
+// recBatchSize is how many lines the recognizer reads in one model run.
+const recBatchSize = 6
+
+// recognizeBoxes reads the line of every box, several lines per model run. The lines are grouped by width so that a batch is not
+// padded out to its widest line (the recognizer sizes a batch to its widest member); a batch that fails is read line by line.
+// The result is in the order of boxes.
+func (c *Converter) recognizeBoxes(ctx context.Context, img *nativedoc.Image, boxes []nativedoc.DetBox) []nativedoc.OCRRecResult {
+	crops := make([]*nativedoc.Image, len(boxes))
+	order := make([]int, len(boxes))
+	for i, box := range boxes {
+		crops[i] = cropBox(img, box)
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		ca, cb := crops[order[a]], crops[order[b]]
+		return float64(ca.W)*float64(cb.H) < float64(cb.W)*float64(ca.H)
+	})
+	results := make([]nativedoc.OCRRecResult, len(boxes))
+	for start := 0; start < len(order); start += recBatchSize {
+		group := order[start:min(start+recBatchSize, len(order))]
+		batch := make([]*nativedoc.Image, len(group))
+		for i, idx := range group {
+			batch[i] = crops[idx]
+		}
+		recs, err := nativedoc.RunOCRRecBatchReal(ctx, c.ModelDir, batch)
+		if err != nil || len(recs) != len(group) {
+			for _, idx := range group {
+				if rec, recErr := nativedoc.RunOCRRec(ctx, c.ModelDir, crops[idx]); recErr == nil {
+					results[idx] = rec
+				}
+			}
+			continue
+		}
+		for i, idx := range group {
+			results[idx] = recs[i]
+		}
+	}
+	return results
 }

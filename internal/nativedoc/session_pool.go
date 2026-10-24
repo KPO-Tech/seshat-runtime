@@ -253,7 +253,9 @@ func recKeyOf(modelPath, inName string, inShape []int64, outName string) recKey 
 		modelPath: modelPath,
 		inName:    inName,
 		outName:   outName,
-		inShape:   shapeKey(inShape),
+		// The recognizer accepts any width and batch size, so one session serves every shape: keying the pool by width made each
+		// line of a new width build (and load the model into) a session of its own. The caller sets the shape of its run on the
+		// session it gets (see getRecSession).
 	}
 }
 
@@ -272,7 +274,7 @@ const (
 	// (~384 pooled sessions) while spreading it across more distinct shapes so
 	// concurrent workers contending on a single width no longer serialize on one
 	// idle session per shape.
-	recShapePoolCap = 1
+	recShapePoolCap = 4
 )
 
 // recSessions is the dynamic-width OCR-rec pool: bounded at recMaxShapePools
@@ -283,7 +285,7 @@ var recSessions = newSessionPool[recKey, *recSession](recMaxShapePools, recShape
 // input width plus a release func. The caller must call release exactly once.
 func getRecSession(ctx context.Context, modelPath, inName string, inShape []int64, outName string) (*recSession, func(), error) {
 	key := recKeyOf(modelPath, inName, inShape, outName)
-	return recSessions.Get(ctx, key, func() (*recSession, error) {
+	sess, release, err := recSessions.Get(ctx, key, func() (*recSession, error) {
 		// Weight sharing is best-effort: a failure here degrades to a normal
 		// (non-shared) session rather than breaking OCR-rec entirely.
 		weights, werr := sharedWeights(modelPath, inName, inShape, outName)
@@ -294,4 +296,9 @@ func getRecSession(ctx context.Context, modelPath, inName string, inShape []int6
 		}
 		return newRecSession(modelPath, inName, inShape, outName, weights)
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	sess.inShape = inShape
+	return sess, release, nil
 }
