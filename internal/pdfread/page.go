@@ -503,8 +503,9 @@ type Point struct {
 
 // Content describes the basic content on a page: the text and any drawn rectangles.
 type Content struct {
-	Text []Text
-	Rect []Rect
+	Text   []Text
+	Rect   []Rect
+	Images []Rect // where the images are drawn, in user space
 }
 
 type gstate struct {

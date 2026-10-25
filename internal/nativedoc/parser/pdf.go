@@ -57,12 +57,14 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 	read, _, readErr := pdfsmart.ReadPages(ctx, data, nil, pdfsmart.Options{}, finderOnly{c}, pdfsmart.VisionFallback{})
 	native := map[int]string{}
 	bigPicture := map[int]bool{}
+	coverage := map[int]float64{}
 	if readErr == nil {
 		for _, p := range read.Pages {
 			if p.Source == pdfsmart.PageSourceNative && strings.TrimSpace(p.Text) != "" {
 				native[p.Page-1] = strings.TrimSpace(p.Text)
 			}
 			bigPicture[p.Page-1] = p.HasBigPicture
+			coverage[p.Page-1] = p.ImageCoverage
 		}
 	}
 
@@ -75,7 +77,7 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 		chars := len(strings.TrimSpace(text))
 		// A real text layer, by the plain text's own measure (a page with a few words over a picture is not one), and not
 		// a scan that carries a stamp or a header: its content is in the picture, which the text layer does not read.
-		if textErr == nil && chars >= c.minCharsPerPage() && !isHybridPage(chars, bigPicture[i]) {
+		if textErr == nil && chars >= c.minCharsPerPage() && !isScannedPage(chars, bigPicture[i], coverage[i]) {
 			if md, ok := native[i]; ok {
 				text = md
 			}

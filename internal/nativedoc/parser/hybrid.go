@@ -10,10 +10,18 @@ import (
 // content is in the picture, which the text layer says nothing about.
 const hybridPageMaxChars = 400
 
-// isHybridPage says whether a page with a text layer is in fact a picture with a little text on it: it holds a big
-// picture and its text is thin. Such a page is read by the OCR, whatever the length of its text layer.
-func isHybridPage(textChars int, hasBigPicture bool) bool {
-	return hasBigPicture && textChars < hybridPageMaxChars
+// scanCoverageMin is the share of a page, from 0 to 1, that its images must cover for the page to be a scan. A scanned page is
+// one image over the whole page; a page of text with a figure or a photo is a small share. Measured on the 252 short documents of
+// the ExtractBench split, no page of text has an image over more than a quarter of it, and every scan that carries a text layer
+// has a coverage of 1.
+const scanCoverageMin = 0.9
+
+// isScannedPage says whether a page with a text layer is in fact a picture of a page: an image covers it (the text is then what a
+// scanner's OCR wrote, which is often poor: on 70 such documents the OCR of this package never read less than that layer and
+// read 10 to 20 points more of the expected values), or it holds a big picture and its text is thin (a stamp or a header over a
+// scan whose coverage could not be worked out). Such a page is read by the OCR, whatever the length of its text layer.
+func isScannedPage(textChars int, hasBigPicture bool, coverage float64) bool {
+	return coverage >= scanCoverageMin || (hasBigPicture && textChars < hybridPageMaxChars)
 }
 
 // withNativeLines is the text the OCR read from a page, plus the lines of the page's own text layer that the OCR did not

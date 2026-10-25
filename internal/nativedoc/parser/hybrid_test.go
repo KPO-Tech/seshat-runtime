@@ -2,23 +2,28 @@ package parser
 
 import "testing"
 
-func TestIsHybridPage(t *testing.T) {
+func TestIsScannedPage(t *testing.T) {
 	cases := []struct {
-		name  string
-		chars int
-		big   bool
-		want  bool
+		name     string
+		chars    int
+		big      bool
+		coverage float64
+		want     bool
 	}{
-		{"scan with a stamp", 131, true, true},
-		{"scan with nothing over it", 0, true, true},
-		{"page of text with a small figure", 131, false, false},
-		{"page of text with a big picture", 2500, true, false},
-		{"just under the bound", hybridPageMaxChars - 1, true, true},
-		{"at the bound", hybridPageMaxChars, true, false},
+		{"scan with a stamp", 131, true, 0, true},
+		{"scan with nothing over it", 0, true, 0, true},
+		{"page of text with a small figure", 131, false, 0.02, false},
+		{"page of text with a big picture", 2500, true, 0.2, false},
+		{"just under the bound", hybridPageMaxChars - 1, true, 0, true},
+		{"at the bound", hybridPageMaxChars, true, 0, false},
+		{"scan with an OCR text layer of thousands of characters", 3400, true, 1, true},
+		{"image over most of the page", 3400, false, 0.95, true},
+		{"image over most of the page, just under", 3400, true, 0.89, false},
+		{"image over exactly the bound", 3400, false, scanCoverageMin, true},
 	}
 	for _, tc := range cases {
-		if got := isHybridPage(tc.chars, tc.big); got != tc.want {
-			t.Errorf("%s: isHybridPage(%d, %v) = %v, want %v", tc.name, tc.chars, tc.big, got, tc.want)
+		if got := isScannedPage(tc.chars, tc.big, tc.coverage); got != tc.want {
+			t.Errorf("%s: isScannedPage(%d, %v, %.2f) = %v, want %v", tc.name, tc.chars, tc.big, tc.coverage, got, tc.want)
 		}
 	}
 }
