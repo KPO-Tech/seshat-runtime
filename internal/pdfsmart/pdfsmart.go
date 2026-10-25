@@ -366,7 +366,7 @@ func ReadPages(ctx context.Context, data []byte, pages []int, opts Options, docu
 			Text:             text,
 			Source:           source,
 			HasEmbeddedImage: imageDetectionOK && pagesWithImages[i],
-			HasBigPicture:    imageDetectionOK && bigPictures[i],
+			HasBigPicture:    bigPictures[i], // empty when the detection failed (see above)
 			Pictures:         pictures,
 		})
 		if text != "" {
