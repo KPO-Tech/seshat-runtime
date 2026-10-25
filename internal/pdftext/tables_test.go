@@ -386,3 +386,31 @@ func TestARuleUnderAHeadingOverProseIsNoTable(t *testing.T) {
 		t.Fatalf("got:\n%s", md)
 	}
 }
+
+// testdata/ruled_header_in_a_ruled_column.pdf is a fully ruled table with merged cells in both directions: a header over two
+// rows and a header over two columns, a cell merged over two rows, and a total row merged over four columns. In its third column
+// the header ("H1") is set to the left and the figures to the right, which leaves a white stretch in the middle of the column.
+func TestAWhiteStretchInsideARuledColumnIsNotAColumn(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "ruled_header_in_a_ruled_column.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := pdf.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, err := PageMarkdown(reader.Page(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "| Division | Product | 2023 / H1 | 2023 / H2 | Total |\n" +
+		"| --- | --- | --- | --- | --- |\n" +
+		"| Div A | Assets | 64 | 95 | 159 |\n" +
+		"|  | Net profit | 60 | 55 | 115 |\n" +
+		"| Div B | Receivables | 69 | 31 | 100 |\n" +
+		"|  | Inventory | 65 | 26 | 91 |\n" +
+		"| Grand total | Grand total | Grand total | Grand total | 987 |"
+	if got := strings.TrimSpace(md); got != want {
+		t.Errorf("the table lost its shape:\n%s\nwant:\n%s", got, want)
+	}
+}
