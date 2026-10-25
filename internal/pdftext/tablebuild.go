@@ -328,12 +328,44 @@ func textRows(glyphs []glyph) []textRow {
 	var rows []textRow
 	for _, gr := range groups {
 		line := gr.glyph
-		// Glyphs of one drawn string share the string's exact x and keep their drawing order; the positions
-		// inside a string are estimates and must not be used to order strings against each other.
-		sort.SliceStable(line, func(a, b int) bool { return line[a].X < line[b].X })
+		orderByString(line)
 		rows = append(rows, textRow{y: gr.y, size: gr.size, chunks: chunksOf(line)})
 	}
 	return rows
+}
+
+// stringDrift is how far to the left, as a share of the font size, the x of a glyph may drift from the one before it and still be
+// part of the same drawn string. The library gives one x for a whole string, but the invisible text that a scanner's OCR writes
+// over a page makes it drift a little at each glyph (0.02 point for a size of 6.8): sorted by that x, the letters of a word come
+// out in reverse order. A drift to the right keeps the order and is not touched.
+const stringDrift = 0.05
+
+// orderByString puts the glyphs of a line in reading order. Glyphs of one drawn string share the string's x (give or take the
+// drift above) and keep their drawing order; the positions inside a string are estimates and must not be used to order strings
+// against each other, so each glyph takes the x its string starts at.
+func orderByString(line []glyph) {
+	anchor := make([]float64, len(line))
+	for i, g := range line {
+		anchor[i] = g.X
+		if i == 0 {
+			continue
+		}
+		prev := line[i-1]
+		dx := g.X - prev.X
+		if g.W == 0 && math.Abs(g.Y-prev.Y) < 0.01 && (math.Abs(dx) < 0.01 || (dx < 0 && -dx < stringDrift*g.size())) {
+			anchor[i] = anchor[i-1]
+		}
+	}
+	order := make([]int, len(line))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return anchor[order[a]] < anchor[order[b]] })
+	sorted := make([]glyph, len(line))
+	for i, k := range order {
+		sorted[i] = line[k]
+	}
+	copy(line, sorted)
 }
 
 // textSize is the most common glyph size, the text's own size.
