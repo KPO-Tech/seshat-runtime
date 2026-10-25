@@ -130,6 +130,10 @@ type PageResult struct {
 	// HasBigPicture says the page holds a picture of a million pixels or more (or one whose size cannot be read): what a
 	// scanned page is made of. A page with such a picture and little text is a scan with a stamp, not a page of text.
 	HasBigPicture bool
+	// ImageCoverage is the share of the page, from 0 to 1, that its images cover. A scanned page is one image over the whole
+	// page, even when a scanner's OCR has given it a text layer; a page of text with a figure is a small share. It is only
+	// worked out for the pages that have an image, and is 0 for the others.
+	ImageCoverage float64
 	// Pictures are the pictures of the page the text does not say anything about, numbered from 1 on the page. A page read
 	// natively has one marker in Text for each of them (see ImageMarker); a page read by an engine has none, since the
 	// engine read the pictures.
@@ -260,6 +264,8 @@ func ReadPages(ctx context.Context, data []byte, pages []int, opts Options, docu
 		pagesWithImages, largeImages, bigPictures, pagePictures = allPages(pageCount), map[int]bool{}, map[int]bool{}, map[int]int{}
 	}
 
+	coverages := imageCoverages(reader, wanted, pagesWithImages)
+
 	result := Result{Pages: make([]PageResult, 0, len(wanted))}
 	// The budget travels with the context: a page sent to the engine is read again by the engine, which may come
 	// back here, and the time is one document's.
@@ -367,6 +373,7 @@ func ReadPages(ctx context.Context, data []byte, pages []int, opts Options, docu
 			Source:           source,
 			HasEmbeddedImage: imageDetectionOK && pagesWithImages[i],
 			HasBigPicture:    bigPictures[i], // empty when the detection failed (see above)
+			ImageCoverage:    coverages[i],
 			Pictures:         pictures,
 		})
 		if text != "" {
@@ -502,6 +509,22 @@ func pagesWithEmbeddedImages(ctx context.Context, data []byte, selectedPages []s
 		}
 	}
 	return pages, large, big, pictures, nil
+}
+
+// imageCoverages works out how much of each wanted page its images cover, for the pages that have an image. A page whose content
+// cannot be read has no coverage, which leaves it to the other rules.
+func imageCoverages(reader *pdf.Reader, wanted []int, withImages map[int]bool) map[int]float64 {
+	out := make(map[int]float64)
+	for _, i := range wanted {
+		if !withImages[i] {
+			continue
+		}
+		func() {
+			defer func() { _ = recover() }()
+			out[i] = reader.Page(i).ImageCoverage()
+		}()
+	}
+	return out
 }
 
 // largeEnough says whether a picture is big enough to hold a table. pdfcpu does not fill in the size of the pictures it
