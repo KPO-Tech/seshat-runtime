@@ -6,9 +6,13 @@ import "strings"
 type contentReader struct {
 	g      gstate
 	gstack []gstate
-	enc    TextEncoding
-	text   []Text
-	rect   []Rect
+	// enc decodes the text of the current font. The font is part of the graphics state that q saves and Q restores, so the
+	// decoder is saved and restored with it (encstack), or the text after a Q would be decoded by the font of the block
+	// the Q closed.
+	enc      TextEncoding
+	encstack []TextEncoding
+	text     []Text
+	rect     []Rect
 }
 
 // Content returns the page's content.
@@ -25,8 +29,8 @@ func (p Page) Content() Content {
 // interpret reads one content stream. res are the resources the stream draws its fonts and objects from: the page's, then a form's own.
 // The q and Q of a stream belong to it, so a form cannot restore a state it did not save.
 func (r *contentReader) interpret(strm, res Value, depth int) {
-	outer := r.gstack
-	r.gstack = nil
+	outer, outerEnc := r.gstack, r.encstack
+	r.gstack, r.encstack = nil, nil
 	Interpret(strm, func(stk *Stack, op string) {
 		n := stk.Len()
 		args := make([]Value, n)
@@ -35,7 +39,7 @@ func (r *contentReader) interpret(strm, res Value, depth int) {
 		}
 		r.operator(op, args, res, depth)
 	})
-	r.gstack = outer
+	r.gstack, r.encstack = outer, outerEnc
 }
 
 func (r *contentReader) operator(op string, args []Value, res Value, depth int) {
@@ -77,11 +81,14 @@ func (r *contentReader) graphicsOperator(op string, args []Value, res Value, dep
 
 	case "q": // save graphics state
 		r.gstack = append(r.gstack, r.g)
+		r.encstack = append(r.encstack, r.enc)
 
 	case "Q": // restore graphics state
 		n := len(r.gstack) - 1
 		r.g = r.gstack[n]
 		r.gstack = r.gstack[:n]
+		r.enc = r.encstack[n]
+		r.encstack = r.encstack[:n]
 
 	case "Do": // draw an object: a form is a content stream of its own, with its own matrix and resources
 		r.drawForm(args, res, depth)
