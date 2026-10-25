@@ -229,19 +229,20 @@ func (c *Converter) withTables(ctx context.Context, pdfData []byte, pageIdx int,
 	return out
 }
 
-// sortReadingOrder orders boxes top-to-bottom then left-to-right, using
-// each box's top edge and left edge (Pts[0] is top-left, clockwise - see
-// DetBox's own doc comment). Correct for single-column text; a multi-column
-// layout needs DLA-based column detection to interleave correctly, which
-// this package doesn't do yet.
+// sortReadingOrder orders boxes line by line from the top and from the left within a line (see readingOrder: the boxes are put into
+// lines by where they sit, not by the exact pixel of their top edge). Correct for single-column text; a multi-column layout needs
+// DLA-based column detection to interleave correctly, which this package doesn't do yet.
 func sortReadingOrder(boxes []nativedoc.DetBox) {
-	sort.Slice(boxes, func(i, j int) bool {
-		yi, yj := boxes[i].Pts[0][1], boxes[j].Pts[0][1]
-		if yi != yj {
-			return yi < yj
-		}
-		return boxes[i].Pts[0][0] < boxes[j].Pts[0][0]
-	})
+	spots := make([]spot, len(boxes))
+	for i, box := range boxes {
+		x0, y0, x1, y1 := boxBounds(box)
+		spots[i] = spot{float64(x0), float64(y0), float64(x1), float64(y1)}
+	}
+	sorted := make([]nativedoc.DetBox, len(boxes))
+	for k, i := range readingOrder(spots) {
+		sorted[k] = boxes[i]
+	}
+	copy(boxes, sorted)
 }
 
 // cropBox extracts the axis-aligned bounding rectangle of a detected box
