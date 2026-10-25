@@ -292,3 +292,55 @@ func TestCodeAndFormulasDoNotMakeAPageLookColumnar(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func rowOf(chunks ...[2]float64) textRow {
+	r := textRow{y: 100, size: 10}
+	for _, c := range chunks {
+		r.chunks = append(r.chunks, chunk{x0: c[0], x1: c[1]})
+	}
+	return r
+}
+
+func TestAGapInsideAColumnWithTextOnOneSideOnlyIsNotAColumn(t *testing.T) {
+	// A column box of the model from 200 to 300: a header on its left in the first row, figures on its right in the others.
+	rows := []textRow{rowOf([2]float64{205, 220}), rowOf([2]float64{280, 295}), rowOf([2]float64{282, 296}), rowOf([2]float64{279, 294}), rowOf([2]float64{281, 295})}
+	got := gapsOfSeveralColumns([]separator{{x: 250}}, [][2]float64{{200, 300}}, rows)
+	if len(got) != 0 {
+		t.Errorf("the white stretch in the middle of one column was kept as a separator: %v", got)
+	}
+}
+
+func TestAGapInsideAColumnWithTextOnBothSidesIsKept(t *testing.T) {
+	// The model merged two columns into one box: there is text on both sides of the gap in every row.
+	rows := []textRow{rowOf([2]float64{205, 225}, [2]float64{270, 295}), rowOf([2]float64{204, 226}, [2]float64{272, 296}), rowOf([2]float64{206, 224}, [2]float64{271, 294})}
+	got := gapsOfSeveralColumns([]separator{{x: 250}}, [][2]float64{{200, 300}}, rows)
+	if len(got) != 1 {
+		t.Errorf("a gap between two real columns was dropped: %v", got)
+	}
+}
+
+func TestAGapBetweenOverlappingBoxesIsKeptWhenOneOfThemHoldsTextOnBothSides(t *testing.T) {
+	// Two boxes that overlap: the first (100 to 190) has text on its left only, the second (110 to 800) has text on both sides of 180.
+	rows := []textRow{rowOf([2]float64{105, 140}, [2]float64{215, 700}), rowOf([2]float64{106, 141}, [2]float64{216, 690}), rowOf([2]float64{104, 139}, [2]float64{214, 710})}
+	got := gapsOfSeveralColumns([]separator{{x: 177}}, [][2]float64{{100, 190}, {110, 800}}, rows)
+	if len(got) != 1 {
+		t.Errorf("a gap that one box holds with text on both sides was dropped: %v", got)
+	}
+}
+
+func TestTheTextGapReplacesTheModelSeparatorBetweenTheCentresOfTwoBoxes(t *testing.T) {
+	// The boxes overlap, so the middle of the space between them (149.5) is far from the real boundary the text shows (177).
+	model := []separator{{x: 149.5, lo: 145, hi: 471}}
+	got := unionSeparators([]separator{{x: 177}}, model)
+	if len(got) != 1 || got[0].x != 177 {
+		t.Errorf("separators = %v, want only the gap at 177", got)
+	}
+}
+
+func TestAModelSeparatorWithoutAGapBetweenItsBoxesIsKept(t *testing.T) {
+	model := []separator{{x: 300, lo: 200, hi: 400}}
+	got := unionSeparators([]separator{{x: 500}}, model)
+	if len(got) != 2 {
+		t.Errorf("separators = %v, want the gap at 500 and the model's at 300", got)
+	}
+}

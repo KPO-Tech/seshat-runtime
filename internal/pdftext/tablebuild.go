@@ -516,6 +516,9 @@ type separator struct {
 	x     float64
 	rule  *vline // the ruling, for a grid; nil for a gap
 	width float64
+	// lo and hi, for a separator that a model gave between two column boxes, are the centres of those two boxes: the boundary
+	// is somewhere between them, and a gap of the text found there is the same boundary placed better.
+	lo, hi float64
 }
 
 func gridSeparators(reg tableRegion) []separator {

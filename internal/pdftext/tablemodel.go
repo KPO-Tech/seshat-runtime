@@ -286,12 +286,12 @@ func buildModelTable(m modelTable, rows []textRow, glyphs []glyph) (mdtable.Tabl
 	for k := 0; k+1 < len(m.columns); k++ {
 		left, right := m.columns[k], m.columns[k+1]
 		// The boxes overlap a little or leave a gap: the line between the columns goes in the middle of it.
-		seps = append(seps, separator{x: (left[1] + right[0]) / 2})
+		seps = append(seps, separator{x: (left[1] + right[0]) / 2, lo: (left[0] + left[1]) / 2, hi: (right[0] + right[1]) / 2})
 	}
 	// The gaps in the text are what separates columns on the page; the model's boxes say it too, less exactly. Both
 	// count: a column the model merged with its neighbour is found again by the gap, and a gap inside a cell is not
 	// taken for a column when the model has no column there.
-	seps = unionSeparators(gapSeparators(rows, reg), dedupeSeparators(seps))
+	seps = unionSeparators(gapsOfSeveralColumns(gapSeparators(rows, reg), m.columns, rows), dedupeSeparators(seps))
 	if len(seps) < 1 {
 		return mdtable.Table{}, false
 	}
@@ -360,14 +360,59 @@ func buildModelTable(m modelTable, rows []textRow, glyphs []glyph) (mdtable.Tabl
 	return withTitleRow(t, cols), true
 }
 
-// unionSeparators puts the gaps of the text and the model's separators together: where both name a column boundary
-// within a few points of each other, the text's is kept.
+// gapMinShare is the share of the rows that must have text on each side of a gap inside a column box of the model for the gap to
+// be a column of its own: a header set to the left over figures set to the right leaves a white stretch with text on one side
+// in the header row only.
+const gapMinShare = 0.3
+
+// gapsOfSeveralColumns drops the gaps of the text that lie inside a column the model drew and have text on one side only. A
+// column the model merged with its neighbour has text on both sides of the gap; a column with a header on its left and figures
+// on its right has the stretch between them white in every row but the header. The boxes may overlap, so a gap goes only when
+// every box that holds it agrees.
+func gapsOfSeveralColumns(gaps []separator, columns [][2]float64, rows []textRow) []separator {
+	var out []separator
+	for _, g := range gaps {
+		holds, oneSided := 0, 0
+		for _, c := range columns {
+			if g.x <= c[0] || g.x >= c[1] {
+				continue
+			}
+			holds++
+			left, right := 0, 0
+			for _, r := range rows {
+				hasLeft, hasRight := false, false
+				for _, ch := range r.chunks {
+					mid := (ch.x0 + ch.x1) / 2
+					hasLeft = hasLeft || (mid >= c[0] && mid < g.x)
+					hasRight = hasRight || (mid >= g.x && mid <= c[1])
+				}
+				if hasLeft {
+					left++
+				}
+				if hasRight {
+					right++
+				}
+			}
+			if float64(min(left, right)) < gapMinShare*float64(len(rows)) {
+				oneSided++
+			}
+		}
+		if holds == 0 || oneSided < holds {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// unionSeparators puts the gaps of the text and the model's separators together: where both name a column boundary, the
+// text's is kept, as it is placed by the words and the model's only by two boxes that may overlap. A gap is the same boundary
+// when it is within a few points of the model's, or between the centres of the two column boxes that the model's lies between.
 func unionSeparators(gaps, model []separator) []separator {
 	out := append([]separator(nil), gaps...)
 	for _, m := range model {
 		near := false
 		for _, g := range gaps {
-			if math.Abs(g.x-m.x) < 12 {
+			if math.Abs(g.x-m.x) < 12 || (m.hi > m.lo && g.x > m.lo && g.x < m.hi) {
 				near = true
 			}
 		}
