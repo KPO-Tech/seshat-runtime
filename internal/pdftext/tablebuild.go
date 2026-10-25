@@ -214,7 +214,7 @@ func buildTable(reg tableRegion, glyphs []glyph, pageWidth float64) (mdtable.Tab
 	seps := gapSeparators(body, reg)
 	if reg.grid {
 		rules := gridSeparators(reg)
-		seps = mergeSeparators(rules, withoutRuledGaps(seps, rules))
+		seps = mergeSeparators(rules, withoutRuledGaps(withoutGapsInRuledColumns(seps, reg), rules))
 	}
 	if len(seps) < 1 {
 		return mdtable.Table{}, false
@@ -576,6 +576,37 @@ func gapSeparators(rows []textRow, reg tableRegion) []separator {
 				out = append(out, separator{x: (gapStart + e.x) / 2, width: e.x - gapStart})
 			}
 			gapStart = math.NaN()
+		}
+	}
+	return out
+}
+
+// ruledColumnMinShare is the share of a table's height that a vertical ruling must span to be taken as a divider of its columns.
+const ruledColumnMinShare = 0.6
+
+// withoutGapsInRuledColumns drops the white gaps that lie inside one column the rulings make. Where two consecutive vertical
+// rulings run down most of the table, what is between them is one column, whatever its text leaves blank: a header set to the
+// left over numbers set to the right leaves a white stretch in the middle of the column, and taking it for a column of its own
+// shifts the cells under it.
+func withoutGapsInRuledColumns(gaps []separator, reg tableRegion) []separator {
+	height := math.Abs(reg.y1 - reg.y0)
+	var xs []float64
+	for _, v := range reg.vertical {
+		if math.Abs(v.y1-v.y0) >= ruledColumnMinShare*height {
+			xs = append(xs, v.x)
+		}
+	}
+	sort.Float64s(xs)
+	var out []separator
+	for _, g := range gaps {
+		inside := false
+		for i := 1; i < len(xs); i++ {
+			if g.x > xs[i-1] && g.x < xs[i] {
+				inside = true
+			}
+		}
+		if !inside {
+			out = append(out, g)
 		}
 	}
 	return out
