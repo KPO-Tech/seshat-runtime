@@ -438,7 +438,7 @@ func TestOnlyAPictureBigEnoughForATableIsLarge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pages, large, _, err := pagesWithEmbeddedImages(context.Background(), data, nil)
+	pages, large, _, _, err := pagesWithEmbeddedImages(context.Background(), data, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,6 +450,35 @@ func TestOnlyAPictureBigEnoughForATableIsLarge(t *testing.T) {
 	}
 	if !largeEnough(model.Image{Width: 800, Height: 400}) {
 		t.Error("a screenshot is large")
+	}
+}
+
+func TestOnlyAMillionPixelPictureIsBig(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "pdftext", "testdata", "table_image.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageSets, err := api.ExtractImagesRaw(context.Background(), bytes.NewReader(data), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pixels int
+	for _, set := range imageSets {
+		for _, img := range set {
+			if w, h, known := pictureSize(img); known && w*h > pixels {
+				pixels = w * h
+			}
+		}
+	}
+	_, _, big, _, err := pagesWithEmbeddedImages(context.Background(), data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := pixels >= bigPictureMinPixels; big[1] != want {
+		t.Errorf("a picture of %d pixels: big=%v, want %v", pixels, big[1], want)
+	}
+	if pixels >= bigPictureMinPixels {
+		t.Skipf("the pasted table is %d pixels, so only the big side is covered here", pixels)
 	}
 }
 
