@@ -101,7 +101,7 @@ func TestAPageWithNoTextIsStillAFailureWithoutAnEngine(t *testing.T) {
 func TestAPictureOnEveryPageIsALogoNotAFigure(t *testing.T) {
 	t.Parallel()
 	data := withPicture(t, readTestdata(t, "three_pages.pdf"), nil, 300)
-	pages, _, pictures, err := pagesWithEmbeddedImages(context.Background(), data, nil)
+	pages, _, _, pictures, err := pagesWithEmbeddedImages(context.Background(), data, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

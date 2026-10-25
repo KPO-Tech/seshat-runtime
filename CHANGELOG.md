@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The native reader now reads a scan that carries a stamp or a few typed words.** A PDF page with a big picture (a million pixels or more) and under 400 characters of text layer was taken for a page of text, so the form filled in on the scan was left as `[Image 1 on page 1]`. Such a page is now read by the OCR, and the lines of the text layer that the OCR did not give are kept. On 57 documents of the ExtractBench short split that were poorly read, the expected values found in the text go from 35.2 % to 56.9 % (1 792 to 2 896 of 5 092; the W-14 forms from 4 to 46 values of 62, one cbp-7501 from 93 to 799 of 799). On 89 documents that were already read well, the same converter gives 26 222 values before and 26 223 after.
+
 ## [1.11.16] - 2026-10-24
 
 ### Added
