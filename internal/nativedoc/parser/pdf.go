@@ -56,11 +56,13 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 	// a page the reader cannot read: that is left to the OCR below.
 	read, _, readErr := pdfsmart.ReadPages(ctx, data, nil, pdfsmart.Options{}, finderOnly{c}, pdfsmart.VisionFallback{})
 	native := map[int]string{}
+	bigPicture := map[int]bool{}
 	if readErr == nil {
 		for _, p := range read.Pages {
 			if p.Source == pdfsmart.PageSourceNative && strings.TrimSpace(p.Text) != "" {
 				native[p.Page-1] = strings.TrimSpace(p.Text)
 			}
+			bigPicture[p.Page-1] = p.HasBigPicture
 		}
 	}
 
@@ -70,8 +72,10 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 			return nil, err
 		}
 		text, textErr := doc.ExtractText(i)
-		if textErr == nil && len(strings.TrimSpace(text)) >= c.minCharsPerPage() {
-			// A real text layer, by the plain text's own measure (a page with a few words over a picture is not one).
+		chars := len(strings.TrimSpace(text))
+		// A real text layer, by the plain text's own measure (a page with a few words over a picture is not one), and not
+		// a scan that carries a stamp or a header: its content is in the picture, which the text layer does not read.
+		if textErr == nil && chars >= c.minCharsPerPage() && !isHybridPage(chars, bigPicture[i]) {
 			if md, ok := native[i]; ok {
 				text = md
 			}
@@ -81,6 +85,14 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 		ocrText, ocrErr := c.ocrPDFPage(ctx, data, i)
 		if ocrErr != nil {
 			return nil, fmt.Errorf("nativedoc/parser: page %d of %s has no usable native text and OCR failed: %w", i, filename, ocrErr)
+		}
+		if textErr == nil && chars > 0 {
+			// What the text layer says is exact: keep the lines the OCR did not give.
+			layer := text
+			if md, ok := native[i]; ok {
+				layer = md
+			}
+			ocrText = withNativeLines(ocrText, layer)
 		}
 		pages = append(pages, ocrText)
 	}

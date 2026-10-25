@@ -127,6 +127,9 @@ type PageResult struct {
 	Text             string
 	Source           PageSource
 	HasEmbeddedImage bool
+	// HasBigPicture says the page holds a picture of a million pixels or more (or one whose size cannot be read): what a
+	// scanned page is made of. A page with such a picture and little text is a scan with a stamp, not a page of text.
+	HasBigPicture bool
 	// Pictures are the pictures of the page the text does not say anything about, numbered from 1 on the page. A page read
 	// natively has one marker in Text for each of them (see ImageMarker); a page read by an engine has none, since the
 	// engine read the pictures.
@@ -248,13 +251,13 @@ func ReadPages(ctx context.Context, data []byte, pages []int, opts Options, docu
 			selection = append(selection, strconv.Itoa(n))
 		}
 	}
-	pagesWithImages, largeImages, pagePictures, err := pagesWithEmbeddedImages(ctx, data, selection)
+	pagesWithImages, largeImages, bigPictures, pagePictures, err := pagesWithEmbeddedImages(ctx, data, selection)
 	imageDetectionOK := err == nil
 	if err != nil {
 		// Can't tell which pages have images - conservatively treat every
 		// page as needing docling rather than silently extracting
 		// natively past an image detection failed to find.
-		pagesWithImages, largeImages, pagePictures = allPages(pageCount), map[int]bool{}, map[int]int{}
+		pagesWithImages, largeImages, bigPictures, pagePictures = allPages(pageCount), map[int]bool{}, map[int]bool{}, map[int]int{}
 	}
 
 	result := Result{Pages: make([]PageResult, 0, len(wanted))}
@@ -363,6 +366,7 @@ func ReadPages(ctx context.Context, data []byte, pages []int, opts Options, docu
 			Text:             text,
 			Source:           source,
 			HasEmbeddedImage: imageDetectionOK && pagesWithImages[i],
+			HasBigPicture:    imageDetectionOK && bigPictures[i],
 			Pictures:         pictures,
 		})
 		if text != "" {
@@ -459,12 +463,12 @@ func allPages(n int) map[int]bool {
 // pdfcpu's own resource inspection - a deterministic read of the file's
 // structure, not a heuristic or an ML classification. large says which of them hold one big enough to be a table, and
 // pictures counts, for each page, the pictures worth a marker in its text (see withImageMarkers).
-func pagesWithEmbeddedImages(ctx context.Context, data []byte, selectedPages []string) (pages, large map[int]bool, pictures map[int]int, err error) {
+func pagesWithEmbeddedImages(ctx context.Context, data []byte, selectedPages []string) (pages, large, big map[int]bool, pictures map[int]int, err error) {
 	imageSets, err := api.ExtractImagesRaw(ctx, bytes.NewReader(data), selectedPages, nil)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
-	pages, large, pictures = make(map[int]bool), make(map[int]bool), make(map[int]int)
+	pages, large, big, pictures = make(map[int]bool), make(map[int]bool), make(map[int]bool), make(map[int]int)
 	objects := make(map[int]map[int]int) // object number -> page -> how many times the page uses it
 	for _, set := range imageSets {
 		for _, img := range set {
@@ -475,6 +479,9 @@ func pagesWithEmbeddedImages(ctx context.Context, data []byte, selectedPages []s
 			pages[img.PageNr] = true
 			if !known || (width >= tableImageMinWidth && height >= tableImageMinHeight) {
 				large[img.PageNr] = true
+			}
+			if !known || width*height >= bigPictureMinPixels {
+				big[img.PageNr] = true
 			}
 			if known && (width < markerImageMinSide || height < markerImageMinSide) {
 				continue
@@ -494,7 +501,7 @@ func pagesWithEmbeddedImages(ctx context.Context, data []byte, selectedPages []s
 			pictures[page] += n
 		}
 	}
-	return pages, large, pictures, nil
+	return pages, large, big, pictures, nil
 }
 
 // largeEnough says whether a picture is big enough to hold a table. pdfcpu does not fill in the size of the pictures it
@@ -527,6 +534,9 @@ const (
 	tableImageMinWidth  = 240
 	tableImageMinHeight = 80
 )
+
+// bigPictureMinPixels is the size, in pixels, from which a picture can be a whole scanned page rather than a figure in one.
+const bigPictureMinPixels = 1_000_000
 
 // extractSinglePage produces a standalone one-page PDF containing just
 // page n, so documentReader only has to process that one page instead of
