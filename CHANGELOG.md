@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A PDF whose trailer declares a `/Size` smaller than its table is no longer read as having no pages.** The reader cut the table at `/Size`, which dropped the catalog when it was numbered past it, and the document failed with "pdf has no pages". Entries in use past `/Size` are now kept. Four valid PDFs of the ExtractBench short split (7 to 9 pages each, `/Size 384` for a table of 1 338 objects) were unreadable: 0 of 525 expected values found in their text, 406 after the fix.
+
 ## [1.11.16] - 2026-10-24
 
 ### Added
