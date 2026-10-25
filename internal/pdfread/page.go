@@ -327,43 +327,25 @@ Parse:
 		for n := 1; n <= 4 && n <= len(raw); n++ { // number of digits in character replacement (1-4 possible)
 			for _, space := range m.space[n-1] { // find matching codespace Ranges for number of digits
 				if space.low <= raw[:n] && raw[:n] <= space.high { // see if value is in range
-					text := raw[:n]
+					code := raw[:n]
 					raw = raw[n:]
-					for _, bfchar := range m.bfchar { // check for matching bfchar
-						if len(bfchar.orig) == n && bfchar.orig == text {
-							r = append(r, []rune(utf16Decode(bfchar.repl))...)
-							continue Parse
-						}
+					if mapped, ok := m.lookup(code); ok {
+						r = append(r, mapped...)
+					} else {
+						r = append(r, noRune)
 					}
-					for _, bfrange := range m.bfrange { // check for matching bfrange
-						if len(bfrange.lo) == n && bfrange.lo <= text && text <= bfrange.hi {
-							if bfrange.dst.Kind() == String {
-								s := bfrange.dst.RawString()
-								if bfrange.lo != text { // value isn't at the beginning of the range so scale result
-									b := []byte(s)
-									b[len(b)-1] += text[len(text)-1] - bfrange.lo[len(bfrange.lo)-1] // increment last byte by difference
-									s = string(b)
-								}
-								r = append(r, []rune(utf16Decode(s))...)
-								continue Parse
-							}
-							if bfrange.dst.Kind() == Array {
-								n := text[len(text)-1] - bfrange.lo[len(bfrange.lo)-1]
-								v := bfrange.dst.Index(int(n))
-								if v.Kind() == String {
-									s := v.RawString()
-									r = append(r, []rune(utf16Decode(s))...)
-									continue Parse
-								}
-							} else {
-							}
-							r = append(r, noRune)
-							continue Parse
-						}
-					}
-					r = append(r, noRune)
 					continue Parse
 				}
+			}
+		}
+		// The code is in no codespace range. Producers of simple fonts often declare a range narrower than the codes they
+		// map (a codespace of <51><7a> for a table that maps <20>, <31> and <42>), and the map is what the file says the code
+		// means: use it, as readers that ignore the codespace do, rather than lose the character.
+		for n := 1; n <= 4 && n <= len(raw); n++ {
+			if mapped, ok := m.lookup(raw[:n]); ok {
+				r = append(r, mapped...)
+				raw = raw[n:]
+				continue Parse
 			}
 		}
 		if DebugOn {
@@ -373,6 +355,37 @@ Parse:
 		raw = raw[1:]
 	}
 	return string(r)
+}
+
+// lookup maps a code through the bfchar and bfrange entries of the cmap, and says whether one of them holds the code.
+func (m *cmap) lookup(code string) ([]rune, bool) {
+	n := len(code)
+	for _, bfchar := range m.bfchar { // check for matching bfchar
+		if len(bfchar.orig) == n && bfchar.orig == code {
+			return []rune(utf16Decode(bfchar.repl)), true
+		}
+	}
+	for _, bfrange := range m.bfrange { // check for matching bfrange
+		if len(bfrange.lo) == n && bfrange.lo <= code && code <= bfrange.hi {
+			if bfrange.dst.Kind() == String {
+				s := bfrange.dst.RawString()
+				if bfrange.lo != code { // value isn't at the beginning of the range so scale result
+					b := []byte(s)
+					b[len(b)-1] += code[len(code)-1] - bfrange.lo[len(bfrange.lo)-1] // increment last byte by difference
+					s = string(b)
+				}
+				return []rune(utf16Decode(s)), true
+			}
+			if bfrange.dst.Kind() == Array {
+				v := bfrange.dst.Index(int(code[len(code)-1] - bfrange.lo[len(bfrange.lo)-1]))
+				if v.Kind() == String {
+					return []rune(utf16Decode(v.RawString())), true
+				}
+			}
+			return []rune{noRune}, true
+		}
+	}
+	return nil, false
 }
 
 func readCmap(toUnicode Value) *cmap {
