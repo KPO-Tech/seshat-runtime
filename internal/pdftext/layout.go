@@ -497,7 +497,44 @@ func share(l *line, pick func(glyph) bool) float64 {
 	return float64(hit) / float64(total)
 }
 
-func isMonoLine(l *line) bool { return share(l, func(g glyph) bool { return g.mono }) >= 0.7 }
+// maxListingSizeSpread is how much the largest glyph of a listing may exceed the smallest, as a ratio. A listing is set in
+// one size; text a scanner's OCR wrote in a monospace font gives each word its own size to fit the word's box, and putting
+// those glyphs on one grid of columns makes letters of different widths land in the same column and overwrite each other.
+const maxListingSizeSpread = 1.25
+
+// monoSizesVary says whether the monospace glyphs of a page come in many sizes: then the page is not a listing but text a
+// scanner's OCR wrote in a monospace font, a size for each word. The sizes at the 10th and the 90th percentile are compared,
+// so that a superscript or a stray big glyph does not decide.
+func monoSizesVary(lines []*line) bool {
+	var sizes []float64
+	for _, l := range lines {
+		for _, g := range l.glyphs {
+			if g.mono && !g.isSpace() && !g.isMark() {
+				sizes = append(sizes, g.size())
+			}
+		}
+	}
+	if len(sizes) < 20 {
+		return false
+	}
+	sort.Float64s(sizes)
+	return sizes[len(sizes)*9/10] > sizes[len(sizes)/10]*maxListingSizeSpread
+}
+
+// isMonoLine says whether a line is a line of a listing: set in a monospace font, in one size.
+func isMonoLine(l *line) bool {
+	if share(l, func(g glyph) bool { return g.mono }) < 0.7 {
+		return false
+	}
+	small, large := math.Inf(1), 0.0
+	for _, g := range l.glyphs {
+		if g.isSpace() || g.isMark() {
+			continue
+		}
+		small, large = math.Min(small, g.size()), math.Max(large, g.size())
+	}
+	return large <= small*maxListingSizeSpread
+}
 
 func hasMath(l *line) bool {
 	for _, g := range l.glyphs {
@@ -510,10 +547,11 @@ func hasMath(l *line) bool {
 
 // classify decides what each line is.
 func classify(lines []*line, body float64, cols columns) {
+	ocrMono := monoSizesVary(lines)
 	for _, l := range lines {
 		l.text = plainLine(l)
 		switch {
-		case isMonoLine(l):
+		case isMonoLine(l) && !ocrMono:
 			l.kind = kindCode
 		case l.size >= body*headingRatio && isHeadingText(l.text) && !hasMath(l):
 			l.kind = kindHeading
