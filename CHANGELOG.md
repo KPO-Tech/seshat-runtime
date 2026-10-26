@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-26
+
 ### Added
 
 - **`pkg/collectionplan` proposes the collections of an archive without reading it.** From the list of files (`ScanDir` lists a folder, any scanner can fill `Entry`), `Make` turns each top-level folder into a collection, gathers the folders of a single file, splits a very big folder along its subfolders, and lists with a reason what it leaves out (hidden, temporary, empty, links, formats the reader does not handle, unreadable) and the duplicates found by content hash. The same files in any order give the same plan. On a bench of 659 files of 64 types with a folder tree right half of the time, it leaves 52 % of the files to fix against 51 % for the bare folders, with a plan 15 % shorter. It is a building block for a future automatic creation of collections; nothing uses it yet.
