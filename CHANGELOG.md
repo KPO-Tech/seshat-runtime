@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`pkg/collectionplan` proposes the collections of an archive without reading it.** From the list of files (`ScanDir` lists a folder, any scanner can fill `Entry`), `Make` turns each top-level folder into a collection, gathers the folders of a single file, splits a very big folder along its subfolders, and lists with a reason what it leaves out (hidden, temporary, empty, links, formats the reader does not handle, unreadable) and the duplicates found by content hash. The same files in any order give the same plan. On a bench of 659 files of 64 types with a folder tree right half of the time, it leaves 52 % of the files to fix against 51 % for the bare folders, with a plan 15 % shorter. It is a building block for a future automatic creation of collections; nothing uses it yet.
+
 ### Fixed
 
 - **The OCR reads the boxes of a page line by line, not by the exact pixel of their top edge.** Boxes were ordered by their top edge, so two pieces of one line whose boxes differ by a pixel in height were read in the wrong order (`Harbour Water Utilities LLC` before `Pine`), and a name was no longer found as a whole. The boxes are now put into lines by where they sit (the centre of one within half a height of the first of its line) and ordered from the left inside a line. On the 252 short documents of the ExtractBench split, the expected values found go from 95.20 % to 95.64 % (37 419 to 37 589 of 39 304): 53 documents improve and 6 lose one or two values.
