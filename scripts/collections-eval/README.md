@@ -31,6 +31,24 @@ The content baseline needs an embedding server: `llama-server -m <embedding .ggu
 NMI and ARI measure agreement with the true types; NMI forgives a type split in several collections, ARI does not. **to fix** is the number
 of files a person would have to move or merge to reach the true grouping: it is the one that says how much work a plan leaves.
 
+## The quick planner (`pkg/collectionplan`)
+
+```bash
+go run scripts/collections-eval/plan_folder.go -hash <archive> > plan.json
+python evaluate.py --archive <dir> --baseline tree --plan plan.json
+```
+
+The planner reads no content (`-hash` reads each file once, on this computer, to find duplicates). Graded on the same 659 files (2026-10-26):
+
+| Folders right | Top-level folders | Planner (default) |
+|---|---|---|
+| 20 % | 55 collections, 504 to fix (76 %) | 38 collections, 520 (79 %) |
+| 50 % | 67 collections, 333 to fix (51 %) | 57 collections, 340 (52 %) |
+| 80 % | 67 collections, 142 to fix (22 %) | 64 collections, 146 (22 %) |
+
+It is within 0 to 3 points of the bare folders and gives a plan 3 to 30 % shorter. The default of `MinFiles` comes from this bench: gathering the folders
+of up to 4 files (the first value tried) left 58 % to fix at 50 %, against 52 % when only the folders of one file are gathered.
+
 ## First results (2026-10-26)
 
 659 files, 64 types (252 forms of 39 types, 407 contracts of 25 types). The content baseline embeds the first 1 600 characters with
