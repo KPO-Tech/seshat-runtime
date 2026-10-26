@@ -56,11 +56,15 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 	// a page the reader cannot read: that is left to the OCR below.
 	read, _, readErr := pdfsmart.ReadPages(ctx, data, nil, pdfsmart.Options{}, finderOnly{c}, pdfsmart.VisionFallback{})
 	native := map[int]string{}
+	bigPicture := map[int]bool{}
+	coverage := map[int]float64{}
 	if readErr == nil {
 		for _, p := range read.Pages {
 			if p.Source == pdfsmart.PageSourceNative && strings.TrimSpace(p.Text) != "" {
 				native[p.Page-1] = strings.TrimSpace(p.Text)
 			}
+			bigPicture[p.Page-1] = p.HasBigPicture
+			coverage[p.Page-1] = p.ImageCoverage
 		}
 	}
 
@@ -70,8 +74,10 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 			return nil, err
 		}
 		text, textErr := doc.ExtractText(i)
-		if textErr == nil && len(strings.TrimSpace(text)) >= c.minCharsPerPage() {
-			// A real text layer, by the plain text's own measure (a page with a few words over a picture is not one).
+		chars := len(strings.TrimSpace(text))
+		// A real text layer, by the plain text's own measure (a page with a few words over a picture is not one), and not
+		// a scan that carries a stamp or a header: its content is in the picture, which the text layer does not read.
+		if textErr == nil && chars >= c.minCharsPerPage() && !isScannedPage(chars, bigPicture[i], coverage[i]) {
 			if md, ok := native[i]; ok {
 				text = md
 			}
@@ -81,6 +87,14 @@ func (c *Converter) convertPDF(ctx context.Context, data []byte, filename string
 		ocrText, ocrErr := c.ocrPDFPage(ctx, data, i)
 		if ocrErr != nil {
 			return nil, fmt.Errorf("nativedoc/parser: page %d of %s has no usable native text and OCR failed: %w", i, filename, ocrErr)
+		}
+		if textErr == nil && chars > 0 {
+			// What the text layer says is exact: keep the lines the OCR did not give.
+			layer := text
+			if md, ok := native[i]; ok {
+				layer = md
+			}
+			ocrText = withNativeLines(ocrText, layer)
 		}
 		pages = append(pages, ocrText)
 	}
@@ -215,19 +229,20 @@ func (c *Converter) withTables(ctx context.Context, pdfData []byte, pageIdx int,
 	return out
 }
 
-// sortReadingOrder orders boxes top-to-bottom then left-to-right, using
-// each box's top edge and left edge (Pts[0] is top-left, clockwise - see
-// DetBox's own doc comment). Correct for single-column text; a multi-column
-// layout needs DLA-based column detection to interleave correctly, which
-// this package doesn't do yet.
+// sortReadingOrder orders boxes line by line from the top and from the left within a line (see readingOrder: the boxes are put into
+// lines by where they sit, not by the exact pixel of their top edge). Correct for single-column text; a multi-column layout needs
+// DLA-based column detection to interleave correctly, which this package doesn't do yet.
 func sortReadingOrder(boxes []nativedoc.DetBox) {
-	sort.Slice(boxes, func(i, j int) bool {
-		yi, yj := boxes[i].Pts[0][1], boxes[j].Pts[0][1]
-		if yi != yj {
-			return yi < yj
-		}
-		return boxes[i].Pts[0][0] < boxes[j].Pts[0][0]
-	})
+	spots := make([]spot, len(boxes))
+	for i, box := range boxes {
+		x0, y0, x1, y1 := boxBounds(box)
+		spots[i] = spot{float64(x0), float64(y0), float64(x1), float64(y1)}
+	}
+	sorted := make([]nativedoc.DetBox, len(boxes))
+	for k, i := range readingOrder(spots) {
+		sorted[k] = boxes[i]
+	}
+	copy(boxes, sorted)
 }
 
 // cropBox extracts the axis-aligned bounding rectangle of a detected box

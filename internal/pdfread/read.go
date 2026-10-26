@@ -391,7 +391,16 @@ func readXrefTable(r *Reader, b *buffer) ([]xref, objptr, dict, error) {
 	}
 
 	if size < int64(len(table)) {
-		table = table[:size]
+		// Some producers write a /Size smaller than their table. Entries past it are dropped when they are free, but one
+		// that is in use is an object of the file (often its catalog): cutting it off leaves a PDF with no pages.
+		keep := int(size)
+		for i := len(table) - 1; i >= keep; i-- {
+			if table[i].offset != 0 {
+				keep = i + 1
+				break
+			}
+		}
+		table = table[:keep]
 	}
 
 	return table, objptr{}, trailer, nil

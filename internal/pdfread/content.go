@@ -1,14 +1,22 @@
 package pdf
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
 
 // contentReader interprets the content stream of a page, and of the forms it draws, and collects the text and the rectangles.
 type contentReader struct {
 	g      gstate
 	gstack []gstate
-	enc    TextEncoding
-	text   []Text
-	rect   []Rect
+	// enc decodes the text of the current font. The font is part of the graphics state that q saves and Q restores, so the
+	// decoder is saved and restored with it (encstack), or the text after a Q would be decoded by the font of the block
+	// the Q closed.
+	enc      TextEncoding
+	encstack []TextEncoding
+	text     []Text
+	rect     []Rect
+	images   []Rect // where the images are drawn, in user space
 }
 
 // Content returns the page's content.
@@ -19,14 +27,42 @@ func (p Page) Content() Content {
 	}
 	r := &contentReader{enc: &nopEncoder{}, g: gstate{Th: 1, CTM: ident}}
 	r.interpret(p.V.Key("Contents"), p.Resources(), 0)
-	return Content{r.text, r.rect}
+	return Content{Text: r.text, Rect: r.rect, Images: r.images}
+}
+
+// ImageCoverage is the share of the page (its crop box, or its media box) that the images drawn on it cover, from 0 to 1: a scanned
+// page is one image over the whole page, a page of text with a figure is a small share. Overlapping images are counted once at most
+// (the share is capped at 1), and a page without a readable box has no coverage.
+func (p Page) ImageCoverage() float64 {
+	box := p.findInherited("CropBox")
+	if box.Kind() != Array || box.Len() != 4 {
+		box = p.findInherited("MediaBox")
+	}
+	if box.Kind() != Array || box.Len() != 4 {
+		return 0
+	}
+	x0, y0 := math.Min(box.Index(0).Float64(), box.Index(2).Float64()), math.Min(box.Index(1).Float64(), box.Index(3).Float64())
+	x1, y1 := math.Max(box.Index(0).Float64(), box.Index(2).Float64()), math.Max(box.Index(1).Float64(), box.Index(3).Float64())
+	area := (x1 - x0) * (y1 - y0)
+	if area <= 0 {
+		return 0
+	}
+	covered := 0.0
+	for _, im := range p.Content().Images {
+		w := math.Min(im.Max.X, x1) - math.Max(im.Min.X, x0)
+		h := math.Min(im.Max.Y, y1) - math.Max(im.Min.Y, y0)
+		if w > 0 && h > 0 {
+			covered += w * h
+		}
+	}
+	return math.Min(covered/area, 1)
 }
 
 // interpret reads one content stream. res are the resources the stream draws its fonts and objects from: the page's, then a form's own.
 // The q and Q of a stream belong to it, so a form cannot restore a state it did not save.
 func (r *contentReader) interpret(strm, res Value, depth int) {
-	outer := r.gstack
-	r.gstack = nil
+	outer, outerEnc := r.gstack, r.encstack
+	r.gstack, r.encstack = nil, nil
 	Interpret(strm, func(stk *Stack, op string) {
 		n := stk.Len()
 		args := make([]Value, n)
@@ -35,7 +71,7 @@ func (r *contentReader) interpret(strm, res Value, depth int) {
 		}
 		r.operator(op, args, res, depth)
 	})
-	r.gstack = outer
+	r.gstack, r.encstack = outer, outerEnc
 }
 
 func (r *contentReader) operator(op string, args []Value, res Value, depth int) {
@@ -77,15 +113,34 @@ func (r *contentReader) graphicsOperator(op string, args []Value, res Value, dep
 
 	case "q": // save graphics state
 		r.gstack = append(r.gstack, r.g)
+		r.encstack = append(r.encstack, r.enc)
 
 	case "Q": // restore graphics state
 		n := len(r.gstack) - 1
 		r.g = r.gstack[n]
 		r.gstack = r.gstack[:n]
+		r.enc = r.encstack[n]
+		r.encstack = r.encstack[:n]
 
 	case "Do": // draw an object: a form is a content stream of its own, with its own matrix and resources
 		r.drawForm(args, res, depth)
 	}
+}
+
+// drawImage records where an image is drawn: the unit square, carried by the current transformation matrix.
+func (r *contentReader) drawImage() {
+	m := r.g.CTM
+	var box Rect
+	for i, c := range [4][2]float64{{0, 0}, {1, 0}, {0, 1}, {1, 1}} {
+		x := c[0]*m[0][0] + c[1]*m[1][0] + m[2][0]
+		y := c[0]*m[0][1] + c[1]*m[1][1] + m[2][1]
+		if i == 0 {
+			box = Rect{Point{x, y}, Point{x, y}}
+			continue
+		}
+		box = Rect{Point{math.Min(box.Min.X, x), math.Min(box.Min.Y, y)}, Point{math.Max(box.Max.X, x), math.Max(box.Max.Y, y)}}
+	}
+	r.images = append(r.images, box)
 }
 
 // maxFormDepth bounds how deep forms may draw forms: a malformed file must not recurse for ever.
@@ -96,6 +151,10 @@ func (r *contentReader) drawForm(args []Value, res Value, depth int) {
 		return
 	}
 	form := res.Key("XObject").Key(args[0].Name())
+	if form.Key("Subtype").Name() == "Image" {
+		r.drawImage()
+		return
+	}
 	if form.Key("Subtype").Name() != "Form" {
 		return
 	}

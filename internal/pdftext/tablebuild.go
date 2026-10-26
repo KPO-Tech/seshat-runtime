@@ -214,7 +214,7 @@ func buildTable(reg tableRegion, glyphs []glyph, pageWidth float64) (mdtable.Tab
 	seps := gapSeparators(body, reg)
 	if reg.grid {
 		rules := gridSeparators(reg)
-		seps = mergeSeparators(rules, withoutRuledGaps(seps, rules))
+		seps = mergeSeparators(rules, withoutRuledGaps(withoutGapsInRuledColumns(seps, reg), rules))
 	}
 	if len(seps) < 1 {
 		return mdtable.Table{}, false
@@ -328,12 +328,44 @@ func textRows(glyphs []glyph) []textRow {
 	var rows []textRow
 	for _, gr := range groups {
 		line := gr.glyph
-		// Glyphs of one drawn string share the string's exact x and keep their drawing order; the positions
-		// inside a string are estimates and must not be used to order strings against each other.
-		sort.SliceStable(line, func(a, b int) bool { return line[a].X < line[b].X })
+		orderByString(line)
 		rows = append(rows, textRow{y: gr.y, size: gr.size, chunks: chunksOf(line)})
 	}
 	return rows
+}
+
+// stringDrift is how far to the left, as a share of the font size, the x of a glyph may drift from the one before it and still be
+// part of the same drawn string. The library gives one x for a whole string, but the invisible text that a scanner's OCR writes
+// over a page makes it drift a little at each glyph (0.02 point for a size of 6.8): sorted by that x, the letters of a word come
+// out in reverse order. A drift to the right keeps the order and is not touched.
+const stringDrift = 0.05
+
+// orderByString puts the glyphs of a line in reading order. Glyphs of one drawn string share the string's x (give or take the
+// drift above) and keep their drawing order; the positions inside a string are estimates and must not be used to order strings
+// against each other, so each glyph takes the x its string starts at.
+func orderByString(line []glyph) {
+	anchor := make([]float64, len(line))
+	for i, g := range line {
+		anchor[i] = g.X
+		if i == 0 {
+			continue
+		}
+		prev := line[i-1]
+		dx := g.X - prev.X
+		if g.W == 0 && math.Abs(g.Y-prev.Y) < 0.01 && (math.Abs(dx) < 0.01 || (dx < 0 && -dx < stringDrift*g.size())) {
+			anchor[i] = anchor[i-1]
+		}
+	}
+	order := make([]int, len(line))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return anchor[order[a]] < anchor[order[b]] })
+	sorted := make([]glyph, len(line))
+	for i, k := range order {
+		sorted[i] = line[k]
+	}
+	copy(line, sorted)
 }
 
 // textSize is the most common glyph size, the text's own size.
@@ -484,6 +516,9 @@ type separator struct {
 	x     float64
 	rule  *vline // the ruling, for a grid; nil for a gap
 	width float64
+	// lo and hi, for a separator that a model gave between two column boxes, are the centres of those two boxes: the boundary
+	// is somewhere between them, and a gap of the text found there is the same boundary placed better.
+	lo, hi float64
 }
 
 func gridSeparators(reg tableRegion) []separator {
@@ -544,6 +579,37 @@ func gapSeparators(rows []textRow, reg tableRegion) []separator {
 				out = append(out, separator{x: (gapStart + e.x) / 2, width: e.x - gapStart})
 			}
 			gapStart = math.NaN()
+		}
+	}
+	return out
+}
+
+// ruledColumnMinShare is the share of a table's height that a vertical ruling must span to be taken as a divider of its columns.
+const ruledColumnMinShare = 0.6
+
+// withoutGapsInRuledColumns drops the white gaps that lie inside one column the rulings make. Where two consecutive vertical
+// rulings run down most of the table, what is between them is one column, whatever its text leaves blank: a header set to the
+// left over numbers set to the right leaves a white stretch in the middle of the column, and taking it for a column of its own
+// shifts the cells under it.
+func withoutGapsInRuledColumns(gaps []separator, reg tableRegion) []separator {
+	height := math.Abs(reg.y1 - reg.y0)
+	var xs []float64
+	for _, v := range reg.vertical {
+		if math.Abs(v.y1-v.y0) >= ruledColumnMinShare*height {
+			xs = append(xs, v.x)
+		}
+	}
+	sort.Float64s(xs)
+	var out []separator
+	for _, g := range gaps {
+		inside := false
+		for i := 1; i < len(xs); i++ {
+			if g.x > xs[i-1] && g.x < xs[i] {
+				inside = true
+			}
+		}
+		if !inside {
+			out = append(out, g)
 		}
 	}
 	return out
