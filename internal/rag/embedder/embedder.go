@@ -115,13 +115,45 @@ func (e *Embedder) EmbedTexts(ctx context.Context, texts []string) ([][]float32,
 		if end > len(texts) {
 			end = len(texts)
 		}
-		vectors, err := e.embedBatch(ctx, texts[start:end])
+		vectors, err := e.embedSplittingOnLimit(ctx, texts[start:end])
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, vectors...)
 	}
 	return out, nil
+}
+
+// embedSplittingOnLimit sends a group of texts and, when the provider answers that it holds too many tokens, sends it again as two
+// halves, down to one text. The count of texts says little about the count of tokens: a table of figures and identifiers costs several
+// times more tokens per character than prose, so a group of ordinary size can be over the limit of the request, and no fixed size is
+// right for every document.
+func (e *Embedder) embedSplittingOnLimit(ctx context.Context, texts []string) ([][]float32, error) {
+	vectors, err := e.embedBatch(ctx, texts)
+	if err == nil || len(texts) < 2 || !overTokenLimit(err) {
+		return vectors, err
+	}
+	middle := len(texts) / 2
+	first, err := e.embedSplittingOnLimit(ctx, texts[:middle])
+	if err != nil {
+		return nil, err
+	}
+	second, err := e.embedSplittingOnLimit(ctx, texts[middle:])
+	if err != nil {
+		return nil, err
+	}
+	return append(first, second...), nil
+}
+
+// overTokenLimit reports whether a provider refused a request for holding too many tokens, in the words the hosted APIs use.
+func overTokenLimit(err error) bool {
+	message := strings.ToLower(err.Error())
+	for _, phrase := range []string{"too many tokens", "maximum context length", "token limit", "max_tokens_per_request", "batch size too large"} {
+		if strings.Contains(message, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func (e *Embedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
