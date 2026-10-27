@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.2] - 2026-10-27
+
 ### Fixed
 
 - **A document of dense tables is indexed even when the embedding provider refuses a request for its tokens.** The chunks were sent in groups of 64, but a table of figures and identifiers costs several times more tokens per character than prose, so a group of ordinary size could be over the limit of the request (`Too many tokens overall, split into more batches`) and the whole document failed, three times, for good. A group the provider refuses for its tokens is now sent again in two halves, down to one text, and the vectors keep the order of the texts; a single text that no request can hold is still an error. A 37-page investment fund report of the test corpus failed this way.
