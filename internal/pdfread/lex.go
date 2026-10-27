@@ -466,7 +466,9 @@ func (b *buffer) readArray() object {
 	var x array
 	for {
 		tok := b.readToken()
-		if tok == nil || tok == keyword("]") {
+		// The end of the data closes an array that was never closed: without this, a content stream that ends inside one (a truncated page,
+		// inline image bytes read as tokens) made this loop add end-of-data markers to the array forever, until the memory was gone.
+		if tok == nil || tok == io.EOF || tok == keyword("]") {
 			break
 		}
 		b.unreadToken(tok)

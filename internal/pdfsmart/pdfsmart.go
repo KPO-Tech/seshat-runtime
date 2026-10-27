@@ -470,8 +470,15 @@ func allPages(n int) map[int]bool {
 // pdfcpu's own resource inspection - a deterministic read of the file's
 // structure, not a heuristic or an ML classification. large says which of them hold one big enough to be a table, and
 // pictures counts, for each page, the pictures worth a marker in its text (see withImageMarkers).
+// imageInspectionBudget is how long pdfcpu may take to list the images of a document (a variable only so that a test can shorten it). Before it lists them it compares the images with
+// each other to find duplicates, and that work grows with the square of their number: a 9 MB slide deck took more than a minute of one
+// processor. The reader goes on without the list, as it does when the list cannot be made.
+var imageInspectionBudget = 10 * time.Second
+
 func pagesWithEmbeddedImages(ctx context.Context, data []byte, selectedPages []string) (pages, large, big map[int]bool, pictures map[int]int, err error) {
-	imageSets, err := api.ExtractImagesRaw(ctx, bytes.NewReader(data), selectedPages, nil)
+	inspect, cancel := context.WithTimeout(ctx, imageInspectionBudget)
+	defer cancel()
+	imageSets, err := api.ExtractImagesRaw(inspect, bytes.NewReader(data), selectedPages, nil)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
