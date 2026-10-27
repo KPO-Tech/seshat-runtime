@@ -9,6 +9,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-10-27
+
+### Fixed
+
+- **A PDF whose page ends inside an array no longer makes the reader loop until the memory is gone.** Reading the content of a page stopped adding to an array only at its closing bracket, so a stream that ends before it (a truncated page, or the bytes of an inline image read as tokens) added the end-of-data marker to the array for ever. The reader used all the memory it could get and the computer slowed down until the program was closed: one 15-page PDF of the test corpus did not finish in two minutes. The end of the data now closes the array; the same PDF is read in 1.5 seconds.
+- **Listing the images of a PDF no longer takes minutes on a slide deck full of pictures.** Before it lists them, the library that does it compares the images with each other to find duplicates, and that grows with the square of their number: a 9 MB investor deck took more than a minute of one processor. The listing now has 10 seconds; past that the document is read from the text of its pages, as it already was when the list could not be made. The same deck is read in 14 seconds.
+
 ## [1.12.0] - 2026-10-26
 
 ### Added
