@@ -167,3 +167,60 @@ func TestConfigIsConfigured(t *testing.T) {
 		}
 	}
 }
+
+// A provider that refuses a request holding too many tokens must not fail a document whose chunks are dense: the group is sent again
+// in halves until it fits, and the vectors come back in the order of the texts.
+func TestEmbedTextsSplitsAGroupTheProviderRefusesForItsTokens(t *testing.T) {
+	const limit = 10 // texts per request this provider accepts
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Input []string `json:"input"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		requests++
+		if len(req.Input) > limit {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"object":"error","message":"Too many tokens overall, split into more batches."}`))
+			return
+		}
+		data := make([]map[string]any, len(req.Input))
+		for i, text := range req.Input {
+			data[i] = map[string]any{"embedding": []float32{float32(len(text)), 0.2, 0.3}}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": data})
+	}))
+	defer srv.Close()
+
+	texts := make([]string, 40)
+	for i := range texts {
+		texts[i] = string(make([]byte, i+1))
+	}
+	vectors, err := New(&Config{BaseURL: srv.URL, Model: "m", Provider: ProviderOpenAI, BatchSize: 40}).EmbedTexts(context.Background(), texts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vectors) != len(texts) {
+		t.Fatalf("got %d vectors for %d texts", len(vectors), len(texts))
+	}
+	for i, v := range vectors {
+		if int(v[0]) != i+1 {
+			t.Fatalf("vector %d belongs to a text of %d characters: the order was lost", i, int(v[0]))
+		}
+	}
+	if requests < 4 {
+		t.Fatalf("a group of 40 over a limit of %d was sent in %d requests", limit, requests)
+	}
+}
+
+func TestEmbedTextsStopsWhenASingleTextIsOverTheLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"message":"Too many tokens overall"}`))
+	}))
+	defer srv.Close()
+	_, err := New(&Config{BaseURL: srv.URL, Model: "m", Provider: ProviderOpenAI}).EmbedTexts(context.Background(), []string{"a", "b", "c"})
+	if err == nil {
+		t.Fatal("a text that no request can hold must be an error")
+	}
+}
