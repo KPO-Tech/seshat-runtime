@@ -754,3 +754,42 @@ func TestDeleteFileChunksHasNoCeiling(t *testing.T) {
 		t.Fatal("expected the unrelated artifact's chunk to survive untouched")
 	}
 }
+
+// failingEmbedder stands for an embedding service that is busy (a 429) or down.
+type failingEmbedder struct{}
+
+func (failingEmbedder) EmbedTexts(_ context.Context, _ []string) ([][]float32, error) {
+	return nil, fmt.Errorf("embedding API returned 429: rate limit exceeded")
+}
+
+// A search must not fail as a whole because the query could not be embedded: the passages are text too.
+func TestServiceSearch_FallsBackToKeywordsWhenTheQueryCannotBeEmbedded(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+	storage.SetConfig(storage.Config{Provider: storage.ProviderLocal, LocalPath: tmpDir})
+	t.Cleanup(storage.ResetProvider)
+	artifacts, err := storage.DefaultArtifactStore()
+	if err != nil {
+		t.Fatalf("DefaultArtifactStore: %v", err)
+	}
+	store := vector.NewMemoryStore()
+	if _, err := NewService(artifacts, store, fakeEmbedder{}, nil).Ingest(ctx, IngestRequest{
+		CorpusID: "kb", Filename: "doc.txt", Text: "the quick brown fox\n\nan entirely unrelated paragraph",
+	}); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	resp, err := NewService(artifacts, store, failingEmbedder{}, nil).Search(ctx, SearchRequest{CorpusID: "kb", Query: "fox", TopK: 5, HybridWeight: 0.3})
+	if err != nil {
+		t.Fatalf("a failing embedder must not fail the search: %v", err)
+	}
+	if len(resp.Results) != 1 || !strings.Contains(resp.Results[0].Text, "fox") {
+		t.Fatalf("expected the keyword match for 'fox', got %+v", resp.Results)
+	}
+
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := NewService(artifacts, store, failingEmbedder{}, nil).Search(cancelled, SearchRequest{CorpusID: "kb", Query: "fox", TopK: 5}); err == nil {
+		t.Fatal("a search that was cancelled must say so, not return keyword results")
+	}
+}

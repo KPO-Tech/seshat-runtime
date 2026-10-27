@@ -417,13 +417,18 @@ func (s *Service) Search(ctx context.Context, request SearchRequest) (SearchResp
 	var queryVector []float32
 	if s.embedder != nil && request.HybridWeight < 1 {
 		embeddings, err := s.embedder.EmbedTexts(ctx, []string{request.Query})
-		if err != nil {
+		switch {
+		case err != nil && ctx.Err() != nil:
 			return SearchResponse{}, err
-		}
-		if len(embeddings) != 1 {
+		case err != nil:
+			// The embedding service is busy or down (a 429 on a free plan, a network fault): the passages are still indexed as text, so the
+			// search goes on by keywords instead of failing as a whole.
+			log.Printf("[rag] embedding the query failed, searching by keywords only: %v", err)
+		case len(embeddings) != 1:
 			return SearchResponse{}, fmt.Errorf("embedder returned %d vectors for query", len(embeddings))
+		default:
+			queryVector = embeddings[0]
 		}
-		queryVector = embeddings[0]
 	}
 	results, err := s.vectors.Search(ctx, vector.Query{
 		Namespace:    request.CorpusID,

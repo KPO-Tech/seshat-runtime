@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A search no longer fails when the query cannot be embedded.** When the embedding service answered `429 rate limit exceeded` (or was unreachable), the whole search ended in an error although every passage is also stored as text. The search now goes on by keywords and logs the cause; a search that was cancelled still reports it. Measured on 41 questions over a collection of 192 documents: the first run lost 20 of 33 questions to 429 answers.
+
 ## [1.12.2] - 2026-10-27
 
 ### Fixed
