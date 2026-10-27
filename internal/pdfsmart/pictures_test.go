@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
@@ -238,5 +239,22 @@ func TestAPageIsReadWhenItHasTextBesidesItsMarkers(t *testing.T) {
 		if got := (PageResult{Text: tc.text}).HasText(); got != tc.want {
 			t.Errorf("HasText(%q) = %v, want %v", tc.text, got, tc.want)
 		}
+	}
+}
+
+// Listing the images of a document is bounded: when pdfcpu takes longer than its budget the document is still read, from the text of its
+// pages, as it is when the list cannot be made. Not parallel: it changes the budget.
+func TestADocumentIsStillReadWhenListingItsImagesTakesTooLong(t *testing.T) {
+	data := withPicture(t, readTestdata(t, "text_layer.pdf"), []string{"1"}, 300)
+	previous := imageInspectionBudget
+	imageInspectionBudget = time.Nanosecond
+	defer func() { imageInspectionBudget = previous }()
+
+	result, ok, err := Convert(context.Background(), data, nil, VisionFallback{})
+	if err != nil || !ok {
+		t.Fatalf("ok=%v err=%v: the document should be read without the list of its images", ok, err)
+	}
+	if !strings.Contains(result.Markdown, "Sample Report") {
+		t.Errorf("the text of the page is missing:\n%s", result.Markdown)
 	}
 }
