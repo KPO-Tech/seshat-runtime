@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-10-27
+
 ### Fixed
 
 - **A PDF whose page ends inside an array no longer makes the reader loop until the memory is gone.** Reading the content of a page stopped adding to an array only at its closing bracket, so a stream that ends before it (a truncated page, or the bytes of an inline image read as tokens) added the end-of-data marker to the array for ever. The reader used all the memory it could get and the computer slowed down until the program was closed: one 15-page PDF of the test corpus did not finish in two minutes. The end of the data now closes the array; the same PDF is read in 1.5 seconds.
