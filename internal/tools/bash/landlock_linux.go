@@ -116,8 +116,8 @@ func applyLandlock(workspaceRoot string) error {
 	}
 
 	accessRO, accessRW := landlockAccess(abi)
-	rulesetAttr := unix.LandlockRulesetAttr{Access_fs: accessRW}
-	rulesetFD, err := landlockCreateRuleset(&rulesetAttr, unsafe.Sizeof(rulesetAttr.Access_fs), 0)
+	rulesetAttr := unix.LandlockRulesetAttr{Handled_access_fs: accessRW}
+	rulesetFD, err := landlockCreateRuleset(&rulesetAttr, unsafe.Sizeof(rulesetAttr.Handled_access_fs), 0)
 	if err != nil {
 		return err
 	}

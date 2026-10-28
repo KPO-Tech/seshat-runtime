@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.4] - 2026-10-29
+
+### Security
+
+- **`golang.org/x/net` is updated to 0.62.0, which fixes GO-2026-6866 and GO-2026-6860.** Both are reached through `html.Parse` and `html.Render`, which the reading of web pages and HTML documents calls. `golang.org/x/sys` (0.49.0), `golang.org/x/text` (0.43.0) and `golang.org/x/sync` (0.24.0) move with it, and the Landlock sandbox of the shell tool uses the new name of the field of its ruleset (`Handled_access_fs`), which keeps the same size and meaning.
+
 ## [1.12.3] - 2026-10-27
 
 ### Fixed
