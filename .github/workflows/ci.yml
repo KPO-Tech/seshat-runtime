@@ -119,8 +119,17 @@ jobs:
           args: --timeout=5m
 
   rust:
-    name: Rust
-    runs-on: ubuntu-latest
+    # Two operating systems, not two jobs: the same suite has to pass where the
+    # behaviour differs. Confinement is exactly that kind of code — the Windows
+    # backend lives behind `cfg(windows)`, so a Linux-only job compiles none of
+    # it, and a Windows-only bug shipped green. The macOS backend, when it
+    # exists, adds one entry here.
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     defaults:
       run:
         working-directory: rust
