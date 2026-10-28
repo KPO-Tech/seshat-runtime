@@ -229,10 +229,9 @@ fn configure_process_group(_cmd: &mut Command) {}
 /// without unsafe code; on Unix the child leads its own process group and the
 /// group is signalled.
 fn terminate(child: &mut Child) {
-    let pid = child.id().to_string();
-
     #[cfg(windows)]
     {
+        let pid = child.id().to_string();
         let _ = Command::new("taskkill")
             .args(["/T", "/F", "/PID", &pid])
             .stdin(Stdio::null())
@@ -242,18 +241,36 @@ fn terminate(child: &mut Child) {
     }
 
     #[cfg(unix)]
-    {
-        let _ = Command::new("kill")
-            .args(["-KILL", &format!("-{pid}")])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
+    signal_group(child.id());
 
     // The group signal covers the tree; this covers the direct child even if
     // the group signal was refused.
     let _ = child.kill();
+}
+
+/// Signal the child's whole process group (Unix).
+///
+/// The child leads its own group (`configure_process_group`), so a negated pid
+/// names everything it started.
+///
+/// This is `kill(2)` and not `kill(1)`. Shelling out looked harmless and was
+/// not: the command-line tool reads `-1234` as a *signal name* when that number
+/// is a valid signal and as a *process group* otherwise, so whether the tree
+/// died depended on how large the pid happened to be. It worked on a machine
+/// whose pids were in the thousands and silently signalled nothing on one where
+/// the group leader got pid 41 — the shell died, its child kept the pipe open,
+/// and every killed run waited out the whole post-kill grace.
+#[cfg(unix)]
+#[allow(unsafe_code)] // one `kill(2)` call: no pointer, no memory, no invariant of ours
+fn signal_group(pid: u32) {
+    // SAFETY: `kill` takes an integer pid and an integer signal and touches no
+    // memory belonging to this process. A negative pid names the process group
+    // this code created in `configure_process_group`. A failure (the group is
+    // already gone) is reported through the return value, which is ignored on
+    // purpose: the caller also signals the direct child.
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
 }
 
 fn shell_for(run: &Run) -> (String, Vec<String>) {
@@ -364,15 +381,24 @@ mod tests {
         assert!(!outcome.truncated);
     }
 
+    /// A command that leaves a process of its own behind, so a test can tell a
+    /// tree kill from a signal sent to the one process the sidecar spawned.
+    /// Under `cmd.exe` the shell forks any command it runs; under `sh` the
+    /// background job is what forces the fork — a plain `sleep 10` is exec'd in
+    /// place, which is why the earlier version of these tests passed on a
+    /// machine where the group kill did not work at all.
+    fn tree_command() -> &'static str {
+        if cfg!(windows) {
+            "ping -n 10 127.0.0.1 >NUL"
+        } else {
+            "sh -c 'sleep 10 & wait'"
+        }
+    }
+
     #[test]
     fn a_command_that_times_out_reports_124() {
         let (_tx, rx) = mpsc::channel();
-        let command = if cfg!(windows) {
-            "ping -n 10 127.0.0.1 >NUL"
-        } else {
-            "sleep 10"
-        };
-        let outcome = execute(&run_with_path(command, 300), &mut |_, _| Ok(()), &rx);
+        let outcome = execute(&run_with_path(tree_command(), 300), &mut |_, _| Ok(()), &rx);
 
         assert!(outcome.timed_out, "expected the deadline to fire");
         assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
@@ -415,15 +441,56 @@ mod tests {
             let _ = tx.send(());
         });
 
-        let command = if cfg!(windows) {
-            "ping -n 10 127.0.0.1 >NUL"
-        } else {
-            "sleep 10"
-        };
-        let outcome = execute(&run_with_path(command, 0), &mut |_, _| Ok(()), &rx);
+        let outcome = execute(&run_with_path(tree_command(), 0), &mut |_, _| Ok(()), &rx);
 
         // Cancelling is not a timeout: the caller asked for it.
         assert!(!outcome.timed_out);
         assert!(outcome.duration_ms < 5000, "took {}ms", outcome.duration_ms);
+    }
+
+    /// The group signal must reach the processes the shell started, not only
+    /// the shell.
+    ///
+    /// It is asserted on the pipes rather than on a duration. A survivor keeps
+    /// the write end open, so `read_to_end` never returns; a duration threshold
+    /// can be met by a run that leaked the process, which is exactly how a tree
+    /// kill that only reached the shell went unnoticed.
+    #[cfg(unix)]
+    #[test]
+    fn the_group_signal_reaches_the_processes_the_shell_started() {
+        let mut command = Command::new("/bin/sh");
+        // The marker makes the test wait until the shell really has a child of
+        // its own, instead of racing the signal against the spawn.
+        command.args(["-c", "sleep 10 & echo started; wait"]);
+        command.stdin(Stdio::null());
+        command.stdout(Stdio::piped());
+        command.stderr(Stdio::null());
+        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+
+        let mut child = command.spawn().expect("spawn the shell");
+        let leader = child.id();
+        let mut stdout = child.stdout.take().expect("stdout");
+
+        let mut marker = [0u8; 8];
+        let _ = stdout.read(&mut marker);
+
+        signal_group(leader);
+
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let reader = thread::spawn(move || {
+            let mut sink = Vec::new();
+            let _ = stdout.read_to_end(&mut sink);
+            let _ = closed_tx.send(());
+        });
+
+        let closed = closed_rx.recv_timeout(Duration::from_secs(2)).is_ok();
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = reader.join();
+
+        assert!(
+            closed,
+            "a process the shell started still held the pipe: the group signal did not reach it"
+        );
     }
 }
