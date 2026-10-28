@@ -79,6 +79,10 @@ type ToolConfig struct {
 	// SandboxDocker configures the Docker sandbox backend when SandboxKind
 	// is sandbox.EnvironmentDocker. Zero value uses sandbox.DefaultDockerConfig().
 	SandboxDocker sandbox.DockerExecutorConfig
+	// Sandboxd configures the sidecar backend when SandboxKind is
+	// sandbox.EnvironmentSandboxed. BinaryPath is required; an unavailable
+	// sidecar refuses every command rather than running unconfined.
+	Sandboxd sandbox.SandboxdConfig
 	// OutputChunkCallback, when set, receives each output chunk as it is produced
 	// (streaming mode). If nil, output is buffered and returned at completion.
 	OutputChunkCallback func(chunk string, stream string)
@@ -102,7 +106,35 @@ func NewTool(config *ToolConfig) *Tool {
 	}
 
 	var sandboxExecutor sandbox.Executor
-	if config.SandboxKind == sandbox.EnvironmentDocker {
+	switch config.SandboxKind {
+	case sandbox.EnvironmentSandboxed:
+		// Fail closed. A backend the operator asked for that cannot be brought
+		// up must not turn into "it ran on the host anyway": an unavailable
+		// executor refuses every command instead.
+		sandboxdCfg := config.Sandboxd
+		if len(sandboxdCfg.Shell) == 0 {
+			// DetectShell names the interpreter the unsandboxed path uses, so a
+			// sandboxed command keeps the same shell semantics (notably Git Bash
+			// rather than cmd.exe on Windows).
+			sandboxdCfg.Shell = []string{DetectShell(), "-c"}
+		}
+		executor, err := sandbox.NewExecutor(sandbox.ExecutorConfig{
+			Kind:     sandbox.EnvironmentSandboxed,
+			Sandboxd: sandboxdCfg,
+		})
+		if err == nil {
+			healthCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err = executor.Healthy(healthCtx)
+			cancel()
+		}
+		if err != nil {
+			slog.Error("bash tool: sandboxd requested but unavailable — refusing to run commands unconfined", "error", err)
+			sandboxExecutor = sandbox.NewUnavailableExecutor(sandbox.EnvironmentSandboxed, err)
+		} else {
+			sandboxExecutor = executor
+		}
+
+	case sandbox.EnvironmentDocker:
 		executor, err := sandbox.NewExecutor(sandbox.ExecutorConfig{
 			Kind:   sandbox.EnvironmentDocker,
 			Docker: config.SandboxDocker,
