@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned on purpose: the sidecar is a security boundary, so a compiler upgrade
+# is a reviewed change, not something that happens underfoot on a contributor's
+# machine or in CI between two builds of the same tag.
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

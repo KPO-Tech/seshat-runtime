@@ -118,6 +118,33 @@ jobs:
           working-directory: tui
           args: --timeout=5m
 
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rust
+    steps:
+      - uses: actions/checkout@v7
+
+      # The toolchain is pinned by rust/rust-toolchain.toml; invoking rustc in
+      # that directory makes rustup install exactly that version, components
+      # included. No third-party action decides which compiler builds the
+      # sandbox.
+      - name: Install the pinned toolchain
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test
+
   security:
     name: Security
     runs-on: ubuntu-latest
@@ -202,7 +229,7 @@ jobs:
   gate:
     name: Gate
     runs-on: ubuntu-latest
-    needs: [build, test, lint, security, branch-policy]
+    needs: [build, test, lint, rust, security, branch-policy]
     if: always()
     steps:
       - name: All checks passed
@@ -210,12 +237,14 @@ jobs:
           if [[ "${{ needs.build.result }}" != "success" || \
                 "${{ needs.test.result }}"  != "success" || \
                 "${{ needs.lint.result }}"  != "success" || \
+                "${{ needs.rust.result }}"  != "success" || \
                 "${{ needs.security.result }}" != "success" || \
                 "${{ needs.branch-policy.result }}" != "success" ]]; then
             echo "One or more required checks failed."
             echo "  build: ${{ needs.build.result }}"
             echo "  test:  ${{ needs.test.result }}"
             echo "  lint:  ${{ needs.lint.result }}"
+            echo "  rust:  ${{ needs.rust.result }}"
             echo "  security: ${{ needs.security.result }}"
             echo "  branch-policy: ${{ needs.branch-policy.result }}"
             exit 1

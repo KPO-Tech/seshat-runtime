@@ -1,0 +1,20 @@
+[package]
+name = "seshat-sandboxd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Execution sandbox sidecar for the Seshat runtime (stdio, single session)"
+
+[[bin]]
+name = "seshat-sandboxd"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+base64.workspace = true
+
+[lints]
+workspace = true
