@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.5
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.106.1
-	github.com/aws/smithy-go v1.28.1
+	github.com/aws/smithy-go v1.28.6
 	github.com/coder/hnsw v0.6.1
 	github.com/disintegration/imaging v1.6.2
 	github.com/dop251/goja v0.0.0-20260901132549-43234fa61381
