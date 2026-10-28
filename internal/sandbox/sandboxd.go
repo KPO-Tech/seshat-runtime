@@ -212,8 +212,12 @@ func (e *SandboxdExecutor) readHelloAckLocked(ctx context.Context) (*sandboxdHel
 	}
 	done := make(chan outcome, 1)
 
+	// The stream is read before the goroutine starts: a timeout calls
+	// stopLocked, which clears e.stdout, and a goroutine that read the field
+	// itself would race with that write.
+	stdout := e.stdout
 	go func() {
-		frame, err := readSandboxdFrame(e.stdout)
+		frame, err := readSandboxdFrame(stdout)
 		if err != nil {
 			done <- outcome{err: fmt.Errorf("sandboxd: handshake read: %w", err)}
 			return
@@ -302,12 +306,15 @@ func (e *SandboxdExecutor) Run(ctx context.Context, req RunRequest) (RunResult, 
 
 	// A cancel is the only way to stop a run that is already executing, and the
 	// reader is blocked while it streams: send it from here.
+	// Same reason as the handshake read: the cancel can arrive while the main
+	// loop is calling stopLocked, which clears e.stdin.
+	stdin := e.stdin
 	stopWatch := make(chan struct{})
 	defer close(stopWatch)
 	go func() {
 		select {
 		case <-ctx.Done():
-			_ = writeSandboxdFrame(e.stdin, &sandboxdFrame{
+			_ = writeSandboxdFrame(stdin, &sandboxdFrame{
 				Type:   sandboxdTypeCancel,
 				Cancel: &sandboxdCancel{RunID: runID},
 			})
