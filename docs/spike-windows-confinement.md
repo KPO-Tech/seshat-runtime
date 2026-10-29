@@ -97,8 +97,9 @@ Cost, all of it to be measured against real workloads rather than assumed:
 - That resource limits and the process tree are covered: those stay a Job
   Object, orthogonal to the identity.
 - That the acceptance criteria of phase 1 pass: they need the real commands
-  (`git`, `go build`, a Python tool) run inside, which is the point of the
-  measurement above being only the first of several.
+  (`git`, `go build`, a Python tool) run inside. That is
+  [`spike-windows-toolchain.md`](spike-windows-toolchain.md), the second note in
+  this series — it finds `go build` working and `git init` failing, and says why.
 
 ## Consequence for the plan
 
