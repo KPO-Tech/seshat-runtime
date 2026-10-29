@@ -3,8 +3,23 @@ name: CI
 on:
   push:
     branches: ["main", "dev"]
+  # No base filter: a PR whose base is another topic branch is how a multi-step
+  # change is reviewed here, and with `branches: [main, dev]` those PRs ran no
+  # check at all — they were merged on the strength of the layer below them. A
+  # run is kicked off by the PR itself, so the cost is one full suite per open
+  # PR and per push to its head, not per branch in the repository. Keep the
+  # number of layers to what the review actually needs.
+  #
+  # Two limits remain, both deliberate:
+  #   - Retargeting a PR does not re-run this workflow: that is an `edited`
+  #     event, and triggering on `edited` would let a title edit produce a Gate
+  #     that certified nothing. The outcome is a blocked merge — GitHub waits
+  #     for a check that never reports — so after changing the base, push a
+  #     commit or run `gh workflow run ci.yml --ref <branch>`.
+  #   - A push to a lower layer does not re-run the PRs stacked on it, because
+  #     their head has not moved. Each PR therefore keeps the result of its own
+  #     head SHA, and the review of the top layer has to account for it.
   pull_request:
-    branches: ["main", "dev"]
   workflow_dispatch:
 
 permissions:
@@ -143,25 +158,37 @@ jobs:
     name: Branch Policy
     runs-on: ubuntu-latest
     steps:
+      # Only the bases below are policed. A PR stacked on a topic branch has no
+      # base to police: what it will merge into is the layer underneath it, and
+      # that layer is the one that has to target dev.
       - name: Enforce PR branch flow
+        # The refs reach the script through the environment, never through
+        # `${{ }}` inside it: a branch name is chosen by whoever opens the pull
+        # request, and interpolating one into a shell line is how a script
+        # injection is built. Handed over through `env:` and quoted below, the
+        # same values are inert.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" && \
-                "${{ github.base_ref }}" == "main" && \
-                "${{ github.head_ref }}" != "dev" ]]; then
+          if [[ "$EVENT_NAME" == "pull_request" && \
+                "$BASE_REF" == "main" && \
+                "$HEAD_REF" != "dev" ]]; then
             echo "Pull requests targeting main must come from dev."
-            echo "Current head branch: ${{ github.head_ref }}"
+            echo "Current head branch: $HEAD_REF"
             exit 1
           fi
 
-          if [[ "${{ github.event_name }}" == "pull_request" && \
-                "${{ github.base_ref }}" == "dev" ]]; then
-            case "${{ github.head_ref }}" in
+          if [[ "$EVENT_NAME" == "pull_request" && \
+                "$BASE_REF" == "dev" ]]; then
+            case "$HEAD_REF" in
               feat/*|feature/*|fix/*|bugfix/*|docs/*|refactor/*|test/*|chore/*|perf/*|ci/*|dependabot/*)
                 ;;
               *)
                 echo "Pull requests targeting dev must come from a typed topic branch."
                 echo "Allowed prefixes: feat/, feature/, fix/, bugfix/, docs/, refactor/, test/, chore/, perf/, ci/, dependabot/"
-                echo "Current head branch: ${{ github.head_ref }}"
+                echo "Current head branch: $HEAD_REF"
                 exit 1
                 ;;
             esac

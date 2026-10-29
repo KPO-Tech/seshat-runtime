@@ -39,6 +39,29 @@ If someone makes an exceptional direct push to `main`, recreate or realign
 `dev` from `main` before continuing normal feature work. Do not stack new
 feature branches on top of a diverged `dev`.
 
+### Stacked pull requests
+
+A change that is too large to review in one diff, or that has to land in a fixed
+order, is split into layers: each PR targets the branch below it, and only the
+bottom layer targets `dev`. A PR whose base is another topic branch is a normal,
+allowed PR here.
+
+CI is not filtered by base branch, so **every layer gets its own full run** at
+its own head SHA. That is the point of the rule: a stacked PR merged on the
+strength of its parent is a PR nobody checked. The price is one suite per open
+PR per push, so keep the number of layers to what the review needs — when the
+split is cosmetic, one branch is cheaper.
+
+Two consequences to keep in mind:
+
+- Changing a PR's base (retargeting the top of a stack onto `dev` once the
+  layers under it have merged) does not re-run CI: the check never reports and
+  GitHub blocks the merge until it does. Push a commit, or run
+  `gh workflow run ci.yml --ref <branch>`, then retarget. Merge bottom-up.
+- A push to a lower layer does not re-run the PRs stacked on it, because their
+  head has not moved. Each PR keeps the result of its own head SHA, so re-read
+  the layers above before asking for a merge.
+
 ---
 
 ## Before you open a PR
