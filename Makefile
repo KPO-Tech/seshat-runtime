@@ -28,6 +28,7 @@ ARGS           ?=
 
 .PHONY: help all setup build build-cli build-grpc build_linux run run-fresh doctor where \
         test test-short test-tui test-pkg test-race fmt fmt-check vet lint check tidy hooks \
+        rust-build rust-test rust-check \
         clean clean-runtime clean-all install-deepdoc-models
 
 .DEFAULT_GOAL := help
@@ -116,6 +117,17 @@ lint: ## Run golangci-lint on both modules
 	golangci-lint run ./...
 	cd tui && golangci-lint run ./...
 
+# Rust (rust/sandboxd, the execution sidecar). Not part of `check`: a Go contributor
+# who never touches the sandbox should not need a Rust toolchain. CI runs these.
+rust-build: ## Build the sandbox sidecar -> rust/target/release/seshat-sandboxd
+	cd rust && cargo build --release
+
+rust-test: ## Run the Rust tests of the sandbox sidecar
+	cd rust && cargo test
+
+rust-check: ## Format check, clippy and tests of the sidecar (what CI runs)
+	cd rust && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+
 check: fmt-check vet test-short ## Before you push: format check, vet and the quick tests
 
 tidy: ## go mod tidy for both modules
@@ -128,8 +140,8 @@ hooks: ## Install the git hooks of .githooks/
 
 # Maintenance
 
-clean: ## Remove the compiled binaries (bin/)
-	rm -rf bin/
+clean: ## Remove the compiled binaries (bin/ and rust/target/)
+	rm -rf bin/ rust/target/
 
 # WARNING: credentials and session history cannot be recovered - you will need to re-run
 # `seshat login` and `seshat config` afterwards. Uses SESHAT_RUNTIME_ROOT if set, otherwise ~/.config/seshat-*.

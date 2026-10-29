@@ -14,8 +14,10 @@ import (
 // The engine routes bash/shell execution through the active Executor.
 //
 // Backends:
-//   - NoopExecutor   — runs commands directly on the host OS (default, no isolation)
-//   - DockerExecutor — runs commands inside an isolated Docker container
+//   - NoopExecutor     — runs commands directly on the host OS (default, no isolation)
+//   - DockerExecutor   — runs commands inside an isolated Docker container
+//   - SandboxdExecutor — runs commands through the seshat-sandboxd sidecar
+//     (rust/sandboxd), which owns OS-level confinement and resource limits
 //
 // Selection at startup via ExecutorConfig.Kind. Tools that are read-only
 // (file read, glob, grep) bypass the Executor and go directly to the host FS.
@@ -123,6 +125,10 @@ type ExecutorConfig struct {
 	// Docker holds Docker-specific configuration.
 	// Only used when Kind == EnvironmentDocker.
 	Docker DockerExecutorConfig
+
+	// Sandboxd holds sidecar configuration.
+	// Only used when Kind == EnvironmentSandboxed.
+	Sandboxd SandboxdConfig
 }
 
 // DockerExecutorConfig holds static configuration for the DockerExecutor.
@@ -253,6 +259,8 @@ var (
 // Returns an error when the requested backend is unavailable.
 func NewExecutor(cfg ExecutorConfig) (Executor, error) {
 	switch cfg.Kind {
+	case EnvironmentSandboxed:
+		return newSandboxdExecutor(cfg.Sandboxd)
 	case EnvironmentDocker:
 		dockerExecutorCacheMu.Lock()
 		defer dockerExecutorCacheMu.Unlock()
