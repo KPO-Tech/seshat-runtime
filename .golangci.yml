@@ -87,6 +87,14 @@ issues:
     - linters: [staticcheck]
       text: "SA1019.*grpc.DialContext"
 
+    # staticcheck: mcp.LoggingLevel is deprecated per SEP-2577 but remains functional
+    # for at least twelve months and has no replacement API yet. Written here rather
+    # than as a //nolint because the staticcheck bundled with golangci-lint v1, built
+    # with Go 1.26, no longer reads the dependency's Deprecated marker: the directive
+    # suppressed nothing on the lint runner and nolintlint failed the build instead.
+    - linters: [staticcheck]
+      text: "SA1019.*LoggingLevel"
+
     # staticcheck: string context keys and nil context in tests — cosmetic
     - linters: [staticcheck]
       path: '_test\.go'

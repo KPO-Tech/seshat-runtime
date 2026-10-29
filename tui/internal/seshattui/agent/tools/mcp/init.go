@@ -25,10 +25,10 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// functional for at least 12 months; the logging forwarding feature this
-// supports is still active and has no replacement API yet.
-//
-//nolint:staticcheck // mcp.LoggingLevel is deprecated per SEP-2577 but remains
+// mcp.LoggingLevel is deprecated per SEP-2577 but remains functional for at
+// least twelve months; the logging forwarding feature this supports is still
+// active and has no replacement API yet. The suppression itself is the SA1019
+// exclude rule in .golangci.yml, so it holds with or without a //nolint.
 func parseLevel(level mcp.LoggingLevel) slog.Level {
 	switch level {
 	case "info":
