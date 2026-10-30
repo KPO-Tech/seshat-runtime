@@ -32,17 +32,25 @@ func (p Profile) DefaultModel() string {
 }
 
 // profiles is the rerank catalog, checked against each provider's own
-// documentation and OpenRouter's model list (2026-10).
+// documentation and OpenRouter's model list (2026-10, models re-read 2026-10-30).
+// The first model of a provider is its default and only changes with a measurement
+// (see docs/rag.md): the newer models are offered after it.
 var profiles = []Profile{
 	{
 		ID: "cohere", DisplayName: "Cohere", URL: "https://api.cohere.com/v2/rerank",
 		EnvVars: []string{"COHERE_API_KEY", "CO_API_KEY"}, Style: StyleCohere,
-		Models: []string{"rerank-v3.5", "rerank-v4.0-pro"},
+		Models: []string{"rerank-v3.5", "rerank-v5.0-pro", "rerank-v5.0-fast", "rerank-v4.0-pro", "rerank-v4.0-fast"},
 	},
 	{
 		ID: "voyage", DisplayName: "Voyage AI", URL: "https://api.voyageai.com/v1/rerank",
 		EnvVars: []string{"VOYAGE_API_KEY"}, Style: StyleVoyage,
-		Models: []string{"rerank-2.5", "rerank-2.5-lite"},
+		Models: []string{"rerank-2.5", "rerank-2.5-lite", "rerank-3", "rerank-3-lite"},
+	},
+	{
+		// Jina answers the Cohere shape ({model, query, documents, top_n} -> {results: [{index, relevance_score}]}).
+		ID: "jina", DisplayName: "Jina AI", URL: "https://api.jina.ai/v1/rerank",
+		EnvVars: []string{"JINA_API_KEY"}, Style: StyleCohere,
+		Models: []string{"jina-reranker-v3.5", "jina-reranker-v3", "jina-reranker-m0", "jina-reranker-v2-base-multilingual"},
 	},
 	{
 		ID: "openrouter", DisplayName: "OpenRouter", URL: "https://openrouter.ai/api/v1/rerank",
