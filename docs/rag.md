@@ -160,8 +160,9 @@ An optional second pass reorders the retrieved chunks with a rerank model. Choos
 
 | `RAG_RERANK_PROVIDER` | Models (first is the default) | Key variable |
 |---|---|---|
-| `cohere` | `rerank-v3.5`, `rerank-v4.0-pro` | `COHERE_API_KEY` |
-| `voyage` | `rerank-2.5`, `rerank-2.5-lite` | `VOYAGE_API_KEY` |
+| `cohere` | `rerank-v3.5`, `rerank-v5.0-pro`, `rerank-v5.0-fast`, `rerank-v4.0-pro`, `rerank-v4.0-fast` | `COHERE_API_KEY` |
+| `voyage` | `rerank-2.5`, `rerank-2.5-lite`, `rerank-3`, `rerank-3-lite` | `VOYAGE_API_KEY` |
+| `jina` | `jina-reranker-v3.5`, `jina-reranker-v3`, `jina-reranker-m0`, `jina-reranker-v2-base-multilingual` | `JINA_API_KEY` |
 | `openrouter` | `cohere/rerank-v3.5`, `cohere/rerank-4-pro`, `cohere/rerank-4-fast`, `voyageai/rerank-2.5`, `voyageai/rerank-2.5-lite`, `qwen/qwen3-reranker-8b`, `nvidia/llama-nemotron-rerank-vl-1b-v2:free` | `OPENROUTER_API_KEY` |
 | `langsearch` | `langsearch-reranker-v1` | `LANGSEARCH_API_KEY` |
 
