@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.5] - 2026-10-30
+
 ### Added
 
 - **Jina AI is a hosted rerank provider, and the Cohere and Voyage lists hold their newer models.** `RAG_RERANK_PROVIDER=jina` takes `JINA_API_KEY` and offers `jina-reranker-v3.5`, `v3`, `m0` and `v2-base-multilingual`; Cohere adds `rerank-v5.0-pro`, `rerank-v5.0-fast` and `rerank-v4.0-fast`, and Voyage adds `rerank-3` and `rerank-3-lite`. The default of each provider does not change: it moves only with a measurement, and the newer models were not measured here.
