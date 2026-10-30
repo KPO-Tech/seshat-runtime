@@ -43,6 +43,13 @@ func (c *Client) buildOpenAIRequestBody(req types.APIRequest) (io.Reader, error)
 	if req.OutputSchema != nil {
 		body["response_format"] = req.OutputSchema.OpenAIResponseFormat()
 	}
+	if req.Stream && len(req.Tools) > 0 && req.Model.Provider == types.APIProviderZAi {
+		// z.ai sends the arguments of a tool call in one piece, once the model has finished writing them, unless it is asked to stream
+		// them. Measured on glm-4.7 with a ~1 000 word file as the argument: 3 chunks and 68.7 s of silence without it, 2 415 chunks and
+		// no gap over 4.5 s with it. A client that treats a silent connection as a stalled one (the desktop app gives up after 150 s)
+		// then drops a turn that was working. The glm-4.5, 4.6, 4.7 and 5.1 models all accept it.
+		body["tool_stream"] = true
+	}
 	if req.DisableThinking && req.Model.Provider == types.APIProviderZAi {
 		// z.ai: the GLM-4.5 and later models think unless told not to.
 		body["thinking"] = map[string]any{"type": "disabled"}

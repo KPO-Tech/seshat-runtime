@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **z.ai (GLM) streams the arguments of a tool call, so a long file or artifact no longer looks like a stalled connection.** Without `tool_stream`, z.ai sends a tool call in one piece once the model has finished writing it: measured on glm-4.7 with a file of about 1 000 words, 3 chunks and 68.7 s of silence (2 415 chunks and no gap over 4.5 s with it). A client that gives up on a silent connection, as the desktop app does after 150 s, dropped turns in which the model was writing a long file or an interactive illustration. The parameter is sent on streamed z.ai requests that carry tools; glm-4.5, 4.6, 4.7 and 5.1 accept it.
+
 ## [1.12.5] - 2026-10-30
 
 ### Added
