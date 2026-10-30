@@ -106,26 +106,29 @@ where
                         Err(_) => break,
                     }
                 }
-
-                let cancelled = cancel.try_recv().is_ok();
-                let expired = deadline.is_some_and(|at| Instant::now() >= at);
-                if (cancelled || expired) && killed_at.is_none() {
-                    outcome.timed_out = expired;
-                    terminate(&mut child);
-                    killed_at = Some(Instant::now());
-                }
-
-                // A grandchild can keep the pipes open after its parent is
-                // gone. Stop waiting once the grace ran out, and report what
-                // was actually written.
-                if let Some(at) = killed_at {
-                    if at.elapsed() > POST_KILL_GRACE {
-                        break;
-                    }
-                }
             }
             Err(RecvTimeoutError::Disconnected) => {
                 drained = true;
+                break;
+            }
+        }
+
+        // The deadline and the cancel are looked at after every message and not
+        // only when the output pauses: a command that never stops writing makes
+        // `recv_timeout` answer at once every time, so a check that waited for a
+        // quiet moment would run late, or never.
+        let cancelled = cancel.try_recv().is_ok();
+        let expired = deadline.is_some_and(|at| Instant::now() >= at);
+        if (cancelled || expired) && killed_at.is_none() {
+            outcome.timed_out = expired;
+            terminate(&mut child);
+            killed_at = Some(Instant::now());
+        }
+
+        // A grandchild can keep the pipes open after its parent is gone. Stop
+        // waiting once the grace ran out, and report what was actually written.
+        if let Some(at) = killed_at {
+            if at.elapsed() > POST_KILL_GRACE {
                 break;
             }
         }
@@ -491,6 +494,52 @@ mod tests {
         assert!(
             closed,
             "a process the shell started still held the pipe: the group signal did not reach it"
+        );
+    }
+
+    /// A command that writes without pausing: the deadline must still fire on
+    /// time. It used to be looked at only when the output went quiet.
+    fn flood_command() -> &'static str {
+        if cfg!(windows) {
+            "for /L %i in (1,1,3000000) do @echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        } else {
+            "yes"
+        }
+    }
+
+    #[test]
+    fn the_deadline_fires_on_time_while_the_command_floods_the_output() {
+        let (_tx, rx) = mpsc::channel();
+        let outcome = execute(
+            &run_with_path(flood_command(), 500),
+            &mut |_, _| Ok(()),
+            &rx,
+        );
+
+        assert!(outcome.timed_out, "expected the deadline to fire");
+        assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
+        assert!(
+            outcome.duration_ms < 2000,
+            "a flood of output held the run for {}ms",
+            outcome.duration_ms
+        );
+    }
+
+    #[test]
+    fn a_cancel_stops_a_command_that_floods_the_output() {
+        let (tx, rx) = mpsc::channel();
+        let canceller = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(300));
+            let _ = tx.send(());
+        });
+        let outcome = execute(&run_with_path(flood_command(), 0), &mut |_, _| Ok(()), &rx);
+        let _ = canceller.join();
+
+        assert!(!outcome.timed_out);
+        assert!(
+            outcome.duration_ms < 2000,
+            "a cancel took {}ms",
+            outcome.duration_ms
         );
     }
 }
