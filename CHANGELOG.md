@@ -9,6 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.5] - 2026-10-30
+
+### Added
+
+- **Jina AI is a hosted rerank provider, and the Cohere and Voyage lists hold their newer models.** `RAG_RERANK_PROVIDER=jina` takes `JINA_API_KEY` and offers `jina-reranker-v3.5`, `v3`, `m0` and `v2-base-multilingual`; Cohere adds `rerank-v5.0-pro`, `rerank-v5.0-fast` and `rerank-v4.0-fast`, and Voyage adds `rerank-3` and `rerank-3-lite`. The default of each provider does not change: it moves only with a measurement, and the newer models were not measured here.
+- **`seshat-sandboxd`, a Rust sidecar for running commands, is in the repository and off by default.** `sandbox.EnvironmentSandboxed` starts it as a separate process and speaks to it over stdio ([protocol](docs/sandboxd-protocol.md), [ADR-0001](docs/adr/0001-go-rust-boundary.md)). Nothing enables it yet, so no behaviour changes. It does not confine the filesystem or the network yet and says so: its handshake reports `degraded` and names both. What it already does is the deadline, the output cap, an environment built from the request alone, and killing the whole process tree. The CI now builds and tests the Rust part on Linux and Windows.
+
+### Fixed
+
+- **The sidecar's deadline and cancel are honoured while a command floods the output.** They were looked at only when the output paused, so a command that never stopped writing was stopped late (2 815 ms for a 500 ms deadline in the measurement), or not at all.
+
 ## [1.12.4] - 2026-10-29
 
 ### Security

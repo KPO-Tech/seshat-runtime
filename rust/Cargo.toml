@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = ["sandboxd"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/KPO-Tech/seshat-runtime"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+# Bindings for `kill(2)`: signalling a process group is a syscall the standard
+# library does not wrap, and the `kill(1)` command line reads `-1234` as a
+# signal name or as a process group depending on the value. No C toolchain, no
+# bindgen: the crate is declarations only.
+libc = "0.2"
+
+[workspace.lints.rust]
+# Denied by default and exception by exception: each `#[allow(unsafe_code)]`
+# carries the safety argument for the one call it covers (currently a single
+# `kill(2)` in the sidecar's tree kill). A blanket allow would defeat the point.
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = "deny"

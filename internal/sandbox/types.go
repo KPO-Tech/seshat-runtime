@@ -9,6 +9,11 @@ const (
 	EnvironmentLocal  EnvironmentKind = "local"
 	EnvironmentDocker EnvironmentKind = "docker"
 	EnvironmentRemote EnvironmentKind = "remote"
+	// EnvironmentSandboxed runs commands through the seshat-sandboxd sidecar,
+	// the Rust half of the runtime. Unlike EnvironmentLocal it has an OS-level
+	// boundary, and unlike EnvironmentDocker it needs no daemon: the sidecar is
+	// a process the runtime starts and stops with the session.
+	EnvironmentSandboxed EnvironmentKind = "sandboxd"
 )
 
 // AccessKind describes the resource access being requested.

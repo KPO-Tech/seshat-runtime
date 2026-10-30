@@ -82,6 +82,39 @@ func TestRequestShapesAndResponseEnvelopes(t *testing.T) {
 	}
 }
 
+func TestTheDefaultOfAProviderStaysTheMeasuredOne(t *testing.T) {
+	// A default changes only with a measurement: a newer model is offered after it, never in its place.
+	for id, want := range map[string]string{"cohere": "rerank-v3.5", "voyage": "rerank-2.5"} {
+		p, ok := ProfileFor(id)
+		if !ok || p.DefaultModel() != want {
+			t.Errorf("%s: default = %q, want %q", id, p.DefaultModel(), want)
+		}
+	}
+}
+
+func TestEveryProfileIsComplete(t *testing.T) {
+	seen := map[string]bool{}
+	for _, p := range Profiles() {
+		if p.ID == "" || p.DisplayName == "" || p.URL == "" || len(p.Models) == 0 || len(p.EnvVars) == 0 {
+			t.Errorf("profile %+v is incomplete", p)
+		}
+		if seen[p.ID] {
+			t.Errorf("provider %q is listed twice", p.ID)
+		}
+		seen[p.ID] = true
+		models := map[string]bool{}
+		for _, m := range p.Models {
+			if models[m] {
+				t.Errorf("%s: model %q is listed twice", p.ID, m)
+			}
+			models[m] = true
+		}
+	}
+	if p, ok := ProfileFor("jina"); !ok || p.Style != StyleCohere || p.URL != "https://api.jina.ai/v1/rerank" {
+		t.Errorf("jina profile = %+v ok=%v", p, ok)
+	}
+}
+
 func TestProfileFor(t *testing.T) {
 	p, ok := ProfileFor(" OpenRouter ")
 	if !ok || p.DefaultModel() != "cohere/rerank-v3.5" {
