@@ -78,6 +78,12 @@ empty list and an absent one must not be two different shapes.
 3. **No environment inheritance.** The sidecar clears its own environment and
    builds the child's from `env` alone. A variable the runtime did not name — an
    API key, a proxy credential, `AWS_*` — cannot reach a model-issued command.
+   One variable is added, and the reason is measured rather than chosen: on
+   Windows the block also carries `LOCALAPPDATA`, because `CreateProcessW`
+   inside an AppContainer fails with error 203 without it — the kernel derives
+   the container's per-package profile path from that variable. It is a
+   directory name the identity cannot write to, never a credential, and a value
+   the client sends wins over the synthesised one.
 4. **Truncation is announced.** `max_output_bytes` cuts the stream but `exit`
    carries the real byte counts and `truncated: true`, so the model can be told
    it is looking at part of the output.
@@ -90,12 +96,25 @@ empty list and an absent one must not be two different shapes.
 
 ## 5. Known gaps (phase 0)
 
-- Filesystem and network confinement are **not implemented yet**; the sidecar
-  reports `degraded` and names both. What it enforces today is the deadline, the
-  output cap, the environment scrub and the tree kill.
+- **On Windows, filesystem and network confinement are enforced.** Every
+  command starts with `CreateProcessW` inside an AppContainer whose package SID
+  is granted the run's workdir and nothing else: a write outside it is refused
+  by the system, `%TEMP%` is refused, and the identity carries no capability, so
+  there is no network. `level` stays `degraded` because three limits were
+  measured, not assumed: the leading directories of a workdir cannot be `stat`ed
+  (`git init` fails), a toolchain installed under the user profile is not
+  readable, and `%TEMP%` is not writable. A profile that cannot be created makes
+  the session `none`, and the runtime refuses to execute.
+- **Linux and macOS** report `degraded` with no filesystem or network
+  confinement yet; macOS has no backend and will report `none` rather than
+  pretend.
 - **stdin is not part of the protocol.** A `RunRequest` carrying stdin is refused
   by the Go side rather than run without the input it expects.
 - **macOS** has no backend; it will report `none` rather than pretend.
+- **`violations` is still always empty.** A refusal is enforced by the operating
+  system, so the command sees a failed write and the run reports the exit code
+  and the stderr — but the protocol cannot yet say *which* write was denied, and
+  invariant 6 is a promise the backends do not keep.
 - The Windows tree kill uses `taskkill /T`; a Job Object backend replaces it
   without changing this protocol.
 

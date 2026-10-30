@@ -12,15 +12,18 @@
 
 use std::io::{self, BufWriter, Read, StdoutLock, Write};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::Arc;
 use std::thread;
+use std::time::Duration;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 
+use crate::confinement::Confinement;
 use crate::exec;
 use crate::frame::{
-    Cancel, Chunk, Exit, Frame, HelloAck, Run, CAP_LIMITS, LEVEL_DEGRADED, LEVEL_NONE,
-    PROTOCOL_MAJOR, PROTOCOL_MINOR, TYPE_CANCEL, TYPE_HELLO, TYPE_RUN,
+    Cancel, Chunk, Exit, Frame, HelloAck, Run, CAP_LIMITS, PROTOCOL_MAJOR, PROTOCOL_MINOR,
+    TYPE_CANCEL, TYPE_HELLO, TYPE_RUN,
 };
 
 /// A frame larger than this is a broken peer, not a big command: shell output
@@ -29,7 +32,7 @@ const MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
 
 /// How often the run loop gives the protocol channel a turn while a command
 /// streams, so a `cancel` is honoured within tens of milliseconds.
-const CANCEL_POLL: std::time::Duration = std::time::Duration::from_millis(20);
+const CANCEL_POLL: Duration = Duration::from_millis(20);
 
 const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -43,6 +46,19 @@ enum RunEvent {
 
 /// Serve one client until stdin closes or the client stops reading.
 pub fn serve() -> io::Result<()> {
+    // The identity this session runs under is created before the handshake, so
+    // `level` describes something that already exists rather than something
+    // that might be created later.
+    let confinement = Arc::new(Confinement::detect());
+    eprintln!(
+        "seshat-sandboxd: level={} capabilities={:?}",
+        confinement.level(),
+        confinement.capabilities()
+    );
+    for reason in confinement.reasons() {
+        eprintln!("seshat-sandboxd: degraded: {reason}");
+    }
+
     let (protocol_tx, protocol_rx) = mpsc::channel::<ProtocolMessage>();
     spawn_reader(protocol_tx);
 
@@ -56,16 +72,22 @@ pub fn serve() -> io::Result<()> {
                 &mut out,
                 "expected_hello",
                 &format!("first frame was {:?}, not a handshake", other.kind),
+                &confinement,
             );
         }
         Ok(Err(err)) => {
-            return refuse(&mut out, "bad_frame", &err.to_string());
+            return refuse(&mut out, "bad_frame", &err.to_string(), &confinement);
         }
         Err(_) => return Ok(()),
     };
 
     let Some(hello) = hello else {
-        return refuse(&mut out, "malformed_hello", "handshake carried no payload");
+        return refuse(
+            &mut out,
+            "malformed_hello",
+            "handshake carried no payload",
+            &confinement,
+        );
     };
 
     if hello.protocol_major != PROTOCOL_MAJOR {
@@ -76,10 +98,11 @@ pub fn serve() -> io::Result<()> {
                 "client speaks v{}.{}, this side speaks v{PROTOCOL_MAJOR}.{PROTOCOL_MINOR}",
                 hello.protocol_major, hello.protocol_minor
             ),
+            &confinement,
         );
     }
 
-    write_frame(&mut out, &Frame::hello_ack(capabilities()))?;
+    write_frame(&mut out, &Frame::hello_ack(capabilities(&confinement)))?;
 
     let mut last_run_id: Option<String> = None;
     loop {
@@ -104,7 +127,7 @@ pub fn serve() -> io::Result<()> {
                         }
                         Some(run) => {
                             last_run_id = Some(run.run_id.clone());
-                            run_one(&mut out, &protocol_rx, run)?;
+                            run_one(&mut out, &protocol_rx, run, &confinement)?;
                         }
                         None => {
                             write_frame(
@@ -132,7 +155,7 @@ pub fn serve() -> io::Result<()> {
                     &Frame::error("unexpected_frame", &format!("unexpected {:?}", frame.kind)),
                 )?;
             }
-            Ok(Err(err)) => return refuse(&mut out, "bad_frame", &err.to_string()),
+            Ok(Err(err)) => return refuse(&mut out, "bad_frame", &err.to_string(), &confinement),
             Err(_) => return Ok(()),
         }
     }
@@ -144,10 +167,12 @@ fn run_one(
     out: &mut BufWriter<StdoutLock<'static>>,
     protocol_rx: &mpsc::Receiver<ProtocolMessage>,
     run: Run,
+    confinement: &Arc<Confinement>,
 ) -> io::Result<()> {
     let run_id = run.run_id.clone();
     let (event_tx, event_rx) = mpsc::channel::<RunEvent>();
     let (cancel_tx, cancel_rx) = mpsc::channel::<()>();
+    let confinement = Arc::clone(confinement);
 
     thread::spawn(move || {
         let mut sink = |stream: &str, data: &[u8]| -> io::Result<()> {
@@ -161,7 +186,7 @@ fn run_one(
             ));
             Ok(())
         };
-        let outcome = exec::execute(&run, &mut sink, &cancel_rx);
+        let outcome = exec::execute(&run, &mut sink, &cancel_rx, &confinement);
         // Same channel as the chunks, so the outcome can never be lost to a
         // race with the sender being dropped.
         let _ = event_tx.send(RunEvent::Done(outcome));
@@ -196,7 +221,20 @@ fn run_one(
         }
     }
 
-    let outcome = outcome.unwrap_or_else(|| exec::Outcome::failed(std::time::Duration::ZERO));
+    let outcome = outcome.unwrap_or_else(|| {
+        exec::Outcome::failed(
+            Duration::ZERO,
+            "the run ended without an outcome".to_string(),
+        )
+    });
+
+    // A command that never started is reported before the exit frame: the exit
+    // frame alone would carry -1 and no reason, which is exactly the silent
+    // refusal the protocol forbids.
+    if let Some(error) = &outcome.error {
+        write_frame(out, &Frame::error("spawn_failed", error))?;
+    }
+
     write_frame(
         out,
         &Frame::exit(Exit {
@@ -214,32 +252,39 @@ fn run_one(
 
 /// What this build can actually enforce, on this host, right now.
 ///
-/// Phase 0 enforces deadlines, output caps and a scrubbed environment; it does
-/// not confine the filesystem or the network, so it reports `degraded` and says
-/// why. Reporting `full` before a backend exists would make the one honest
-/// signal in the protocol a lie.
-fn capabilities() -> HelloAck {
+/// The answer comes from the confinement that was created at startup: a
+/// capability that can be created is not a capability that is applied, and
+/// reporting `full` before every spawn goes through the identity would make the
+/// one honest signal in the protocol a lie.
+fn capabilities(confinement: &Confinement) -> HelloAck {
+    let mut capabilities = confinement.capabilities();
+    if capabilities.is_empty() {
+        capabilities.push(CAP_LIMITS);
+    }
     HelloAck {
         protocol_major: PROTOCOL_MAJOR,
         protocol_minor: PROTOCOL_MINOR,
         server_version: SERVER_VERSION.to_string(),
-        level: LEVEL_DEGRADED.to_string(),
-        capabilities: vec![CAP_LIMITS.to_string()],
-        degraded_reasons: vec![
-            "filesystem confinement is not implemented in this build".to_string(),
-            "network confinement is not implemented in this build".to_string(),
-        ],
+        level: confinement.level().to_string(),
+        capabilities: capabilities.into_iter().map(str::to_string).collect(),
+        degraded_reasons: confinement.reasons(),
     }
 }
 
-fn refuse(out: &mut BufWriter<StdoutLock<'static>>, code: &str, message: &str) -> io::Result<()> {
+fn refuse(
+    out: &mut BufWriter<StdoutLock<'static>>,
+    code: &str,
+    message: &str,
+    confinement: &Confinement,
+) -> io::Result<()> {
     write_frame(out, &Frame::error(code, message))?;
     let _ = write_frame(
         out,
         &Frame {
             hello_ack: Some(HelloAck {
-                level: LEVEL_NONE.to_string(),
-                ..capabilities()
+                level: "none".to_string(),
+                degraded_reasons: vec![format!("handshake refused: {code}")],
+                ..capabilities(confinement)
             }),
             ..Frame::new("hello_ack")
         },
