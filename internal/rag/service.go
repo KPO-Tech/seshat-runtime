@@ -259,7 +259,7 @@ func (s *Service) Ingest(ctx context.Context, request IngestRequest) (IngestResu
 	// records store and return the original, unenriched text (see
 	// buildEmbeddingText).
 	var embedTexts []string
-	if s.enricher != nil {
+	if s.enricher != nil && !request.WithoutVectors {
 		plain := make([]string, len(chunks))
 		for i, chunk := range chunks {
 			plain[i] = chunk.Text
@@ -280,7 +280,7 @@ func (s *Service) Ingest(ctx context.Context, request IngestRequest) (IngestResu
 	// vectorsOut stays nil when there's no embedder configured - records get
 	// stored without a vector (vectorless/BM25-only), see vector.Record.Vector.
 	var vectorsOut [][]float32
-	if s.embedder != nil {
+	if s.embedder != nil && !request.WithoutVectors {
 		texts := embedTexts
 		if texts == nil {
 			texts = make([]string, 0, len(chunks))
@@ -290,10 +290,10 @@ func (s *Service) Ingest(ctx context.Context, request IngestRequest) (IngestResu
 		}
 		vectorsOut, err = s.embedder.EmbedTexts(ctx, texts)
 		if err != nil {
-			return IngestResult{}, err
+			return IngestResult{}, &EmbeddingError{Err: err}
 		}
 		if len(vectorsOut) != len(chunks) {
-			return IngestResult{}, fmt.Errorf("embedder returned %d vectors for %d chunks", len(vectorsOut), len(chunks))
+			return IngestResult{}, &EmbeddingError{Err: fmt.Errorf("embedder returned %d vectors for %d chunks", len(vectorsOut), len(chunks))}
 		}
 	}
 	records := make([]vector.Record, 0, len(chunks))
