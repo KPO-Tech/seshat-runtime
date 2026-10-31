@@ -9,6 +9,9 @@ type (
 	Embedder = internalembedder.Embedder
 	// Provider selects which embedding API format to use.
 	Provider = internalembedder.Provider
+	// RateLimitedError is a provider's refusal for quota. The embedder has already waited it out as far as it holds; what reaches the
+	// caller carries the wait the provider asked for and whether the quota is a daily one, so that the caller can pause instead of failing.
+	RateLimitedError = internalembedder.RateLimitedError
 )
 
 // New creates an Embedder from an explicit Config.
