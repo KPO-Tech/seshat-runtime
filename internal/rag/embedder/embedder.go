@@ -66,6 +66,9 @@ func (c *Config) IsConfigured() bool {
 type Embedder struct {
 	cfg    *Config
 	client *http.Client
+	// waits and sleep are what a refusal for quota is waited out with; the defaults are used when they are nil (tests set them).
+	waits []time.Duration
+	sleep func(ctx context.Context, wait time.Duration) error
 }
 
 // defaultEmbedBatchSize is a conservative default meant to stay well under
@@ -156,7 +159,7 @@ func overTokenLimit(err error) bool {
 	return false
 }
 
-func (e *Embedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+func (e *Embedder) embedOnce(ctx context.Context, texts []string) ([][]float32, error) {
 	switch e.cfg.Provider {
 	case ProviderOllama:
 		return e.embedOllama(ctx, texts)
@@ -194,6 +197,9 @@ func (e *Embedder) embedOpenAI(ctx context.Context, texts []string) ([][]float32
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		if limited := rateLimitFrom(resp.StatusCode, resp.Header, string(b)); limited != nil {
+			return nil, limited
+		}
 		return nil, fmt.Errorf("embedding API returned %d: %s", resp.StatusCode, string(b))
 	}
 
