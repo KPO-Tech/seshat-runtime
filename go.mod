@@ -23,7 +23,7 @@ require (
 	github.com/infiniflow/onnxruntime_go v1.29.0
 	github.com/lib/pq v1.12.3
 	github.com/opensearch-project/opensearch-go/v5 v5.0.0
-	github.com/pdfcpu/pdfcpu v0.16.3
+	github.com/pdfcpu/pdfcpu v0.16.4
 	github.com/qdrant/go-client v1.18.3
 	github.com/razvandimescu/gopdf v0.11.2
 	github.com/redis/go-redis/v9 v9.22.0
