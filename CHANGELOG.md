@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.7] - 2026-10-31
+
 ### Fixed
 
 - **The embedder waits out a refusal for quota instead of failing every document.** On a 429 (or a 503 that says how long to wait) it waits for the delay the provider asks for (`Retry-After`, or the `retryDelay` Google writes in the body), otherwise 5 s, 15 s and 45 s, for three minutes at most, and sends the same texts again; the wait stops with the context. A daily quota is not waited out, and a wait longer than two minutes is returned at once. What is returned is a `RateLimitedError` (exported in `pkg/rag/embedder`) that carries the wait and whether the quota is daily, so that a host can pause its queue; its text still starts with `embedding API returned 429`.
