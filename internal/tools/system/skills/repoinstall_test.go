@@ -77,3 +77,16 @@ func TestRepoSkillLoaderTellsTheAgentWhichPythonToUse(t *testing.T) {
 		t.Fatalf("the prompt carries the interpreter and the skill, got %q", blocks[0].Text)
 	}
 }
+
+func TestRepoSkillLoaderIgnoresCopiesInHiddenFoldersOfAChosenRepository(t *testing.T) {
+	root := t.TempDir()
+	writeRepoSkill(t, root, filepath.Join("skills", "alpha"), "alpha")
+	writeRepoSkill(t, root, filepath.Join(".codex-marketplace", "pkg", "skills", "alpha"), "alpha")
+	if err := os.WriteFile(filepath.Join(root, RepoInstallFile), []byte(`{"include":["alpha"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := NewRepoSkillLoader(root, SettingSourceProjectSettings).LoadSkills()
+	if len(got) != 1 {
+		t.Fatalf("the hidden copy is left out, got %q", skillNames(got))
+	}
+}
