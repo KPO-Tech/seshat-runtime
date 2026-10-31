@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.10] - 2026-10-31
+
 ### Fixed
 
 - **A repository installed in part ignores the copies of its skills kept in hidden folders** (such as `.codex-marketplace`), which are not the skills that were chosen.
