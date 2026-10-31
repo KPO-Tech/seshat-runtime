@@ -138,6 +138,8 @@ RAG_EMBEDDING_PROVIDER=ollama    # "openai" or "ollama", detected if empty
 
 **Quota.** A provider that answers 429 (or a 503 with a `Retry-After`) is waited out: the embedder waits for the delay the provider asks for, otherwise 5 s, 15 s and 45 s, up to three minutes in all, and sends the same texts again. A daily quota is not waited out and a wait longer than two minutes is returned at once. What reaches the caller is a `rag/embedder.RateLimitedError` (`errors.As`) that carries the wait asked for and whether the quota is a daily one, so that a host can pause its indexing queue instead of marking documents as failed.
 
+**Keywords only.** When the embedding of a document fails in a way that waiting does not mend, `Ingest` returns a `rag.EmbeddingError` (it wraps the embedder's error). The host can ingest the document again with `IngestRequest.WithoutVectors`: the passages are stored with no vector and found by BM25, exactly as when no embedder is set, and the vectors can be made later. A search that cannot embed its query already falls back to keywords.
+
 Models worth trying (IDs checked against OpenRouter's embeddings list, 2026-10; any OpenAI-compatible `/embeddings` endpoint works, for example `RAG_EMBEDDING_URL=https://openrouter.ai/api/v1`):
 
 | Model | Where | Notes |

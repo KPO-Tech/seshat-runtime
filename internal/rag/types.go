@@ -64,7 +64,19 @@ type IngestRequest struct {
 	// and multi-valued (ScopeIDs) representations - see vector.matchesFilter
 	// and pgvector_store.go's pgFilterClause.
 	ScopeIDs []string
+	// WithoutVectors indexes the passages for keywords only: the embedder is not called (nor the enricher, whose questions serve the
+	// embedding), and the records are stored with no vector, as when no embedder is set. A host sets it for a document whose embedding
+	// failed in a way that waiting does not mend, so that the document is still found by its words; it can make the vectors later.
+	WithoutVectors bool
 }
+
+// EmbeddingError is what Ingest returns when the embedder failed, to tell that failure from one of reading, chunking or storing: a host
+// can keep the document for keywords only. It wraps the error of the embedder, so errors.Is and errors.As reach it (a refusal for
+// quota, for one), and its text is that error's.
+type EmbeddingError struct{ Err error }
+
+func (e *EmbeddingError) Error() string { return e.Err.Error() }
+func (e *EmbeddingError) Unwrap() error { return e.Err }
 
 type IngestResult struct {
 	Artifact storage.ArtifactRef

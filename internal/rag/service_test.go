@@ -2,6 +2,7 @@ package rag
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -792,4 +793,57 @@ func TestServiceSearch_FallsBackToKeywordsWhenTheQueryCannotBeEmbedded(t *testin
 	if _, err := NewService(artifacts, store, failingEmbedder{}, nil).Search(cancelled, SearchRequest{CorpusID: "kb", Query: "fox", TopK: 5}); err == nil {
 		t.Fatal("a search that was cancelled must say so, not return keyword results")
 	}
+}
+
+// A document whose embedding failed is still found by its words when it is ingested again without vectors.
+func TestIngestWithoutVectorsStoresTheWordsAndNeverCallsTheEmbedder(t *testing.T) {
+	ctx := context.Background()
+	storage.SetConfig(storage.Config{Provider: storage.ProviderLocal, LocalPath: t.TempDir()})
+	t.Cleanup(storage.ResetProvider)
+	artifacts, err := storage.DefaultArtifactStore()
+	if err != nil {
+		t.Fatalf("DefaultArtifactStore: %v", err)
+	}
+	store := vector.NewMemoryStore()
+	embedder := &countingFailingEmbedder{}
+	service := NewService(artifacts, store, embedder, nil)
+	request := IngestRequest{CorpusID: "kb", FileID: "f1", Filename: "doc.txt", Text: "the quick brown fox\n\nan entirely unrelated paragraph"}
+
+	// With vectors wanted, the failure of the embedder is told apart from any other.
+	_, err = service.Ingest(ctx, request)
+	var embedding *EmbeddingError
+	if !errors.As(err, &embedding) {
+		t.Fatalf("a failing embedder must surface as an EmbeddingError, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "embedding API returned 401") {
+		t.Fatalf("the text of the embedder's error is kept: %q", err.Error())
+	}
+	before := embedder.calls
+
+	request.WithoutVectors = true
+	result, err := service.Ingest(ctx, request)
+	if err != nil {
+		t.Fatalf("ingesting without vectors must not fail: %v", err)
+	}
+	if result.Chunks == 0 {
+		t.Fatal("the passages must be stored")
+	}
+	if embedder.calls != before {
+		t.Fatal("the embedder must not be called when vectors are not wanted")
+	}
+
+	found, err := service.Search(ctx, SearchRequest{CorpusID: "kb", Query: "fox", TopK: 5, HybridWeight: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found.Results) != 1 || !strings.Contains(found.Results[0].Text, "fox") {
+		t.Fatalf("the document must be found by its words, got %+v", found.Results)
+	}
+}
+
+type countingFailingEmbedder struct{ calls int }
+
+func (e *countingFailingEmbedder) EmbedTexts(context.Context, []string) ([][]float32, error) {
+	e.calls++
+	return nil, fmt.Errorf("embedding API returned 401: bad key")
 }

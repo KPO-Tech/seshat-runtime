@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.8] - 2026-10-31
+
+### Added
+
+- **A document can be indexed for keywords only, and a failed embedding is told apart from any other failure.** `IngestRequest.WithoutVectors` stores the passages with no vector and calls neither the embedder nor the enricher, so a host can keep a document whose embedding failed in a way that waiting does not mend (a wrong key, a model that is gone, a daily quota) and find it by its words. `Ingest` now returns an `EmbeddingError` (exported in `pkg/rag`) when the embedder failed, which wraps the embedder's error: `errors.As` still reaches a `RateLimitedError`, and the text is unchanged.
+
 ## [1.12.7] - 2026-10-31
 
 ### Fixed
