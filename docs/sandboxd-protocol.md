@@ -111,12 +111,31 @@ empty list and an absent one must not be two different shapes.
 - **stdin is not part of the protocol.** A `RunRequest` carrying stdin is refused
   by the Go side rather than run without the input it expects.
 - **macOS** has no backend; it will report `none` rather than pretend.
-- **`violations` is still always empty.** A refusal is enforced by the operating
-  system, so the command sees a failed write and the run reports the exit code
-  and the stderr — but the protocol cannot yet say *which* write was denied, and
-  invariant 6 is a promise the backends do not keep.
-- The Windows tree kill uses `taskkill /T`; a Job Object backend replaces it
-  without changing this protocol.
+- **`violations` is still always empty, and that is now a measurement rather
+  than a placeholder.** The refusal happens in the kernel, between the command
+  and the file it asked for, so nothing in the sidecar's own process observes
+  it: the command sees an error, and that error reaches the runtime as its
+  stderr and exit code. What the operating system records instead is an audit
+  event, and none of it is reachable without elevation on this machine —
+  `auditpol /get /category:"Object Access"` fails with `A required privilege is
+  not held by the client` (0x522), the Security log answers `Access is denied`,
+  and the one channel that *is* readable, `AppModel-Runtime/Admin`, records
+  containers being created and destroyed, not per-path refusals. Reporting a
+  violation therefore needs an administrator to enable failure auditing and a
+  SACL on the path, which is a machine setting a sandbox must not grant itself.
+  Invariant 6 stays a promise the backends do not keep, and this document says
+  so instead of guessing from stderr.
+- **The Windows tree kill is a job object.** The child is created suspended,
+  placed in a job whose only limit is `KILL_ON_JOB_CLOSE`, and resumed once it is
+  a member, so nothing it starts can start before the assignment and nothing it
+  starts can leave the job. `cancel` and a deadline call `TerminateJobObject`,
+  and closing the job when a run ends ends whatever the command left running —
+  the case `taskkill /T` never covered, because it only ran on a kill and always
+  raced what the command was still starting. A test measures it: a detached
+  grandchild proves it ran, and the file it would have written four seconds
+  later never appears. `job_object` is claimed in `capabilities` for that
+  reason; it means tree containment, not CPU or memory limits, which no backend
+  applies yet.
 
 ## 6. Versioning
 

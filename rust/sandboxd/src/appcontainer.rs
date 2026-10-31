@@ -35,13 +35,16 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::ptr;
 
-use crate::process::Process;
+use crate::process::{Job, Process};
 
 /// `ERROR_ALREADY_EXISTS`, which `CreateAppContainerProfile` returns wrapped in
 /// an HRESULT when a profile of that name survived a crash.
 const ERROR_ALREADY_EXISTS: i32 = 183;
 
 const CREATE_UNICODE_ENVIRONMENT: u32 = 0x0000_0400;
+/// The child is created suspended so it cannot start a process before it is
+/// in the job object; `ResumeThread` starts it once it is.
+const CREATE_SUSPENDED: u32 = 0x0000_0004;
 const EXTENDED_STARTUPINFO_PRESENT: u32 = 0x0008_0000;
 const STARTF_USESTDHANDLES: u32 = 0x0000_0100;
 const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
@@ -83,7 +86,6 @@ extern "system" {
 #[link(name = "kernel32")]
 extern "system" {
     fn LocalFree(handle: *mut c_void) -> *mut c_void;
-    fn CloseHandle(handle: *mut c_void) -> i32;
     fn CreatePipe(
         read: *mut *mut c_void,
         write: *mut *mut c_void,
@@ -128,6 +130,8 @@ extern "system" {
         returned: *mut usize,
     ) -> i32;
     fn DeleteProcThreadAttributeList(list: *mut c_void);
+    fn ResumeThread(thread: *mut c_void) -> u32;
+    fn TerminateProcess(process: *mut c_void, code: u32) -> i32;
 }
 
 /// `INVALID_HANDLE_VALUE`, as the API returns it.
@@ -399,7 +403,7 @@ impl AppContainer {
                 ptr::null(),
                 ptr::null(),
                 1,
-                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
                 block.as_ptr() as *const c_void,
                 directory.as_ref().map_or(ptr::null(), |wide| wide.as_ptr()),
                 &info.startup,
@@ -412,10 +416,36 @@ impl AppContainer {
 
         // SAFETY: `created.thread` and `created.process` are handles this call
         // just produced and that nobody else owns.
-        let handle = unsafe {
-            CloseHandle(created.thread);
-            OwnedHandle::from_raw_handle(created.process)
+        let process_handle = unsafe { OwnedHandle::from_raw_handle(created.process) };
+        let thread_handle = unsafe { OwnedHandle::from_raw_handle(created.thread) };
+
+        // The job is what makes the tree kill enforceable: every process the
+        // command starts is born inside it, and closing the handle ends all of
+        // them. The child is still suspended here, so it cannot start anything
+        // before it is a member.
+        let job = match Job::new().and_then(|job| job.assign(&process_handle).map(|()| job)) {
+            Ok(job) => job,
+            Err(err) => {
+                // Suspended and never resumed: end it rather than leave behind a
+                // process nobody can reach.
+                // SAFETY: the handle is owned here and the process is this call's.
+                unsafe {
+                    TerminateProcess(process_handle.as_raw_handle(), 1);
+                }
+                return Err(step("job object", err));
+            }
         };
+
+        // SAFETY: the thread handle is owned here and still suspended.
+        let resumed = unsafe { ResumeThread(thread_handle.as_raw_handle()) };
+        if resumed == u32::MAX {
+            // SAFETY: as above.
+            unsafe {
+                TerminateProcess(process_handle.as_raw_handle(), 1);
+            }
+            return Err(step("ResumeThread", io::Error::last_os_error()));
+        }
+        drop(thread_handle);
 
         // Drop our copies of the write ends so the pipes report end-of-file once
         // the command exits.
@@ -424,7 +454,8 @@ impl AppContainer {
         drop(stdin);
 
         Ok(Process::from_windows(
-            handle,
+            job,
+            process_handle,
             created.process_id,
             Some(File::from(out_read)),
             Some(File::from(err_read)),

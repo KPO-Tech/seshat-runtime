@@ -21,6 +21,11 @@ mod imp;
 #[path = "process_windows.rs"]
 mod imp;
 
+/// The job object every Windows run lives in, so "kill the tree" is a
+/// property of the kernel rather than a second call someone can forget.
+#[cfg(windows)]
+pub use imp::Job;
+
 /// A child process and its two output pipes.
 pub struct Process {
     imp: imp::Process,
@@ -55,13 +60,14 @@ impl Process {
     /// Adopts a process handle produced by a confined launch.
     #[cfg(windows)]
     pub fn from_windows(
+        job: Job,
         handle: std::os::windows::io::OwnedHandle,
         pid: u32,
         stdout: Option<std::fs::File>,
         stderr: Option<std::fs::File>,
     ) -> Self {
         Self {
-            imp: imp::Process::adopt(handle, pid, boxed(stdout), boxed(stderr)),
+            imp: imp::Process::adopt(job, handle, pid, boxed(stdout), boxed(stderr)),
         }
     }
 }

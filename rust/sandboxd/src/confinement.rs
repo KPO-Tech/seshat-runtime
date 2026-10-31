@@ -17,7 +17,9 @@ use std::io;
 #[cfg(windows)]
 use std::sync::Mutex;
 
-use crate::frame::{CAP_FS_CONFINE, CAP_LIMITS, CAP_NETWORK_DENY, LEVEL_DEGRADED, LEVEL_NONE};
+use crate::frame::{
+    CAP_FS_CONFINE, CAP_JOB_OBJECT, CAP_LIMITS, CAP_NETWORK_DENY, LEVEL_DEGRADED, LEVEL_NONE,
+};
 use crate::process::Process;
 
 /// The three states a session can be in, spelled out rather than inferred from
@@ -106,7 +108,9 @@ impl Confinement {
     pub fn capabilities(&self) -> Vec<&'static str> {
         #[cfg(windows)]
         let capabilities = match &self.identity {
-            Identity::Confined(_) => vec![CAP_LIMITS, CAP_FS_CONFINE, CAP_NETWORK_DENY],
+            Identity::Confined(_) => {
+                vec![CAP_LIMITS, CAP_FS_CONFINE, CAP_NETWORK_DENY, CAP_JOB_OBJECT]
+            }
             Identity::Refused(_) => Vec::new(),
             #[cfg(test)]
             Identity::Direct => vec![CAP_LIMITS],
@@ -300,6 +304,7 @@ mod tests {
         let capabilities = confinement.capabilities();
         assert!(capabilities.contains(&CAP_FS_CONFINE), "{capabilities:?}");
         assert!(capabilities.contains(&CAP_NETWORK_DENY), "{capabilities:?}");
+        assert!(capabilities.contains(&CAP_JOB_OBJECT), "{capabilities:?}");
         assert_eq!(confinement.reasons().len(), 3);
     }
 }
