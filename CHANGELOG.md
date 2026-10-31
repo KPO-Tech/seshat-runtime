@@ -9,6 +9,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **pdfcpu 0.16.3** fixes the bypass of the decoded-byte limits of PDF streams (GHSA-jp42-qm45-2x6g) and confines local images in its create and form input (GHSA-44h9-p34h-2w4p). The runtime only decrypts, counts pages and inspects images with it, so the second change does not touch it; the reading of 439 test PDFs gave the same pages, status, text and text hash as with 0.16.1.
+
+### Changed
+
+- **Dependencies:** grpc 1.84.0, oauth2 0.37.0, aws-sdk-go-v2 (s3 1.114.5, config 1.33.10, smithy-go 1.28.6 and their modules), shopspring/decimal 1.6.0, go-humanize 1.1.0, and in the terminal module doublestar 4.10.4 and catwalk 0.52.83.
+
 ## [1.12.8] - 2026-10-31
 
 ### Added
