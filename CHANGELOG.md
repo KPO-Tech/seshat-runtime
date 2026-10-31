@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.9] - 2026-10-31
+
 ### Security
 
 - **pdfcpu 0.16.3** fixes the bypass of the decoded-byte limits of PDF streams (GHSA-jp42-qm45-2x6g) and confines local images in its create and form input (GHSA-44h9-p34h-2w4p). The runtime only decrypts, counts pages and inspects images with it, so the second change does not touch it; the reading of 439 test PDFs gave the same pages, status, text and text hash as with 0.16.1.
