@@ -253,48 +253,9 @@ func (s *Service) Ingest(ctx context.Context, request IngestRequest) (IngestResu
 	if len(chunks) == 0 {
 		return IngestResult{Artifact: artifact}, nil
 	}
-	// Chunk enrichment (synthetic questions) runs before embedding, if
-	// configured: the questions get folded into the text that is embedded,
-	// so retrieval benefits from them, but never into chunk.Text itself -
-	// records store and return the original, unenriched text (see
-	// buildEmbeddingText).
-	var embedTexts []string
-	if s.enricher != nil && !request.WithoutVectors {
-		plain := make([]string, len(chunks))
-		for i, chunk := range chunks {
-			plain[i] = chunk.Text
-		}
-		questionSets, err := s.enricher.EnrichChunks(ctx, plain)
-		if err != nil {
-			return IngestResult{}, fmt.Errorf("enricher: %w", err)
-		}
-		if len(questionSets) != len(chunks) {
-			return IngestResult{}, fmt.Errorf("enricher returned %d results for %d chunks", len(questionSets), len(chunks))
-		}
-		embedTexts = make([]string, len(chunks))
-		for i, chunk := range chunks {
-			embedTexts[i] = buildEmbeddingText(chunk.Text, questionSets[i])
-		}
-	}
-
-	// vectorsOut stays nil when there's no embedder configured - records get
-	// stored without a vector (vectorless/BM25-only), see vector.Record.Vector.
-	var vectorsOut [][]float32
-	if s.embedder != nil && !request.WithoutVectors {
-		texts := embedTexts
-		if texts == nil {
-			texts = make([]string, 0, len(chunks))
-			for _, chunk := range chunks {
-				texts = append(texts, chunk.Text)
-			}
-		}
-		vectorsOut, err = s.embedder.EmbedTexts(ctx, texts)
-		if err != nil {
-			return IngestResult{}, &EmbeddingError{Err: err}
-		}
-		if len(vectorsOut) != len(chunks) {
-			return IngestResult{}, &EmbeddingError{Err: fmt.Errorf("embedder returned %d vectors for %d chunks", len(vectorsOut), len(chunks))}
-		}
+	vectorsOut, err := s.vectorsFor(ctx, request, chunks)
+	if err != nil {
+		return IngestResult{}, err
 	}
 	records := make([]vector.Record, 0, len(chunks))
 	for i, chunk := range chunks {
@@ -354,6 +315,53 @@ func (s *Service) Ingest(ctx context.Context, request IngestRequest) (IngestResu
 		Artifact: artifact,
 		Chunks:   len(records),
 	}, nil
+}
+
+// vectorsFor makes the vectors of the chunks of a document: nil when no embedder is set or when the host asked for keywords only
+// (IngestRequest.WithoutVectors), in which case the records are stored without a vector. Chunk enrichment (synthetic questions) runs
+// before embedding, if configured: the questions get folded into the text that is embedded, so retrieval benefits from them, but never
+// into chunk.Text itself - records store and return the original, unenriched text (see buildEmbeddingText). A failure of the embedder
+// is returned as an EmbeddingError, to tell it from a failure of the enricher.
+func (s *Service) vectorsFor(ctx context.Context, request IngestRequest, chunks []Chunk) ([][]float32, error) {
+	if request.WithoutVectors {
+		return nil, nil
+	}
+	var embedTexts []string
+	if s.enricher != nil {
+		plain := make([]string, len(chunks))
+		for i, chunk := range chunks {
+			plain[i] = chunk.Text
+		}
+		questionSets, err := s.enricher.EnrichChunks(ctx, plain)
+		if err != nil {
+			return nil, fmt.Errorf("enricher: %w", err)
+		}
+		if len(questionSets) != len(chunks) {
+			return nil, fmt.Errorf("enricher returned %d results for %d chunks", len(questionSets), len(chunks))
+		}
+		embedTexts = make([]string, len(chunks))
+		for i, chunk := range chunks {
+			embedTexts[i] = buildEmbeddingText(chunk.Text, questionSets[i])
+		}
+	}
+	if s.embedder == nil {
+		return nil, nil
+	}
+	texts := embedTexts
+	if texts == nil {
+		texts = make([]string, 0, len(chunks))
+		for _, chunk := range chunks {
+			texts = append(texts, chunk.Text)
+		}
+	}
+	vectors, err := s.embedder.EmbedTexts(ctx, texts)
+	if err != nil {
+		return nil, &EmbeddingError{Err: err}
+	}
+	if len(vectors) != len(chunks) {
+		return nil, &EmbeddingError{Err: fmt.Errorf("embedder returned %d vectors for %d chunks", len(vectors), len(chunks))}
+	}
+	return vectors, nil
 }
 
 func (s *Service) splitChunks(ctx context.Context, request IngestRequest) ([]Chunk, error) {

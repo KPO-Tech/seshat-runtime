@@ -29,7 +29,6 @@ var knownComplex = map[string]int{
 	"internal/pdftext/rulings.go collectRulings":                                          41,
 	"internal/providers/client_codex.go parseCodexSSEStream":                              33,
 	"internal/rag/markdown_chunker.go markdownChunker.split":                              38,
-	"internal/rag/service.go Service.Ingest":                                              35,
 	"tui/internal/seshattui/config/load.go Config.configureProviders":                     59,
 	"tui/internal/seshattui/config/load.go configureSelectedModels":                       32,
 	"tui/internal/seshattui/shell/jq.go handleJQ":                                         44,
