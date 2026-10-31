@@ -103,6 +103,11 @@ func NewRepoSkillLoader(repoRoot string, source SettingSource) *FileSkillLoader 
 		return loader
 	}
 	loader.include = install.includes
+	if len(install.Include) > 0 {
+		// A repository that was chosen from keeps copies of its skills in folders of other tools (.codex-marketplace...): they are not the
+		// ones that were chosen.
+		loader.SkipHidden = true
+	}
 	loader.environmentNote = install.environmentNote()
 	return loader
 }

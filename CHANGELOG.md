@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A repository installed in part ignores the copies of its skills kept in hidden folders** (such as `.codex-marketplace`), which are not the skills that were chosen.
+
 ### Added
 
 - **A skill repository can be installed in part and with its own environment.** A host writes `.seshat-install.json` at the root of a cloned repository: only the skills listed in `include` are offered to the agent, none while `pending` is true, and when `python` is set each of those skills starts with a note telling the agent to run its scripts with that interpreter and not the one of the system. A repository with no such file behaves as before. The type and the loader are in `pkg/skills` (`RepoInstall`, `LoadRepoInstall`).
