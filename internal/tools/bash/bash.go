@@ -1121,7 +1121,7 @@ Instructions:
 - Always quote file paths that contain spaces with double quotes in your command.
 - Try to maintain your current working directory throughout the session by using absolute paths and avoiding cd. You may use cd if the user explicitly requests it.
 - You may specify an optional timeout in seconds (up to 300, which is 5 minutes). By default, your command times out after 30 seconds.
-- You can use run_in_background to run the command in the background and return immediately.
+- You can use run_in_background to run the command in the background and return immediately. It keeps running after your turn ends, so a dev server stays up: stop it with job_kill when it is no longer needed.
 
 When issuing multiple commands:
 - If the commands are independent and can run in parallel, make multiple bash calls in a single message.
