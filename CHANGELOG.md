@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Read refusals can be written ahead of a session.** `seshat-sandboxd protect` and `sdk.ApplySandboxdProtection` protect a large folder when the app can wait and show an error. A session's handshake is bounded, so a first protection of a large folder could make it fail.
+
 ### Fixed
 
 - **A background command no longer dies when the agent finishes its turn.** `run_in_background` was tied to the turn, so a dev server stopped as soon as the agent answered, and an interpreter could not be used from one turn to the next. A command now runs until it ends, `job_kill` stops it, or its client closes.

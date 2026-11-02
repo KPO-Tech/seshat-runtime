@@ -45,6 +45,13 @@ const (
 // SandboxKindSandboxed. See sandbox.SandboxdConfig for field-by-field documentation.
 type SandboxdConfig = sandbox.SandboxdConfig
 
+// ApplySandboxdProtection writes the project profile's read refusals on paths ahead of a
+// session. A session's handshake is bounded and a first protection walks every file below
+// a path, so a large folder is protected here. Missing paths are skipped.
+func ApplySandboxdProtection(ctx context.Context, binaryPath, capabilitySID string, paths []string) error {
+	return sandbox.ApplySandboxdProtection(ctx, binaryPath, capabilitySID, paths)
+}
+
 // RemoveSandboxdProtection takes back the read refusals the project profile wrote on
 // paths, with no session needed, so it also works after a crash.
 func RemoveSandboxdProtection(ctx context.Context, binaryPath, capabilitySID string, paths []string) error {
