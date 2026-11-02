@@ -92,14 +92,30 @@ every depth, so the label reached what was already there. The ACE on the root to
 
 A process created suspended, assigned to a job with `KILL_ON_JOB_CLOSE` and resumed:
 a detached grandchild ran, and stopped when the job closed. This was measured on the
-low-integrity token without the restriction; the sidecar's tests must repeat it on
-the final token.
+low-integrity token without the restriction, and the sidecar's tests repeat it on the
+final token.
 
 ### 6. The write-restricted flags do not start here
 
 `WRITE_RESTRICTED` with a capability SID, the logon SID and Everyone, at low
 integrity, fails every launch with `0xC0000142`. Codex uses that flag; this exact
 combination was not investigated further, since the fully restricted token works.
+
+### 7. Git Bash cannot start where it is installed, once any other Git Bash runs
+
+Found by running the whole chain, not by the harness above, which happened to run with
+no Git Bash open. Git Bash's runtime creates a shared object named after the path of its
+DLL. When an ordinary Git Bash is running, that object exists at medium integrity, this
+token cannot open it, and every command fails at startup with `NtCreateDirectoryObject
+... 0xC0000022`.
+
+A copy of `usr\bin` has another path, so another object. It is 94 MB and takes 4.5 s,
+once per version of Git. Through the real sidecar, with Git Bash open beside it, the
+commands ran from that copy: a write outside and a protected read both got `Permission
+denied`, `git` read the user's real `~/.gitconfig`, a Vite project went through `npm
+create`, `npm install` and `npm run build`, its dev server answered the host after 1.0 s,
+and a cancel ended the tree, so the port stopped answering. `npm install` took 42 s with
+an empty cache and 6.8 s with the cache kept in `LocalLow`.
 
 ## What stays open
 
@@ -124,8 +140,9 @@ damage, not a determined exfiltration.
   a medium-integrity process exposes.
 - **GUI programs.** `explorer.exe` failing suggests desktop programs do not start.
   A headless browser for tests was not tried.
-- **Undoing a label.** Restoring a tree to medium was measured with `/T` only: 33 s
-  for 50 000 files. Restoring the root alone was not measured.
+- **Undoing a label on a large tree.** With `/T` it took 33 s for 50 000 files. Restoring
+  the root alone is what the sidecar does, and its tests show it reaches what the tree
+  holds, but only on a few files.
 - **Files with a protected ACL or their own label inside a project**, which would not
   inherit from the root.
 - **One machine, one Windows build.**
