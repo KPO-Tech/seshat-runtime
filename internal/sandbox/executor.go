@@ -64,6 +64,11 @@ type RunRequest struct {
 	// Zero means no timeout beyond the parent context deadline.
 	Timeout time.Duration
 
+	// OnOutput, when set, receives output as the command produces it, with the
+	// stream ("stdout" or "stderr"). The RunResult still holds all of it. Only the
+	// sidecar backend calls it: the others hand output over when the command ends.
+	OnOutput func(stream string, data []byte)
+
 	// Background requests a fire-and-forget execution (no output captured).
 	// Used for long-running processes (servers, watchers).
 	Background bool

@@ -56,6 +56,11 @@ type Tool struct {
 	// of the raw exec.CommandContext + Landlock path. nil means "Landlock/
 	// local" — today's behavior, unchanged.
 	sandboxExecutor sandbox.Executor
+	// newBackgroundExecutor makes the executor of one background task. A task needs
+	// its own: the sidecar runs one command at a time, so a dev server on the shared
+	// one would hold every later command. nil means this sandbox cannot run background
+	// tasks, and they are refused rather than run outside it.
+	newBackgroundExecutor func() (sandbox.Executor, error)
 }
 
 // ToolConfig represents the Bash tool configuration.
@@ -106,6 +111,7 @@ func NewTool(config *ToolConfig) *Tool {
 	}
 
 	var sandboxExecutor sandbox.Executor
+	var newBackgroundExecutor func() (sandbox.Executor, error)
 	switch config.SandboxKind {
 	case sandbox.EnvironmentSandboxed:
 		// Fail closed. A backend the operator asked for that cannot be brought
@@ -132,6 +138,12 @@ func NewTool(config *ToolConfig) *Tool {
 			sandboxExecutor = sandbox.NewUnavailableExecutor(sandbox.EnvironmentSandboxed, err)
 		} else {
 			sandboxExecutor = executor
+			newBackgroundExecutor = func() (sandbox.Executor, error) {
+				return sandbox.NewExecutor(sandbox.ExecutorConfig{
+					Kind:     sandbox.EnvironmentSandboxed,
+					Sandboxd: sandboxdCfg,
+				})
+			}
 		}
 
 	case sandbox.EnvironmentDocker:
@@ -187,6 +199,8 @@ func NewTool(config *ToolConfig) *Tool {
 		backgroundManager: bm,
 		shell:             DetectShell(),
 		sandboxExecutor:   sandboxExecutor,
+
+		newBackgroundExecutor: newBackgroundExecutor,
 	}
 }
 
@@ -568,13 +582,25 @@ func (t *Tool) executeBackground(ctx context.Context, execCtx *ExecutionContext)
 	}
 
 	_, actualCommand := parseEnvVars(command)
-	task, err := t.backgroundManager.StartBackgroundTask(
-		ctx,
-		actualCommand,
-		execCtx.WorkingDirectory,
-		t.buildEnvironment(nil),
-		t.shell,
-	)
+	var task *BackgroundTask
+	var err error
+	if t.sandboxExecutor != nil {
+		// A background command is no exception to the sandbox the operator chose: the
+		// direct path below would run it on the host.
+		if t.newBackgroundExecutor == nil {
+			return tool.NewErrorResult(fmt.Errorf(
+				"background commands cannot run in the %s sandbox here: run it in the foreground", t.sandboxExecutor.Kind())), nil
+		}
+		task, err = t.backgroundManager.StartExecutorTask(ctx, actualCommand, execCtx.WorkingDirectory, t.newBackgroundExecutor)
+	} else {
+		task, err = t.backgroundManager.StartBackgroundTask(
+			ctx,
+			actualCommand,
+			execCtx.WorkingDirectory,
+			t.buildEnvironment(nil),
+			t.shell,
+		)
+	}
 	if err != nil {
 		return tool.NewErrorResult(fmt.Errorf("failed to start background task: %w", err)), nil
 	}
@@ -609,8 +635,10 @@ func (t *Tool) executeBackground(ctx context.Context, execCtx *ExecutionContext)
 // otherwise. Every session with no terminal ever opened keeps using the
 // local path exactly as before — RemoteExecutorFor only returns ok=true
 // once the host application (seshat-backend) has explicitly registered one.
+// A sandbox wins over the terminal: that terminal is the user's, with all their
+// rights, so a command sent there would leave the sandbox the operator chose.
 func (t *Tool) executeCommand(ctx context.Context, execCtx *ExecutionContext) (*CommandResult, error) {
-	if execCtx.SessionID != "" {
+	if t.sandboxExecutor == nil && execCtx.SessionID != "" {
 		if executor, ok := sandbox.RemoteExecutorFor(execCtx.SessionID); ok {
 			return t.executeViaRemote(ctx, execCtx, executor)
 		}
@@ -716,23 +744,27 @@ func (t *Tool) executeLocalCommand(ctx context.Context, execCtx *ExecutionContex
 }
 
 // executeViaSandbox runs the command through t.sandboxExecutor (currently:
-// sandbox.DockerExecutor) instead of the raw exec.CommandContext + Landlock
-// path. Streaming output chunks (execCtx.OutputChunkCallback) aren't
-// supported here — the sandbox.Executor interface returns output only once
-// the command completes — so callers relying on streaming won't see
-// incremental chunks while running sandboxed. Output capping and formatting
-// otherwise match executeLocalCommand exactly.
+// sandbox.DockerExecutor or the sidecar) instead of the raw exec.CommandContext +
+// Landlock path. The sidecar streams output to execCtx.OutputChunkCallback; Docker
+// hands it over when the command ends, so callers relying on streaming won't see
+// incremental chunks there. Output capping and formatting otherwise match
+// executeLocalCommand exactly.
 func (t *Tool) executeViaSandbox(ctx context.Context, execCtx *ExecutionContext, actualCommand string, startTime time.Time) (*CommandResult, error) {
 	var stdin io.Reader
 	if execCtx.Stdin != "" {
 		stdin = strings.NewReader(execCtx.Stdin)
 	}
 
+	var onOutput func(string, []byte)
+	if chunk := execCtx.OutputChunkCallback; chunk != nil {
+		onOutput = func(stream string, data []byte) { chunk(string(data), stream) }
+	}
 	res, err := t.sandboxExecutor.Run(ctx, sandbox.RunRequest{
-		Command: actualCommand,
-		WorkDir: execCtx.WorkingDirectory,
-		Timeout: execCtx.Timeout,
-		Stdin:   stdin,
+		Command:  actualCommand,
+		WorkDir:  execCtx.WorkingDirectory,
+		Timeout:  execCtx.Timeout,
+		Stdin:    stdin,
+		OnOutput: onOutput,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("sandboxed command execution failed: %w", err)

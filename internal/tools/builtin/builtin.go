@@ -102,6 +102,7 @@ func RegisterBuiltinToolsWithConfig(reg *tool.Registry, config *Config) error {
 	bashConfig.RequireSandbox = config.RequireSandbox
 	bashConfig.SandboxKind = config.SandboxKind
 	bashConfig.SandboxDocker = config.SandboxDocker
+	bashConfig.Sandboxd = config.Sandboxd
 
 	tools := []tool.Tool{
 		bashTool.NewTool(bashConfig),

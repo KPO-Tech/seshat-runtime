@@ -114,6 +114,9 @@ type Config struct {
 	// SandboxDocker configures the Docker sandbox backend when SandboxKind
 	// is sandbox.EnvironmentDocker. Zero value uses sandbox.DefaultDockerConfig().
 	SandboxDocker sandbox.DockerExecutorConfig
+	// Sandboxd configures the sidecar backend when SandboxKind is
+	// sandbox.EnvironmentSandboxed. An unavailable sidecar refuses every command.
+	Sandboxd sandbox.SandboxdConfig
 
 	// EnableToolSearch keeps deferred tools (including MCP tools and any
 	// tool registering with ShouldDefer) out of the model's initial tool

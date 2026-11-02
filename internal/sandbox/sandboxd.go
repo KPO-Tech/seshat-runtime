@@ -388,6 +388,9 @@ func (e *SandboxdExecutor) Run(ctx context.Context, req RunRequest) (RunResult, 
 			} else {
 				stdout.Write(data)
 			}
+			if req.OnOutput != nil {
+				req.OnOutput(frame.Chunk.Stream, data)
+			}
 
 		case sandboxdTypeExit:
 			if frame.Exit == nil {
