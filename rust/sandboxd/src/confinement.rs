@@ -292,17 +292,12 @@ impl Drop for Confinement {
                 .unwrap_or_default();
             for dir in granted {
                 // Best effort: a destructor cannot report anything. The grant is inert
-                // once the profile that named it is gone, and a low label that survives
-                // a crash lets only low-integrity programs write there.
+                // once the profile that named it is gone. The project profile's label
+                // stays: another session may be working in this folder, and taking it
+                // back would stop that session's writes.
                 let dir = std::path::Path::new(&dir);
-                match &self.identity {
-                    Identity::Confined(profile) => {
-                        let _ = profile.revoke(dir);
-                    }
-                    Identity::Project(identity) => {
-                        let _ = identity.release(dir);
-                    }
-                    _ => {}
+                if let Identity::Confined(profile) = &self.identity {
+                    let _ = profile.revoke(dir);
                 }
             }
         }
@@ -509,6 +504,51 @@ mod tests {
         let reasons = confinement.reasons().join(" ");
         assert!(reasons.contains("network"), "{reasons}");
         assert!(reasons.contains("reads"), "{reasons}");
+    }
+
+    /// A dev server has a sidecar of its own, on the folder the main sidecar works in, so
+    /// one session ending must not take the folder from the other.
+    #[cfg(windows)]
+    #[test]
+    fn a_session_ending_leaves_the_folder_to_the_one_still_using_it() {
+        let home = std::env::var_os("USERPROFILE").expect("USERPROFILE");
+        let dir = std::path::Path::new(&home).join(format!(
+            "seshat-sandboxd-test-shared-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).expect("create the folder");
+        let work = dir.display().to_string();
+
+        let mut env = BTreeMap::new();
+        for key in ["PATH", "SystemRoot", "SystemDrive", "ComSpec"] {
+            if let Ok(value) = std::env::var(key) {
+                env.insert(key.to_string(), value);
+            }
+        }
+        let comspec = std::env::var("ComSpec").expect("ComSpec");
+        let args = ["/d".to_string(), "/c".to_string()];
+        let write = |confinement: &Confinement, file: &str| {
+            confinement
+                .spawn(&comspec, &args, &format!("echo x>{file}"), &env, &work)
+                .expect("spawn")
+                .wait()
+                .expect("wait")
+        };
+
+        let hello = Hello {
+            profile: PROFILE_PROJECT.to_string(),
+            capability_sid: "S-1-5-21-1111111111-2222222222-3333333333-4444444444".to_string(),
+            ..Hello::default()
+        };
+        let main = Confinement::detect(&hello);
+        let server = Confinement::detect(&hello);
+        assert_eq!(write(&main, "main.txt"), 0);
+        assert_eq!(write(&server, "server.txt"), 0);
+        drop(server);
+        let after = write(&main, "after.txt");
+        drop(main);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(after, 0, "the session still running lost the folder");
     }
 
     #[cfg(windows)]
