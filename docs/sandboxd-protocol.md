@@ -51,7 +51,7 @@ payload set.
 
 | `type` | payload | direction |
 |---|---|---|
-| `hello` | `protocol_major`, `protocol_minor`, `client_version` | runtime → sidecar |
+| `hello` | `protocol_major`, `protocol_minor`, `client_version`, `profile`, `capability_sid`, `deny_read` | runtime → sidecar |
 | `hello_ack` | `protocol_major`, `protocol_minor`, `server_version`, `level`, `capabilities`, `degraded_reasons` | sidecar → runtime |
 | `run` | `run_id`, `command`, `shell`, `work_dir`, `env`, `allow_network`, `timeout_ms`, `max_output_bytes` | runtime → sidecar |
 | `chunk` | `run_id`, `stream` (`stdout`/`stderr`), `data` (base64) | sidecar → runtime |
@@ -63,6 +63,16 @@ payload set.
 runtime asked for: `full` (everything), `degraded` (a subset, with every missing
 capability named in `degraded_reasons`), `none` (nothing — the runtime must
 refuse to run).
+
+`profile` chooses the Windows identity ([ADR-0002](adr/0002-windows-execution-profiles.md)):
+`strict` (empty means this) or `project`. It is created between `hello` and
+`hello_ack`, so `level` describes what exists. `deny_read` names what `project` refuses
+to read, through a deny ACE on `capability_sid`, which the client keeps. A named path
+that exists and cannot be protected makes `level` `none`. A deny ACE outlives the
+session on purpose; `seshat-sandboxd unprotect <capability-sid> <path>...` takes it back,
+with no session needed, so it works after a crash. Under `project`, temporary files and
+tool caches are redirected to `LocalLow\Seshat\sandbox`, and Git Bash runs from a private
+copy kept there, because it cannot start from its install while another Git Bash runs.
 
 Arrays are always encoded, never `null`: `"shell":[]`, not `"shell":null`. An
 empty list and an absent one must not be two different shapes.

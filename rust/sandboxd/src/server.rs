@@ -46,18 +46,9 @@ enum RunEvent {
 
 /// Serve one client until stdin closes or the client stops reading.
 pub fn serve() -> io::Result<()> {
-    // The identity this session runs under is created before the handshake, so
-    // `level` describes something that already exists rather than something
-    // that might be created later.
-    let confinement = Arc::new(Confinement::detect());
-    eprintln!(
-        "seshat-sandboxd: level={} capabilities={:?}",
-        confinement.level(),
-        confinement.capabilities()
-    );
-    for reason in confinement.reasons() {
-        eprintln!("seshat-sandboxd: degraded: {reason}");
-    }
+    // Until a client asks for a profile there is no identity, and every refusal
+    // of the handshake below reports that.
+    let confinement = Arc::new(Confinement::none());
 
     let (protocol_tx, protocol_rx) = mpsc::channel::<ProtocolMessage>();
     spawn_reader(protocol_tx);
@@ -100,6 +91,18 @@ pub fn serve() -> io::Result<()> {
             ),
             &confinement,
         );
+    }
+
+    // Created here, before answering, so `level` describes something that already
+    // exists rather than something that might be created later.
+    let confinement = Arc::new(Confinement::detect(&hello));
+    eprintln!(
+        "seshat-sandboxd: level={} capabilities={:?}",
+        confinement.level(),
+        confinement.capabilities()
+    );
+    for reason in confinement.reasons() {
+        eprintln!("seshat-sandboxd: degraded: {reason}");
     }
 
     write_frame(&mut out, &Frame::hello_ack(capabilities(&confinement)))?;

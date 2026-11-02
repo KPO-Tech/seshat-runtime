@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 /// Refused at handshake when the two sides disagree: a minor mismatch is usable,
 /// a major mismatch is not.
 pub const PROTOCOL_MAJOR: u32 = 1;
-pub const PROTOCOL_MINOR: u32 = 0;
+pub const PROTOCOL_MINOR: u32 = 1;
 
 pub const TYPE_HELLO: &str = "hello";
 pub const TYPE_HELLO_ACK: &str = "hello_ack";
@@ -43,6 +43,13 @@ pub const LEVEL_DEGRADED: &str = "degraded";
 #[cfg_attr(not(windows), allow(dead_code))]
 pub const LEVEL_NONE: &str = "none";
 
+/// Reads and writes outside the workdir refused, no network, no project toolchain.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const PROFILE_STRICT: &str = "strict";
+/// Writes outside the workdir refused; reads and the network open. See ADR-0002.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const PROFILE_PROJECT: &str = "project";
+
 pub const CAP_LIMITS: &str = "limits";
 #[allow(dead_code)]
 pub const CAP_FS_CONFINE: &str = "fs_confine";
@@ -54,6 +61,9 @@ pub const CAP_LANDLOCK: &str = "landlock";
 pub const CAP_SECCOMP: &str = "seccomp";
 #[allow(dead_code)]
 pub const CAP_JOB_OBJECT: &str = "job_object";
+/// Named folders are refused to the command by a deny ACE.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const CAP_READ_DENY: &str = "read_deny";
 
 /// One protocol message. Exactly one payload member is set, named after `kind`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -125,6 +135,17 @@ pub struct Hello {
     pub protocol_major: u32,
     pub protocol_minor: u32,
     pub client_version: String,
+    /// `strict` or `project`. Empty means `strict`, what a client of 1.0 gets.
+    #[serde(default)]
+    pub profile: String,
+    /// The SID the `project` token carries and deny ACEs name. The client keeps it:
+    /// taking an ACE back later needs the same one.
+    #[serde(default)]
+    pub capability_sid: String,
+    /// What the `project` profile must refuse to read. A path that cannot be protected
+    /// makes the session `none`; one that does not exist is skipped.
+    #[serde(default)]
+    pub deny_read: Vec<String>,
 }
 
 /// Answer to `Hello`. `level` says what this process can enforce on this host,
