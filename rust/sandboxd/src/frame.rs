@@ -40,6 +40,7 @@ pub const STREAM_STDERR: &str = "stderr";
 /// How much isolation is *actually* applied, as opposed to what was requested.
 pub const LEVEL_FULL: &str = "full";
 pub const LEVEL_DEGRADED: &str = "degraded";
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const LEVEL_NONE: &str = "none";
 
 pub const CAP_LIMITS: &str = "limits";

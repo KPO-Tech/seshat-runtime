@@ -8,9 +8,6 @@
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 
 pub struct Process {
     child: Child,
@@ -105,6 +102,10 @@ fn signal_group(pid: u32) {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
     use super::*;
 
     /// The group signal must reach the processes the shell started, not only

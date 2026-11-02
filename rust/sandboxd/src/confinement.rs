@@ -17,9 +17,9 @@ use std::io;
 #[cfg(windows)]
 use std::sync::Mutex;
 
-use crate::frame::{
-    CAP_FS_CONFINE, CAP_JOB_OBJECT, CAP_LIMITS, CAP_NETWORK_DENY, LEVEL_DEGRADED, LEVEL_NONE,
-};
+#[cfg(windows)]
+use crate::frame::{CAP_FS_CONFINE, CAP_JOB_OBJECT, CAP_NETWORK_DENY, LEVEL_NONE};
+use crate::frame::{CAP_LIMITS, LEVEL_DEGRADED};
 use crate::process::Process;
 
 /// The three states a session can be in, spelled out rather than inferred from
@@ -258,7 +258,7 @@ fn push_argument(line: &mut String, argument: &str) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
