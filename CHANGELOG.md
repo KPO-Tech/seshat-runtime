@@ -9,6 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The Windows sidecar launches every command inside an AppContainer.** `sandboxd` creates the identity once per session, grants the run's working directory to its package SID and starts the command with `CreateProcessW` and a `STARTUPINFOEX` attribute list, so that directory and nothing else is writable: `%TEMP%` and every path outside the workdir are refused by the system, and the identity carries no capability, so there is no network. The grant is revoked when the session ends. `level` stays `degraded` and names the three limits this machine measured; an identity that cannot be created makes the session `none` instead of falling back to an unconfined run.
+- **A command that cannot be started now says why.** A failed launch emits an `error` frame carrying the reason before the `exit` frame, instead of an `exit` with -1 and no explanation.
+- **A Windows run's processes cannot outlive it.** Every launch creates a job object with `KILL_ON_JOB_CLOSE`, puts the child in it while the child is still suspended, and resumes it afterwards, so a command's descendants belong to the run rather than to whichever shell started them. `cancel`, a deadline and the end of a normal run all end the tree, and `hello_ack` reports `job_object` in `capabilities`. The `taskkill /T` call is gone.
+
+### Fixed
+
+- **A confined launch no longer fails with `ERROR_INVALID_PARAMETER`.** The `SECURITY_CAPABILITIES` structure the process attribute list points at was a local of the function that filled the list, so it was gone by the time `CreateProcessW` read it; it now lives until the call returns. The environment block also sets `CREATE_UNICODE_ENVIRONMENT`, without which the kernel parses the UTF-16 block as ANSI and refuses the launch with error 203.
+
 ## [1.12.11] - 2026-11-02
 
 ### Added
