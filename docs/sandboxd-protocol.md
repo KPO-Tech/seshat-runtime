@@ -70,7 +70,10 @@ refuse to run).
 to read, through a deny ACE on `capability_sid`, which the client keeps. A named path
 that exists and cannot be protected makes `level` `none`. A deny ACE outlives the
 session on purpose; `seshat-sandboxd unprotect <capability-sid> <path>...` takes it back,
-with no session needed, so it works after a crash. Under `project`, temporary files and
+with no session needed, so it works after a crash. `seshat-sandboxd protect
+<capability-sid> <path>...` writes it ahead of a session: a first protection walks every
+file below the path (7 s for 50 000 files, measured, then 11 ms when already done), and the
+handshake is bounded. Under `project`, temporary files and
 tool caches are redirected to `LocalLow\Seshat\sandbox`, and Git Bash runs from a private
 copy kept there, because it cannot start from its install while another Git Bash runs.
 

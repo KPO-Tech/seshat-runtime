@@ -622,6 +622,15 @@ func (c *Client) Close() error {
 				errs = append(errs, err)
 			}
 		}
+		if c.registry != nil {
+			if registered, ok := c.registry.Get(bashTool.ToolName); ok {
+				if bash, ok := registered.(*bashTool.Tool); ok {
+					if err := bash.Close(); err != nil {
+						errs = append(errs, err)
+					}
+				}
+			}
+		}
 		if c.ownedStore && c.store != nil {
 			if err := c.store.Close(); err != nil {
 				errs = append(errs, err)

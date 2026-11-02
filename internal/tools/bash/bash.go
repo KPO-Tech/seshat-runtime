@@ -21,7 +21,6 @@ import (
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/schema"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
-	"github.com/KPO-Tech/seshat-runtime/pkg/runtimepath"
 )
 
 const (
@@ -61,6 +60,8 @@ type Tool struct {
 	// one would hold every later command. nil means this sandbox cannot run background
 	// tasks, and they are refused rather than run outside it.
 	newBackgroundExecutor func() (sandbox.Executor, error)
+	closeOnce             sync.Once
+	closeErr              error
 }
 
 // ToolConfig represents the Bash tool configuration.
@@ -188,9 +189,8 @@ func NewTool(config *ToolConfig) *Tool {
 		)
 	}
 
-	bm := NewBackgroundTaskManager(runtimepath.BashTasksDir(""))
+	bm := sharedTaskManager()
 	_ = bm.Init()
-	globalTaskManager = bm // expose to package-level callers (monitor, task-list tools)
 
 	return &Tool{
 		config:            config,
@@ -202,6 +202,19 @@ func NewTool(config *ToolConfig) *Tool {
 
 		newBackgroundExecutor: newBackgroundExecutor,
 	}
+}
+
+// Close stops the background tasks this tool started and its sandbox. A task must not
+// outlive the client that started it: the process it runs in may not be the next thing
+// to exit, and nothing would be left to stop it.
+func (t *Tool) Close() error {
+	t.closeOnce.Do(func() {
+		t.backgroundManager.killOwnedBy(t)
+		if closer, ok := t.sandboxExecutor.(io.Closer); ok {
+			t.closeErr = closer.Close()
+		}
+	})
+	return t.closeErr
 }
 
 // Definition returns the tool definition.
@@ -581,6 +594,10 @@ func (t *Tool) executeBackground(ctx context.Context, execCtx *ExecutionContext)
 		command = strings.TrimSpace(command[:len(command)-1])
 	}
 
+	// ctx belongs to the turn, which ends long before a dev server or an interpreter
+	// the model means to come back to. Close and job_kill end the task.
+	ctx = context.WithoutCancel(ctx)
+
 	_, actualCommand := parseEnvVars(command)
 	var task *BackgroundTask
 	var err error
@@ -604,6 +621,9 @@ func (t *Tool) executeBackground(ctx context.Context, execCtx *ExecutionContext)
 	if err != nil {
 		return tool.NewErrorResult(fmt.Errorf("failed to start background task: %w", err)), nil
 	}
+	task.mu.Lock()
+	task.owner = t
+	task.mu.Unlock()
 
 	label := execCtx.Description
 	if label == "" {
@@ -1101,7 +1121,7 @@ Instructions:
 - Always quote file paths that contain spaces with double quotes in your command.
 - Try to maintain your current working directory throughout the session by using absolute paths and avoiding cd. You may use cd if the user explicitly requests it.
 - You may specify an optional timeout in seconds (up to 300, which is 5 minutes). By default, your command times out after 30 seconds.
-- You can use run_in_background to run the command in the background and return immediately.
+- You can use run_in_background to run the command in the background and return immediately. It keeps running after your turn ends, so a dev server stays up: stop it with job_kill when it is no longer needed.
 
 When issuing multiple commands:
 - If the commands are independent and can run in parallel, make multiple bash calls in a single message.

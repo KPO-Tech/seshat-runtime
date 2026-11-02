@@ -180,7 +180,7 @@ client, _ := sdk.NewClient(&sdk.ClientConfig{
 
 On Windows, `SandboxdProfileProject` refuses writes outside the working directory and reads of the paths in `DenyRead`. Other reads and the network stay open, and the user's secrets remain reachable through DPAPI and the Credential Manager. `SandboxdProfileStrict` also refuses other reads and the network, and cannot run `git init`, `npm` or a Node script. See [ADR 0002](adr/0002-windows-execution-profiles.md).
 
-`sdk.RemoveSandboxdProtection(ctx, sidecarPath, installSID, paths)` takes the read refusals back. It needs no session, so it also works after a crash.
+`sdk.ApplySandboxdProtection(ctx, sidecarPath, installSID, paths)` writes the read refusals ahead of a session. Use it for large folders: a session's handshake also writes them, but it is bounded, and a first protection walks every file below the path. `sdk.RemoveSandboxdProtection(ctx, sidecarPath, installSID, paths)` takes them back. It needs no session, so it also works after a crash.
 
 With any sandbox configured:
 

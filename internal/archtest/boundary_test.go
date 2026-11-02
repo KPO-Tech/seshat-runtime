@@ -34,7 +34,6 @@ var legacyPkgImports = map[string][]string{
 	"internal/storage/storage.go":                        {"pkg/runtimepath"},
 	"internal/titlegen/local.go":                         {"pkg/runtimepath"},
 	"internal/tools/bash/background.go":                  {"pkg/runtimepath"},
-	"internal/tools/bash/bash.go":                        {"pkg/runtimepath"},
 	"internal/tools/bash/monitor.go":                     {"pkg/runtimepath"},
 	"internal/tools/builtin/config.go":                   {"pkg/pdfsmart"},
 	"internal/tools/files/documentreader/render_page.go": {"pkg/pdfsmart"},

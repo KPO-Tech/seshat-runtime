@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -113,6 +114,111 @@ func TestBackgroundCommandStaysInTheSandbox(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("the command ran on the host")
+	}
+}
+
+// The turn's context ends with the turn. A dev server must not.
+func TestABackgroundCommandOutlivesTheTurnThatStartedIt(t *testing.T) {
+	own := &fakeExecutor{kind: sandbox.EnvironmentSandboxed, wait: true}
+	tool := toolWithSandbox(t, &fakeExecutor{kind: sandbox.EnvironmentSandboxed})
+	tool.newBackgroundExecutor = func() (sandbox.Executor, error) { return own, nil }
+
+	turn, endTurn := context.WithCancel(context.Background())
+	result, err := tool.executeBackground(turn, &ExecutionContext{Command: "npm run dev", WorkingDirectory: t.TempDir()})
+	if err != nil || result.Error != nil {
+		t.Fatalf("result %+v, err %v", result, err)
+	}
+	task := tool.backgroundManager.ListTasks()[0]
+	endTurn()
+
+	select {
+	case <-task.done:
+		t.Fatal("the task ended with the turn")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	if err := tool.backgroundManager.KillTask(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, task)
+}
+
+func TestClosingAToolStopsItsTasksAndSandboxAndNoOthers(t *testing.T) {
+	shared := NewBackgroundTaskManager(t.TempDir())
+	start := func(sandboxed *fakeExecutor) (*Tool, *fakeExecutor, *BackgroundTask) {
+		own := &fakeExecutor{kind: sandbox.EnvironmentSandboxed, wait: true}
+		tool := toolWithSandbox(t, sandboxed)
+		tool.backgroundManager = shared
+		tool.newBackgroundExecutor = func() (sandbox.Executor, error) { return own, nil }
+		before := map[string]bool{}
+		for _, task := range shared.ListTasks() {
+			before[task.ID] = true
+		}
+		result, err := tool.executeBackground(context.Background(), &ExecutionContext{Command: "serve", WorkingDirectory: t.TempDir()})
+		if err != nil || result.Error != nil {
+			t.Fatalf("result %+v, err %v", result, err)
+		}
+		for _, task := range shared.ListTasks() {
+			if !before[task.ID] {
+				return tool, own, task
+			}
+		}
+		t.Fatal("no new task")
+		return nil, nil, nil
+	}
+
+	mainExecutor := &fakeExecutor{kind: sandbox.EnvironmentSandboxed}
+	closing, _, closingTask := start(mainExecutor)
+	staying, _, stayingTask := start(&fakeExecutor{kind: sandbox.EnvironmentSandboxed})
+
+	if err := closing.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := closing.Close(); err != nil {
+		t.Fatalf("a second close: %v", err)
+	}
+	waitDone(t, closingTask)
+	if !mainExecutor.closed.Load() {
+		t.Fatal("the tool's sandbox was left running")
+	}
+	if stayingTask.GetStatus() != TaskStatusRunning {
+		t.Fatalf("another tool's task stopped: status %v", stayingTask.GetStatus())
+	}
+	if err := staying.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitDone(t, stayingTask)
+}
+
+// job_kill and a client closing can stop the same task at the same moment.
+func TestKillingATaskTwiceAtOnceIsHarmless(t *testing.T) {
+	own := &fakeExecutor{kind: sandbox.EnvironmentSandboxed, wait: true}
+	tool := toolWithSandbox(t, &fakeExecutor{kind: sandbox.EnvironmentSandboxed})
+	tool.newBackgroundExecutor = func() (sandbox.Executor, error) { return own, nil }
+	result, err := tool.executeBackground(context.Background(), &ExecutionContext{Command: "serve", WorkingDirectory: t.TempDir()})
+	if err != nil || result.Error != nil {
+		t.Fatalf("result %+v, err %v", result, err)
+	}
+	task := tool.backgroundManager.ListTasks()[0]
+
+	var kills sync.WaitGroup
+	for range 32 {
+		kills.Add(1)
+		go func() {
+			defer kills.Done()
+			_ = tool.backgroundManager.KillTask(task.ID)
+		}()
+	}
+	kills.Wait()
+	waitDone(t, task)
+}
+
+// A second client, for another model, must still see what the first one started.
+func TestEveryToolSharesOneTaskManager(t *testing.T) {
+	first := NewTool(DefaultToolConfig())
+	second := NewTool(DefaultToolConfig())
+	if first.backgroundManager != second.backgroundManager || first.backgroundManager != GlobalTaskManager() {
+		t.Fatal("two tools hold different task managers")
 	}
 }
 
