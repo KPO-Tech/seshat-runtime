@@ -78,8 +78,13 @@ its own sandbox.
   effect on the user, but a crash can leave an ACE behind, so the runtime must be able
   to remove every ACE of its SID without having a record of where they are, or keep
   that record outside the protected folders.
-- Workdirs carry a low-integrity label while in use, which other low-integrity programs
-  on the machine could write through. It is taken back when the session ends.
+- Workdirs keep a low-integrity label after use, which other low-integrity programs on
+  the machine could write through. A session does not take it back when it ends, because
+  another session may be working in the same folder, and a background command has a
+  sidecar of its own, so this is the normal case. `icacls <dir> /setintegritylevel
+  (OI)(CI)M` takes it back by hand.
+- The profile refuses a drive root, the user's profile and any folder holding it: a label
+  there would confine nothing.
 - Tools that use a temporary folder or a home directory must be pointed into the workdir,
   as the spike did. Some caches are rebuilt for each workdir, which costs time.
 

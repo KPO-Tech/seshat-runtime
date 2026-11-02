@@ -230,18 +230,18 @@ impl ProjectIdentity {
     /// it grants the user nothing they could not take, and walking a large project
     /// twice per session to remove it would cost more than it is worth.
     pub fn grant(&self, dir: &Path) -> io::Result<()> {
+        if too_wide(dir) {
+            return Err(io::Error::other(format!(
+                "the project sandbox cannot work in {}: it holds a whole drive or the user's profile, so nothing would be confined. Open a project folder",
+                dir.display()
+            )));
+        }
         if icacls(dir, &["/setintegritylevel", "(OI)(CI)low", "/Q"]).is_ok() {
             return Ok(());
         }
         let user = token_user_sid_string()?;
         icacls(dir, &["/grant", &format!("*{user}:(OI)(CI)F"), "/Q"])?;
         icacls(dir, &["/setintegritylevel", "(OI)(CI)low", "/Q"])
-    }
-
-    /// Takes the label back. What a command created inherits the folder's label, so
-    /// restoring the folder restores it too.
-    pub fn release(&self, dir: &Path) -> io::Result<()> {
-        icacls(dir, &["/setintegritylevel", "(OI)(CI)M", "/Q"])
     }
 
     /// The shell to start for `program`, and the folder to put first on `PATH`.
@@ -695,6 +695,25 @@ fn write_dacl(path: &mut [u16], acl: *mut c_void) -> io::Result<()> {
     Ok(())
 }
 
+/// Whether granting `dir` would hand a command a whole drive or the user's profile. A
+/// path that cannot be resolved is left to the grant, which then fails on it.
+fn too_wide(dir: &Path) -> bool {
+    let Ok(dir) = dir.canonicalize() else {
+        return false;
+    };
+    if dir.parent().is_none() {
+        return true;
+    }
+    let Some(home) = std::env::var_os("USERPROFILE") else {
+        return false;
+    };
+    let Ok(home) = Path::new(&home).canonicalize() else {
+        return false;
+    };
+    let lower = |path: &Path| path.display().to_string().to_lowercase();
+    Path::new(&lower(&home)).starts_with(lower(&dir))
+}
+
 /// Keeps `path` from a command carrying `capability_sid`. A path that does not exist
 /// is skipped: the list names what may be on a machine. Doing it twice changes nothing.
 pub fn protect(capability_sid: &str, path: &Path) -> io::Result<()> {
@@ -872,27 +891,29 @@ mod tests {
     }
 
     #[test]
-    fn releasing_a_folder_takes_the_write_back_on_what_is_in_it() {
-        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
-        let work = Dir::new("release");
-        fs::create_dir_all(work.0.join("sub")).unwrap();
-        fs::write(work.0.join("sub").join("f.txt"), "x").unwrap();
-        identity.grant(&work.0).expect("grant");
-        let (code, _) = run(&identity, "echo made>sub\\made.txt", &work.0);
-        assert_eq!(code, 0);
+    fn a_drive_or_the_profile_is_too_wide_and_a_folder_in_it_is_not() {
+        let home = PathBuf::from(std::env::var_os("USERPROFILE").expect("USERPROFILE"));
+        assert!(too_wide(&home));
+        assert!(too_wide(Path::new(
+            &home.display().to_string().to_uppercase()
+        )));
+        let parent = home.parent().expect("the profile has a parent");
+        assert!(too_wide(parent));
+        assert!(too_wide(home.ancestors().last().expect("the drive")));
 
-        identity.release(&work.0).expect("release");
-        let elsewhere = Dir::new("elsewhere");
-        identity.grant(&elsewhere.0).expect("grant");
-        for file in ["f.txt", "made.txt"] {
-            let target = work.0.join("sub").join(file);
-            let (code, text) = run(
-                &identity,
-                &format!("echo y>>\"{}\"", target.display()),
-                &elsewhere.0,
-            );
-            assert_ne!(code, 0, "{file} stayed writable after the release: {text}");
-        }
+        let inside = Dir::new("wide");
+        assert!(!too_wide(&inside.0));
+        assert!(!too_wide(Path::new("Z:\\does\\not\\exist")));
+    }
+
+    #[test]
+    fn granting_too_wide_a_folder_is_refused_and_says_why() {
+        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
+        let home = PathBuf::from(std::env::var_os("USERPROFILE").expect("USERPROFILE"));
+        let err = identity
+            .grant(home.ancestors().last().expect("the drive"))
+            .expect_err("a drive must be refused");
+        assert!(err.to_string().contains("project folder"), "{err}");
     }
 
     #[test]

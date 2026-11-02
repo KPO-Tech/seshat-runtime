@@ -9,6 +9,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-11-02
+
+### Fixed
+
+- **A background command ending no longer stops the commands after it from writing.** Under the `project` profile, a sidecar closing took the folder's label back while another one was still working there, so once a dev server was stopped every write in that folder was refused. The label now stays on the folder after use.
+- **The `project` profile refuses a drive root or the user's profile as a working directory.** A label there would have let commands write everywhere the profile promises to protect. The command now fails and asks for a project folder.
+
 ## [1.13.0] - 2026-11-02
 
 ### Added
