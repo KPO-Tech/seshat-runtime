@@ -40,11 +40,14 @@ pub const STREAM_STDERR: &str = "stderr";
 /// How much isolation is *actually* applied, as opposed to what was requested.
 pub const LEVEL_FULL: &str = "full";
 pub const LEVEL_DEGRADED: &str = "degraded";
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const LEVEL_NONE: &str = "none";
 
 /// Reads and writes outside the workdir refused, no network, no project toolchain.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const PROFILE_STRICT: &str = "strict";
 /// Writes outside the workdir refused; reads and the network open. See ADR-0002.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const PROFILE_PROJECT: &str = "project";
 
 pub const CAP_LIMITS: &str = "limits";
@@ -59,6 +62,7 @@ pub const CAP_SECCOMP: &str = "seccomp";
 #[allow(dead_code)]
 pub const CAP_JOB_OBJECT: &str = "job_object";
 /// Named folders are refused to the command by a deny ACE.
+#[cfg_attr(not(windows), allow(dead_code))]
 pub const CAP_READ_DENY: &str = "read_deny";
 
 /// One protocol message. Exactly one payload member is set, named after `kind`.

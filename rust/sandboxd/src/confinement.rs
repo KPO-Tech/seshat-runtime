@@ -17,9 +17,11 @@ use std::io;
 #[cfg(windows)]
 use std::sync::Mutex;
 
+use crate::frame::{Hello, CAP_LIMITS, LEVEL_DEGRADED};
+#[cfg(windows)]
 use crate::frame::{
-    Hello, CAP_FS_CONFINE, CAP_JOB_OBJECT, CAP_LIMITS, CAP_NETWORK_DENY, CAP_READ_DENY,
-    LEVEL_DEGRADED, LEVEL_NONE, PROFILE_PROJECT, PROFILE_STRICT,
+    CAP_FS_CONFINE, CAP_JOB_OBJECT, CAP_NETWORK_DENY, CAP_READ_DENY, LEVEL_NONE, PROFILE_PROJECT,
+    PROFILE_STRICT,
 };
 use crate::process::Process;
 
@@ -85,7 +87,7 @@ impl Confinement {
             other => Identity::Refused(format!("unknown profile: {other}")),
         };
         #[cfg(not(windows))]
-        let _ = (hello, PROFILE_PROJECT, PROFILE_STRICT, CAP_READ_DENY);
+        let _ = hello;
         #[cfg(not(windows))]
         let detected = Self {};
 
@@ -402,7 +404,7 @@ fn push_argument(line: &mut String, argument: &str) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
