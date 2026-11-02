@@ -74,6 +74,9 @@ type (
 	IngestRequest = internalrag.IngestRequest
 	// IngestResult reports an ingestion: the artifact that holds the document and the number of chunks that were indexed.
 	IngestResult = internalrag.IngestResult
+	// EmbeddingError is what Ingest returns when the embedder failed, as opposed to the reading, the chunking or the storing: a host can
+	// then ingest the document again with IngestRequest.WithoutVectors, so that it is found by its words. It wraps the embedder's error.
+	EmbeddingError = internalrag.EmbeddingError
 	// Reranker reorders a candidate set of documents by semantic relevance.
 	// Implementations are optional — when nil the RAG service returns vector
 	// results in score order without a second-pass rerank.

@@ -7,7 +7,17 @@ type (
 	FrontmatterData = internalskills.FrontmatterData
 	// SkillSource says where a skill comes from: bundled with the runtime, a command file, a plugin, managed, or an MCP server.
 	SkillSource = internalskills.SkillSource
+	// RepoInstall is what a host writes beside a cloned skill repository when the person installs it: the skills chosen and the environment made for them.
+	RepoInstall = internalskills.RepoInstall
 )
+
+// RepoInstallFile is the name, at the root of a cloned skill repository, of the file that holds its RepoInstall.
+const RepoInstallFile = internalskills.RepoInstallFile
+
+// LoadRepoInstall reads the install file of a cloned repository; ok is false when there is none.
+func LoadRepoInstall(repoRoot string) (RepoInstall, bool) {
+	return internalskills.LoadRepoInstall(repoRoot)
+}
 
 const (
 	SourceBundled  = internalskills.SourceBundled

@@ -19,11 +19,60 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **A confined launch no longer fails with `ERROR_INVALID_PARAMETER`.** The `SECURITY_CAPABILITIES` structure the process attribute list points at was a local of the function that filled the list, so it was gone by the time `CreateProcessW` read it; it now lives until the call returns. The environment block also sets `CREATE_UNICODE_ENVIRONMENT`, without which the kernel parses the UTF-16 block as ANSI and refuses the launch with error 203.
 
+## [1.12.11] - 2026-11-02
+
+### Added
+
+- **Every tool result says when its call started and how long it took.** The metadata of each tool result now holds `execution_started_at` (RFC 3339, UTC) for every tool, and `execution_duration_ms` is filled in for the tools that did not set it (MCP tools among them). Both reach the session history and the host stream. A host can use the window to tell what a call did from what it only read, such as a pull request created during the call.
+
+## [1.12.10] - 2026-10-31
+
+### Fixed
+
+- **A repository installed in part ignores the copies of its skills kept in hidden folders** (such as `.codex-marketplace`), which are not the skills that were chosen.
+
+### Added
+
+- **A skill repository can be installed in part and with its own environment.** A host writes `.seshat-install.json` at the root of a cloned repository: only the skills listed in `include` are offered to the agent, none while `pending` is true, and when `python` is set each of those skills starts with a note telling the agent to run its scripts with that interpreter and not the one of the system. A repository with no such file behaves as before. The type and the loader are in `pkg/skills` (`RepoInstall`, `LoadRepoInstall`).
+
+## [1.12.9] - 2026-10-31
+
+### Security
+
+- **pdfcpu 0.16.3** fixes the bypass of the decoded-byte limits of PDF streams (GHSA-jp42-qm45-2x6g) and confines local images in its create and form input (GHSA-44h9-p34h-2w4p). The runtime only decrypts, counts pages and inspects images with it, so the second change does not touch it; the reading of 439 test PDFs gave the same pages, status, text and text hash as with 0.16.1.
+
+### Changed
+
+- **Dependencies:** grpc 1.84.0, oauth2 0.37.0, aws-sdk-go-v2 (s3 1.114.5, config 1.33.10, smithy-go 1.28.6 and their modules), shopspring/decimal 1.6.0, go-humanize 1.1.0, and in the terminal module doublestar 4.10.4 and catwalk 0.52.83.
+
+## [1.12.8] - 2026-10-31
+
+### Added
+
+- **A document can be indexed for keywords only, and a failed embedding is told apart from any other failure.** `IngestRequest.WithoutVectors` stores the passages with no vector and calls neither the embedder nor the enricher, so a host can keep a document whose embedding failed in a way that waiting does not mend (a wrong key, a model that is gone, a daily quota) and find it by its words. `Ingest` now returns an `EmbeddingError` (exported in `pkg/rag`) when the embedder failed, which wraps the embedder's error: `errors.As` still reaches a `RateLimitedError`, and the text is unchanged.
+
+## [1.12.7] - 2026-10-31
+
+### Fixed
+
+- **The embedder waits out a refusal for quota instead of failing every document.** On a 429 (or a 503 that says how long to wait) it waits for the delay the provider asks for (`Retry-After`, or the `retryDelay` Google writes in the body), otherwise 5 s, 15 s and 45 s, for three minutes at most, and sends the same texts again; the wait stops with the context. A daily quota is not waited out, and a wait longer than two minutes is returned at once. What is returned is a `RateLimitedError` (exported in `pkg/rag/embedder`) that carries the wait and whether the quota is daily, so that a host can pause its queue; its text still starts with `embedding API returned 429`.
+
+## [1.12.6] - 2026-10-30
+
+### Fixed
+
+- **z.ai (GLM) streams the arguments of a tool call, so a long file or artifact no longer looks like a stalled connection.** Without `tool_stream`, z.ai sends a tool call in one piece once the model has finished writing it: measured on glm-4.7 with a file of about 1 000 words, 3 chunks and 68.7 s of silence (2 415 chunks and no gap over 4.5 s with it). A client that gives up on a silent connection, as the desktop app does after 150 s, dropped turns in which the model was writing a long file or an interactive illustration. The parameter is sent on streamed z.ai requests that carry tools; glm-4.5, 4.6, 4.7 and 5.1 accept it.
+
 ## [1.12.5] - 2026-10-30
 
 ### Added
 
 - **Jina AI is a hosted rerank provider, and the Cohere and Voyage lists hold their newer models.** `RAG_RERANK_PROVIDER=jina` takes `JINA_API_KEY` and offers `jina-reranker-v3.5`, `v3`, `m0` and `v2-base-multilingual`; Cohere adds `rerank-v5.0-pro`, `rerank-v5.0-fast` and `rerank-v4.0-fast`, and Voyage adds `rerank-3` and `rerank-3-lite`. The default of each provider does not change: it moves only with a measurement, and the newer models were not measured here.
+- **`seshat-sandboxd`, a Rust sidecar for running commands, is in the repository and off by default.** `sandbox.EnvironmentSandboxed` starts it as a separate process and speaks to it over stdio ([protocol](docs/sandboxd-protocol.md), [ADR-0001](docs/adr/0001-go-rust-boundary.md)). Nothing enables it yet, so no behaviour changes. It does not confine the filesystem or the network yet and says so: its handshake reports `degraded` and names both. What it already does is the deadline, the output cap, an environment built from the request alone, and killing the whole process tree. The CI now builds and tests the Rust part on Linux and Windows.
+
+### Fixed
+
+- **The sidecar's deadline and cancel are honoured while a command floods the output.** They were looked at only when the output paused, so a command that never stopped writing was stopped late (2 815 ms for a 500 ms deadline in the measurement), or not at all.
 
 ## [1.12.4] - 2026-10-29
 

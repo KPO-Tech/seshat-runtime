@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 	"unicode/utf8"
 
 	"go.opentelemetry.io/otel"
@@ -200,12 +201,38 @@ func (o *Orchestrator) callToolSafe(
 	// The tool may start sub-agents or background tasks: tell them which session
 	// they belong to, so they are recorded as its children.
 	ctx = types.WithCallingSessionID(ctx, state.callInput.SessionID)
+	started := time.Now()
+	defer func() { stampCallTiming(&callRes, started, time.Now()) }()
 	result, err := state.tool.Call(ctx, state.callInput, permissionCheck)
 	if err != nil {
 		return tool.NewErrorResult(err)
 	}
 	return result
 }
+
+// stampCallTiming records when a call started and, when the tool did not say,
+// how long it took. A host uses them to tell what a call did from what it only
+// read: a pull request GitHub says was created inside that window was opened
+// by this call, one created before it was only looked at. The start goes in
+// Additional, which every result path (the session history, the host stream)
+// already carries.
+func stampCallTiming(result *tool.CallResult, started, ended time.Time) {
+	if result.Metadata == nil {
+		result.Metadata = &tool.ResultMetadata{}
+	}
+	if result.Metadata.Additional == nil {
+		result.Metadata.Additional = map[string]any{}
+	}
+	if _, set := result.Metadata.Additional[ExecutionStartedAtKey]; !set {
+		result.Metadata.Additional[ExecutionStartedAtKey] = started.UTC().Format(time.RFC3339Nano)
+	}
+	if result.Metadata.ExecutionDuration <= 0 {
+		result.Metadata.ExecutionDuration = ended.Sub(started).Milliseconds()
+	}
+}
+
+// ExecutionStartedAtKey is the metadata key of the start of a tool call (RFC 3339, UTC).
+const ExecutionStartedAtKey = "execution_started_at"
 
 func (o *Orchestrator) formatAndTruncateResult(t tool.Tool, result tool.CallResult) tool.CallResult {
 	if result.Content == "" && result.Data != nil {

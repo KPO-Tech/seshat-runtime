@@ -73,6 +73,11 @@ type FileSkillLoader struct {
 	SkipHidden bool
 	// Skip, when set, leaves out the skills it returns true for.
 	Skip func(Skill) bool
+
+	// include, when set, leaves out the skills whose folder name it does not accept (the skills the person did not choose).
+	include func(skillName string) bool
+	// environmentNote is put at the start of what each skill gives the agent.
+	environmentNote string
 }
 
 func NewFileSkillLoader(directory string) *FileSkillLoader {
@@ -112,6 +117,10 @@ func (l *FileSkillLoader) LoadSkills() ([]Skill, error) {
 			slog.Warn("skills: error loading skill file", "file", skillFile, "err", err)
 			continue
 		}
+		if l.include != nil && !l.include(getSkillCommandName(skillFile, l.Directory)) {
+			continue
+		}
+		skill = withEnvironmentNote(skill, l.environmentNote)
 		if l.Skip != nil && l.Skip(skill) {
 			continue
 		}
@@ -178,7 +187,7 @@ func (l *FileSkillLoader) GetSkillDirCommandsForUser(cwd string, userID string) 
 				continue
 			}
 			repoRoot := filepath.Join(reposDir, e.Name())
-			sources = append(sources, NewCollectionSkillLoader(repoRoot, SettingSourceProjectSettings))
+			sources = append(sources, NewRepoSkillLoader(repoRoot, SettingSourceProjectSettings))
 		}
 	}
 
