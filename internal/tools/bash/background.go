@@ -49,6 +49,9 @@ type BackgroundTask struct {
 	stdinPipe   io.WriteCloser
 	// cancel stops a task that runs through an executor rather than as Process.
 	cancel context.CancelFunc
+	// owner is the tool that started the task, which stops it when it closes. Guarded
+	// by mu.
+	owner *Tool
 }
 
 // TaskStatus represents background task status.
@@ -69,13 +72,30 @@ type BackgroundTaskManager struct {
 	taskDir string
 }
 
-// globalTaskManager is set by NewTool() so that package-level helpers
-// (GlobalTaskManager, NewTaskOutputReader) work for callers that don't
-// hold a Tool reference (e.g. the monitor and task-list tools).
-var globalTaskManager *BackgroundTaskManager
+// globalTaskManager is the one manager of the process, shared by every NewTool() so
+// that a task stays reachable from job_output and job_kill whichever client asks: an
+// embedder may hold one client per model. Package-level helpers (GlobalTaskManager,
+// NewTaskOutputReader) use it for callers that don't hold a Tool reference (e.g. the
+// monitor and task-list tools).
+var (
+	globalTaskManager   *BackgroundTaskManager
+	globalTaskManagerMu sync.Mutex
+)
 
-// GlobalTaskManager returns the manager created by the most recent NewTool() call.
+// GlobalTaskManager returns the manager every NewTool() call shares.
 func GlobalTaskManager() *BackgroundTaskManager {
+	globalTaskManagerMu.Lock()
+	defer globalTaskManagerMu.Unlock()
+	return globalTaskManager
+}
+
+// sharedTaskManager returns the process's manager, making it on the first call.
+func sharedTaskManager() *BackgroundTaskManager {
+	globalTaskManagerMu.Lock()
+	defer globalTaskManagerMu.Unlock()
+	if globalTaskManager == nil {
+		globalTaskManager = NewBackgroundTaskManager(runtimepath.BashTasksDir(""))
+	}
 	return globalTaskManager
 }
 
@@ -409,6 +429,18 @@ func (m *BackgroundTaskManager) KillTask(id string) error {
 	return KillTaskProcess(task)
 }
 
+// killOwnedBy stops the running tasks owner started.
+func (m *BackgroundTaskManager) killOwnedBy(owner *Tool) {
+	for _, task := range m.ListTasks() {
+		task.mu.Lock()
+		mine := task.owner == owner && task.Status == TaskStatusRunning
+		task.mu.Unlock()
+		if mine {
+			_ = m.KillTask(task.ID)
+		}
+	}
+}
+
 // KillTaskProcess kills a task's entire process group.
 func KillTaskProcess(task *BackgroundTask) error {
 	if task.cancel != nil {
@@ -514,7 +546,7 @@ type TaskOutputReader struct {
 // NewTaskOutputReader creates a reader using the global task manager.
 // Pass a non-nil manager to use a specific instance instead.
 func NewTaskOutputReader(taskID string) (*TaskOutputReader, error) {
-	return NewTaskOutputReaderFrom(globalTaskManager, taskID)
+	return NewTaskOutputReaderFrom(GlobalTaskManager(), taskID)
 }
 
 // NewTaskOutputReaderFrom creates a reader from a specific manager.
