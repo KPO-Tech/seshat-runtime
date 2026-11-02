@@ -110,6 +110,11 @@ type ClientConfig struct {
     // ── Permissions ───────────────────────────────────────────────────────
     PermissionMode PermissionMode // bypass | auto | acceptEdits | onRequest | never | granular
 
+    // ── Sandbox ───────────────────────────────────────────────────────────
+    SandboxKind   SandboxKind         // backend for the bash tool: SandboxKindDocker or SandboxKindSandboxed
+    SandboxDocker SandboxDockerConfig // used with SandboxKindDocker
+    Sandboxd      SandboxdConfig      // used with SandboxKindSandboxed, see "Sandboxing the bash tool"
+
     // ── Persistence ───────────────────────────────────────────────────────
     PersistSessions   bool             // enable default filesystem persistence
     SessionSQLitePath string           // use SQLite-backed session persistence
@@ -154,6 +159,34 @@ type ClientConfig struct {
     StopHooks []StopHook // post-turn policy checks (append messages, request continuation)
 }
 ```
+
+---
+
+## Sandboxing the bash tool
+
+`SandboxKindSandboxed` runs every bash command through the `seshat-sandboxd` sidecar. It never falls back: a sidecar that cannot start refuses every command.
+
+```go
+client, _ := sdk.NewClient(&sdk.ClientConfig{
+    SandboxKind: sdk.SandboxKindSandboxed,
+    Sandboxd: sdk.SandboxdConfig{
+        BinaryPath:    sidecarPath,
+        Profile:       sdk.SandboxdProfileProject,
+        CapabilitySID: installSID, // random, made once per install, kept by the embedder
+        DenyRead:      []string{sshDir, awsDir},
+    },
+})
+```
+
+On Windows, `SandboxdProfileProject` refuses writes outside the working directory and reads of the paths in `DenyRead`. Other reads and the network stay open, and the user's secrets remain reachable through DPAPI and the Credential Manager. `SandboxdProfileStrict` also refuses other reads and the network, and cannot run `git init`, `npm` or a Node script. See [ADR 0002](adr/0002-windows-execution-profiles.md).
+
+`sdk.RemoveSandboxdProtection(ctx, sidecarPath, installSID, paths)` takes the read refusals back. It needs no session, so it also works after a crash.
+
+With any sandbox configured:
+
+- A session's terminal does not run commands: the sandbox does.
+- `run_in_background` and a command ending in `&` run through a sidecar of their own, so a dev server does not hold the next command. Docker cannot run them and refuses them.
+- Only bash is covered. `write_file` and `edit_file` write directly to the host and depend on the permission mode.
 
 ---
 
