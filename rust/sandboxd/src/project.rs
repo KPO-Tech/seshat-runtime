@@ -975,7 +975,11 @@ mod tests {
         let mut child = identity
             .launch(&line, &environment, &work.0.display().to_string())
             .expect("launch");
-        assert_eq!(child.wait().expect("wait"), 0);
+        let mut said = String::new();
+        if let Some(mut err) = child.take_stderr() {
+            std::io::Read::read_to_string(&mut err, &mut said).ok();
+        }
+        assert_eq!(child.wait().expect("wait"), 0, "bash said: {said}");
         assert_eq!(
             fs::read_to_string(work.0.join("out.txt")).unwrap().trim(),
             "HI"
