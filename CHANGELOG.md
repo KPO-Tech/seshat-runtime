@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A background command no longer dies when the agent finishes its turn.** `run_in_background` was tied to the turn, so a dev server stopped as soon as the agent answered, and an interpreter could not be used from one turn to the next. A command now runs until it ends, `job_kill` stops it, or its client closes.
+- **`job_output` and `job_kill` reach a task whichever client started it.** Each new client replaced the task manager they read, so tasks became unreachable after an embedder created a client for another model.
+- **`Client.Close` stops the client's background commands and its sandbox.** A closed client left its `seshat-sandboxd` process or its Docker executor behind.
+
 ## [1.13.1] - 2026-11-02
 
 ### Fixed

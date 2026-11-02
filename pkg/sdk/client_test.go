@@ -14,6 +14,7 @@ import (
 
 	"github.com/KPO-Tech/seshat-runtime/internal/providers"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
+	bashTool "github.com/KPO-Tech/seshat-runtime/internal/tools/bash"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/contract"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 	"github.com/KPO-Tech/seshat-runtime/pkg/runtimepath"
@@ -142,6 +143,50 @@ func TestNewClientPropagatesUserIDToSubmitPlanTool(t *testing.T) {
 	}
 	if store.gotSessionID != "session-abc" {
 		t.Fatalf("expected PlanStore.CreateOrUpdate to receive SessionID %q, got %q", "session-abc", store.gotSessionID)
+	}
+}
+
+func TestClientCloseStopsTheBackgroundCommandsItStarted(t *testing.T) {
+	client, err := NewClient(&ClientConfig{PersistSessions: false, WorkingDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+	defer client.Close()
+
+	registered, ok := client.registry.Get(bashTool.ToolName)
+	if !ok {
+		t.Fatal("no bash tool")
+	}
+	turn, endTurn := context.WithCancel(context.Background())
+	defer endTurn()
+	result, err := registered.Call(turn, tool.CallInput{Parsed: map[string]any{
+		"command":           "sleep 30",
+		"run_in_background": true,
+	}}, func(context.Context, types.ToolPermissionRequest) types.PermissionResult {
+		return types.PermissionResult{Behavior: types.PermissionBehaviorAllow}
+	})
+	if err != nil || result.Error != nil {
+		t.Fatalf("result %+v, err %v", result, err)
+	}
+	taskID, _ := result.Metadata.Additional["task_id"].(string)
+	task := bashTool.GlobalTaskManager().GetTask(taskID)
+	if task == nil {
+		t.Fatalf("no task %q", taskID)
+	}
+	endTurn()
+	if status := task.GetStatus(); status != bashTool.TaskStatusRunning {
+		t.Fatalf("the task ended with the turn: status %v", status)
+	}
+
+	if err := client.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for task.GetStatus() == bashTool.TaskStatusRunning && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if status := task.GetStatus(); status == bashTool.TaskStatusRunning {
+		t.Fatal("the task outlived its client")
 	}
 }
 
