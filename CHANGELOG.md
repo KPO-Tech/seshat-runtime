@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.13.1] - 2026-11-02
+
 ### Fixed
 
 - **A background command ending no longer stops the commands after it from writing.** Under the `project` profile, a sidecar closing took the folder's label back while another one was still working there, so once a dev server was stopped every write in that folder was refused. The label now stays on the folder after use.
