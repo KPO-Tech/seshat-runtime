@@ -420,11 +420,14 @@ func (m *BackgroundTaskManager) KillTask(id string) error {
 	}
 
 	// Cancel the auto-cleanup goroutine before killing so it doesn't race.
+	// Under the task's lock: job_kill and a client closing can get here together.
+	task.mu.Lock()
 	select {
 	case <-task.cleanupStop: // already stopped
 	default:
 		close(task.cleanupStop)
 	}
+	task.mu.Unlock()
 
 	return KillTaskProcess(task)
 }

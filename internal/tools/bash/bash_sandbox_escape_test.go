@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -187,6 +188,29 @@ func TestClosingAToolStopsItsTasksAndSandboxAndNoOthers(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitDone(t, stayingTask)
+}
+
+// job_kill and a client closing can stop the same task at the same moment.
+func TestKillingATaskTwiceAtOnceIsHarmless(t *testing.T) {
+	own := &fakeExecutor{kind: sandbox.EnvironmentSandboxed, wait: true}
+	tool := toolWithSandbox(t, &fakeExecutor{kind: sandbox.EnvironmentSandboxed})
+	tool.newBackgroundExecutor = func() (sandbox.Executor, error) { return own, nil }
+	result, err := tool.executeBackground(context.Background(), &ExecutionContext{Command: "serve", WorkingDirectory: t.TempDir()})
+	if err != nil || result.Error != nil {
+		t.Fatalf("result %+v, err %v", result, err)
+	}
+	task := tool.backgroundManager.ListTasks()[0]
+
+	var kills sync.WaitGroup
+	for range 32 {
+		kills.Add(1)
+		go func() {
+			defer kills.Done()
+			_ = tool.backgroundManager.KillTask(task.ID)
+		}()
+	}
+	kills.Wait()
+	waitDone(t, task)
 }
 
 // A second client, for another model, must still see what the first one started.
