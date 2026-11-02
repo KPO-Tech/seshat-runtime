@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.13.2] - 2026-11-03
+
 ### Added
 
 - **Read refusals can be written ahead of a session.** `seshat-sandboxd protect` and `sdk.ApplySandboxdProtection` protect a large folder when the app can wait and show an error. A session's handshake is bounded, so a first protection of a large folder could make it fail.
