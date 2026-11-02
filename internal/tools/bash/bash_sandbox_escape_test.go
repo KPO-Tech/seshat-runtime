@@ -26,8 +26,9 @@ func (f *fakeExecutor) Kind() sandbox.EnvironmentKind   { return f.kind }
 func (f *fakeExecutor) Healthy(_ context.Context) error { return nil }
 func (f *fakeExecutor) Close() error                    { f.closed.Store(true); return nil }
 func (f *fakeExecutor) Run(ctx context.Context, req sandbox.RunRequest) (sandbox.RunResult, error) {
-	f.runs.Add(1)
+	// last first: a test waits on runs, then reads last.
 	f.last.Store(req.Command)
+	f.runs.Add(1)
 	if req.OnOutput != nil {
 		req.OnOutput("stdout", []byte("from the sandbox\n"))
 	}
