@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.12.11] - 2026-11-02
+
+### Added
+
+- **Every tool result says when its call started and how long it took.** The metadata of each tool result now holds `execution_started_at` (RFC 3339, UTC) for every tool, and `execution_duration_ms` is filled in for the tools that did not set it (MCP tools among them). Both reach the session history and the host stream. A host can use the window to tell what a call did from what it only read, such as a pull request created during the call.
+
 ## [1.12.10] - 2026-10-31
 
 ### Fixed
