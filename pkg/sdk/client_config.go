@@ -27,7 +27,29 @@ const (
 	// Falls back to SandboxKindLocal with a logged warning if Docker isn't
 	// reachable when the client is constructed.
 	SandboxKindDocker = sandbox.EnvironmentDocker
+	// SandboxKindSandboxed routes bash execution through the seshat-sandboxd sidecar,
+	// see Sandboxd. Unlike Docker it never falls back: a sidecar that cannot start
+	// refuses every command.
+	SandboxKindSandboxed = sandbox.EnvironmentSandboxed
+
+	// SandboxdProfileProject refuses writes outside the working directory and the reads
+	// named in SandboxdConfig.DenyRead. Other reads and the network stay open. It runs
+	// real projects: see docs/adr/0002-windows-execution-profiles.md.
+	SandboxdProfileProject = sandbox.SandboxdProfileProject
+	// SandboxdProfileStrict also refuses other reads and the network, and cannot run
+	// git init, npm or a Node script.
+	SandboxdProfileStrict = sandbox.SandboxdProfileStrict
 )
+
+// SandboxdConfig configures the sidecar backend used when ClientConfig.SandboxKind is
+// SandboxKindSandboxed. See sandbox.SandboxdConfig for field-by-field documentation.
+type SandboxdConfig = sandbox.SandboxdConfig
+
+// RemoveSandboxdProtection takes back the read refusals the project profile wrote on
+// paths, with no session needed, so it also works after a crash.
+func RemoveSandboxdProtection(ctx context.Context, binaryPath, capabilitySID string, paths []string) error {
+	return sandbox.RemoveSandboxdProtection(ctx, binaryPath, capabilitySID, paths)
+}
 
 // SandboxDockerConfig configures the Docker sandbox backend used when
 // ClientConfig.SandboxKind is SandboxKindDocker. See
@@ -344,6 +366,9 @@ type ClientConfig struct {
 	// is SandboxKindDocker. Zero value uses sane, security-conscious
 	// defaults (see sandbox.DefaultDockerConfig).
 	SandboxDocker SandboxDockerConfig `json:"-"`
+	// Sandboxd configures the sidecar backend when SandboxKind is
+	// SandboxKindSandboxed.
+	Sandboxd SandboxdConfig `json:"-"`
 
 	// EnableToolSearch keeps deferred tools (MCP tools, and any built-in
 	// tool registering with ShouldDefer, e.g. skill) out of the model's

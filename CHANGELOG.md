@@ -11,6 +11,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The SDK can run the bash tool through the sidecar.** `SandboxKindSandboxed` and `ClientConfig.Sandboxd` select `seshat-sandboxd` and its profile, and `RemoveSandboxdProtection` takes its read refusals back. Output is streamed while the command runs.
+
+### Fixed
+
+- **Commands no longer leave a sandbox through a side door.** With a sandbox configured, `run_in_background` and a command ending in `&` ran directly on the host, and a session's terminal took a command before the sandbox did. A background command now runs through a sidecar of its own, so a dev server does not hold the next command. Docker cannot run them, so they are refused there.
+
+### Added
+
 - **The Windows sidecar has a `project` profile that can run real projects.** The AppContainer stops `git init`, `npm install` and running a Node script, so a session can now ask for a restricted token at low integrity instead: writes outside the working directory are refused and folders the client names cannot be read, while `git`, `npm` and a dev server work, with temporary files and caches kept in `LocalLow`. Reads of anything else and the network stay open, and `degraded_reasons` says so. Nothing selects it yet. `seshat-sandboxd unprotect` takes the read refusals back. See ADR-0002.
 - **The Windows sidecar launches every command inside an AppContainer.** `sandboxd` creates the identity once per session, grants the run's working directory to its package SID and starts the command with `CreateProcessW` and a `STARTUPINFOEX` attribute list, so that directory and nothing else is writable: `%TEMP%` and every path outside the workdir are refused by the system, and the identity carries no capability, so there is no network. The grant is revoked when the session ends. `level` stays `degraded` and names the three limits this machine measured; an identity that cannot be created makes the session `none` instead of falling back to an unconfined run.
 - **A command that cannot be started now says why.** A failed launch emits an `error` frame carrying the reason before the `exit` frame, instead of an `exit` with -1 and no explanation.
