@@ -50,6 +50,7 @@ const RESTRICTING_WELL_KNOWN: [&str; 4] = ["S-1-1-0", "S-1-5-32-545", "S-1-5-11"
 const SE_FILE_OBJECT: i32 = 1;
 const SE_KERNEL_OBJECT: i32 = 6;
 const GENERIC_ALL: u32 = 0x1000_0000;
+const OWNER_SECURITY_INFORMATION: u32 = 0x1;
 const DACL_SECURITY_INFORMATION: u32 = 0x4;
 const ACCESS_DENIED_ACE_TYPE: u8 = 1;
 const INHERITED_ACE: u8 = 0x10;
@@ -517,8 +518,8 @@ fn allow_own_token(token: &OwnedHandle, user_sid: *mut c_void) -> io::Result<()>
         SetSecurityInfo(
             token.as_raw_handle(),
             SE_KERNEL_OBJECT,
-            DACL_SECURITY_INFORMATION,
-            ptr::null_mut(),
+            DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION,
+            user_sid,
             ptr::null_mut(),
             acl,
             ptr::null_mut(),
