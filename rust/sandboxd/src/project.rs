@@ -48,6 +48,8 @@ const LOW_INTEGRITY_SID: &str = "S-1-16-4096";
 const RESTRICTING_WELL_KNOWN: [&str; 4] = ["S-1-1-0", "S-1-5-32-545", "S-1-5-11", "S-1-5-4"];
 
 const SE_FILE_OBJECT: i32 = 1;
+const SE_KERNEL_OBJECT: i32 = 6;
+const GENERIC_ALL: u32 = 0x1000_0000;
 const DACL_SECURITY_INFORMATION: u32 = 0x4;
 const ACCESS_DENIED_ACE_TYPE: u8 = 1;
 const INHERITED_ACE: u8 = 0x10;
@@ -141,6 +143,16 @@ extern "system" {
         sid: *mut c_void,
     ) -> i32;
     fn AddAce(acl: *mut c_void, revision: u32, start: u32, ace: *mut c_void, len: u32) -> i32;
+    fn AddAccessAllowedAce(acl: *mut c_void, revision: u32, mask: u32, sid: *mut c_void) -> i32;
+    fn SetSecurityInfo(
+        handle: *mut c_void,
+        object_type: i32,
+        info: u32,
+        owner: *mut c_void,
+        group: *mut c_void,
+        dacl: *mut c_void,
+        sacl: *mut c_void,
+    ) -> u32;
 }
 
 #[repr(C)]
@@ -475,7 +487,47 @@ fn restricted_low_token(capability_sid: &str) -> io::Result<OwnedHandle> {
     if ok == 0 {
         return Err(io::Error::last_os_error());
     }
+    allow_own_token(&restricted, user_sid)?;
     Ok(restricted)
+}
+
+/// Lets a process under this token use the token itself.
+///
+/// A token's own DACL comes from the token it was made from. When the app runs as an
+/// administrator, that DACL grants Administrators, which the restricted check does
+/// not pass, and Git Bash stops at startup on `NtSetInformationToken (TokenDefaultDacl),
+/// 0xC0000022`. The user's SID is in the restricting list, so naming it here works
+/// whether the app is elevated or not, and gives the command nothing but its own token.
+fn allow_own_token(token: &OwnedHandle, user_sid: *mut c_void) -> io::Result<()> {
+    // SAFETY: `user_sid` is a valid SID, kept alive by the caller.
+    let size = 16 + ACE_SID_OFFSET as u32 + unsafe { GetLengthSid(user_sid) };
+    // `u64` elements, so the ACL has the alignment the API asks of it.
+    let mut buffer = vec![0u64; size.div_ceil(8) as usize];
+    let acl = buffer.as_mut_ptr() as *mut c_void;
+    // SAFETY: the buffer is at least `size` bytes and lives past both calls.
+    if unsafe { InitializeAcl(acl, (buffer.len() * 8) as u32, ACL_REVISION) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: as above, and the buffer has room for this one ACE.
+    if unsafe { AddAccessAllowedAce(acl, ACL_REVISION, GENERIC_ALL, user_sid) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the handle and the ACL are valid; the owner, group and SACL are not being set.
+    let code = unsafe {
+        SetSecurityInfo(
+            token.as_raw_handle(),
+            SE_KERNEL_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            ptr::null_mut(),
+            ptr::null_mut(),
+            acl,
+            ptr::null_mut(),
+        )
+    };
+    if code != 0 {
+        return Err(io::Error::from_raw_os_error(code as i32));
+    }
+    Ok(())
 }
 
 fn token_info(token: &OwnedHandle, class: i32) -> io::Result<Vec<usize>> {
