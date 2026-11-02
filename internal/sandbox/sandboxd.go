@@ -45,6 +45,43 @@ type SandboxdConfig struct {
 
 	// HandshakeTimeout bounds startup plus the hello exchange.
 	HandshakeTimeout time.Duration
+
+	// Profile names the identity on Windows: SandboxdProfileProject or
+	// SandboxdProfileStrict. Empty means strict. See ADR-0002.
+	Profile string
+
+	// CapabilitySID is the SID the project profile's token carries and its deny
+	// ACEs name, random and made once per install. The embedder keeps it: taking an
+	// ACE back later needs the same one. Required by the project profile.
+	CapabilitySID string
+
+	// DenyRead names what the project profile refuses to read. A path that exists
+	// and cannot be protected refuses the whole session. The model never sets this,
+	// nor the profile: a command cannot widen its own sandbox.
+	DenyRead []string
+}
+
+const (
+	// SandboxdProfileStrict refuses reads and writes outside the workdir and has no
+	// network, but cannot run git init, npm or a Node script.
+	SandboxdProfileStrict = "strict"
+	// SandboxdProfileProject refuses writes outside the workdir and the reads named
+	// in DenyRead, and leaves other reads and the network open. It runs real projects.
+	SandboxdProfileProject = "project"
+)
+
+// RemoveSandboxdProtection takes back the deny ACEs the project profile wrote on
+// paths. It needs no session, so it also works after a crash. Paths that are gone or
+// were never protected are not an error.
+func RemoveSandboxdProtection(ctx context.Context, binaryPath, capabilitySID string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"unprotect", capabilitySID}, paths...)
+	if out, err := exec.CommandContext(ctx, binaryPath, args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("sandboxd: unprotect: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 // DefaultSandboxdConfig returns the configuration used when an embedder enables
@@ -165,12 +202,19 @@ func (e *SandboxdExecutor) startLocked(ctx context.Context) error {
 	e.stdout = stdout
 	e.stderr = stderr
 
+	denyRead := e.cfg.DenyRead
+	if denyRead == nil {
+		denyRead = []string{}
+	}
 	if err := writeSandboxdFrame(e.stdin, &sandboxdFrame{
 		Type: sandboxdTypeHello,
 		Hello: &sandboxdHello{
 			ProtocolMajor: sandboxdProtocolMajor,
 			ProtocolMinor: sandboxdProtocolMinor,
 			ClientVersion: "seshat-runtime",
+			Profile:       e.cfg.Profile,
+			CapabilitySID: e.cfg.CapabilitySID,
+			DenyRead:      denyRead,
 		},
 	}); err != nil {
 		e.stopLocked()
@@ -343,6 +387,9 @@ func (e *SandboxdExecutor) Run(ctx context.Context, req RunRequest) (RunResult, 
 				stderr.Write(data)
 			} else {
 				stdout.Write(data)
+			}
+			if req.OnOutput != nil {
+				req.OnOutput(frame.Chunk.Stream, data)
 			}
 
 		case sandboxdTypeExit:

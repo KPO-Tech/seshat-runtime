@@ -51,7 +51,7 @@ payload set.
 
 | `type` | payload | direction |
 |---|---|---|
-| `hello` | `protocol_major`, `protocol_minor`, `client_version` | runtime → sidecar |
+| `hello` | `protocol_major`, `protocol_minor`, `client_version`, `profile`, `capability_sid`, `deny_read` | runtime → sidecar |
 | `hello_ack` | `protocol_major`, `protocol_minor`, `server_version`, `level`, `capabilities`, `degraded_reasons` | sidecar → runtime |
 | `run` | `run_id`, `command`, `shell`, `work_dir`, `env`, `allow_network`, `timeout_ms`, `max_output_bytes` | runtime → sidecar |
 | `chunk` | `run_id`, `stream` (`stdout`/`stderr`), `data` (base64) | sidecar → runtime |
@@ -63,6 +63,16 @@ payload set.
 runtime asked for: `full` (everything), `degraded` (a subset, with every missing
 capability named in `degraded_reasons`), `none` (nothing — the runtime must
 refuse to run).
+
+`profile` chooses the Windows identity ([ADR-0002](adr/0002-windows-execution-profiles.md)):
+`strict` (empty means this) or `project`. It is created between `hello` and
+`hello_ack`, so `level` describes what exists. `deny_read` names what `project` refuses
+to read, through a deny ACE on `capability_sid`, which the client keeps. A named path
+that exists and cannot be protected makes `level` `none`. A deny ACE outlives the
+session on purpose; `seshat-sandboxd unprotect <capability-sid> <path>...` takes it back,
+with no session needed, so it works after a crash. Under `project`, temporary files and
+tool caches are redirected to `LocalLow\Seshat\sandbox`, and Git Bash runs from a private
+copy kept there, because it cannot start from its install while another Git Bash runs.
 
 Arrays are always encoded, never `null`: `"shell":[]`, not `"shell":null`. An
 empty list and an absent one must not be two different shapes.
@@ -78,6 +88,12 @@ empty list and an absent one must not be two different shapes.
 3. **No environment inheritance.** The sidecar clears its own environment and
    builds the child's from `env` alone. A variable the runtime did not name — an
    API key, a proxy credential, `AWS_*` — cannot reach a model-issued command.
+   One variable is added, and the reason is measured rather than chosen: on
+   Windows the block also carries `LOCALAPPDATA`, because `CreateProcessW`
+   inside an AppContainer fails with error 203 without it — the kernel derives
+   the container's per-package profile path from that variable. It is a
+   directory name the identity cannot write to, never a credential, and a value
+   the client sends wins over the synthesised one.
 4. **Truncation is announced.** `max_output_bytes` cuts the stream but `exit`
    carries the real byte counts and `truncated: true`, so the model can be told
    it is looking at part of the output.
@@ -90,14 +106,46 @@ empty list and an absent one must not be two different shapes.
 
 ## 5. Known gaps (phase 0)
 
-- Filesystem and network confinement are **not implemented yet**; the sidecar
-  reports `degraded` and names both. What it enforces today is the deadline, the
-  output cap, the environment scrub and the tree kill.
+- **On Windows, filesystem and network confinement are enforced.** Every
+  command starts with `CreateProcessW` inside an AppContainer whose package SID
+  is granted the run's workdir and nothing else: a write outside it is refused
+  by the system, `%TEMP%` is refused, and the identity carries no capability, so
+  there is no network. `level` stays `degraded` because three limits were
+  measured, not assumed: the leading directories of a workdir cannot be `stat`ed
+  (`git init` fails), a toolchain installed under the user profile is not
+  readable, and `%TEMP%` is not writable. A profile that cannot be created makes
+  the session `none`, and the runtime refuses to execute.
+- **Linux and macOS** report `degraded` with no filesystem or network
+  confinement yet; macOS has no backend and will report `none` rather than
+  pretend.
 - **stdin is not part of the protocol.** A `RunRequest` carrying stdin is refused
   by the Go side rather than run without the input it expects.
 - **macOS** has no backend; it will report `none` rather than pretend.
-- The Windows tree kill uses `taskkill /T`; a Job Object backend replaces it
-  without changing this protocol.
+- **`violations` is still always empty, and that is now a measurement rather
+  than a placeholder.** The refusal happens in the kernel, between the command
+  and the file it asked for, so nothing in the sidecar's own process observes
+  it: the command sees an error, and that error reaches the runtime as its
+  stderr and exit code. What the operating system records instead is an audit
+  event, and none of it is reachable without elevation on this machine —
+  `auditpol /get /category:"Object Access"` fails with `A required privilege is
+  not held by the client` (0x522), the Security log answers `Access is denied`,
+  and the one channel that *is* readable, `AppModel-Runtime/Admin`, records
+  containers being created and destroyed, not per-path refusals. Reporting a
+  violation therefore needs an administrator to enable failure auditing and a
+  SACL on the path, which is a machine setting a sandbox must not grant itself.
+  Invariant 6 stays a promise the backends do not keep, and this document says
+  so instead of guessing from stderr.
+- **The Windows tree kill is a job object.** The child is created suspended,
+  placed in a job whose only limit is `KILL_ON_JOB_CLOSE`, and resumed once it is
+  a member, so nothing it starts can start before the assignment and nothing it
+  starts can leave the job. `cancel` and a deadline call `TerminateJobObject`,
+  and closing the job when a run ends ends whatever the command left running —
+  the case `taskkill /T` never covered, because it only ran on a kill and always
+  raced what the command was still starting. A test measures it: a detached
+  grandchild proves it ran, and the file it would have written four seconds
+  later never appears. `job_object` is claimed in `capabilities` for that
+  reason; it means tree containment, not CPU or memory limits, which no backend
+  applies yet.
 
 ## 6. Versioning
 

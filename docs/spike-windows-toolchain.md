@@ -147,11 +147,14 @@ product decision, not a measurement, and this note does not make it.
 - **Python was not measured.** The pattern suggests an installation under
   `C:\Program Files` behaves like Go and one under the profile behaves like the
   bundled git, but that has not been run.
-- **The sidecar still does not launch inside the identity.** This harness does;
+- **The sidecar now launches inside the identity**, so the findings above are
+  regression tests rather than prose:
   [`rust/sandboxd/src/appcontainer.rs`](../rust/sandboxd/src/appcontainer.rs)
-  creates, reads the SID and deletes. Wiring the launch, the workdir grant and
-  the `LOCALAPPDATA` synthesis into it is the next step, and until it lands the
-  handshake must keep saying `degraded`.
+  creates the profile, grants the workdir to its package SID, synthesises
+  `LOCALAPPDATA` and starts `cmd.exe` with `CreateProcessW`, then asserts that a
+  write inside the grant lands and the same write outside it does not. What this
+  harness measured about the toolchain still holds, which is why `level` stays
+  `degraded` with the three reasons above.
 - **Job Objects were not exercised.** CPU, memory and process-tree limits are
   orthogonal to the identity and stay unmeasured here.
 - **Only one machine, one Windows build.** The ACL layout of `C:\Program Files`

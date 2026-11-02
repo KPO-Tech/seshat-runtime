@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/pkg/runtimepath"
 )
 
@@ -46,6 +47,8 @@ type BackgroundTask struct {
 	done        chan struct{}
 	cleanupStop chan struct{} // cancels the auto-remove timer
 	stdinPipe   io.WriteCloser
+	// cancel stops a task that runs through an executor rather than as Process.
+	cancel context.CancelFunc
 }
 
 // TaskStatus represents background task status.
@@ -162,6 +165,98 @@ func (m *BackgroundTaskManager) StartBackgroundTask(
 	m.mu.Unlock()
 
 	go m.waitForTask(task)
+
+	return task, nil
+}
+
+// StartExecutorTask starts a command through an executor of its own, so that it stays
+// inside the sandbox. Its output goes to the task's file as it is produced, and killing
+// the task cancels the run, which ends the command and what it started. The executor is
+// brought up before this returns, so a sandbox that cannot start is an error here and
+// not a task that dies later. A task through an executor has no stdin.
+func (m *BackgroundTaskManager) StartExecutorTask(
+	ctx context.Context,
+	command string,
+	workingDir string,
+	newExecutor func() (sandbox.Executor, error),
+) (*BackgroundTask, error) {
+	if err := m.Init(); err != nil {
+		return nil, fmt.Errorf("init task dir: %w", err)
+	}
+	taskID, err := generateTaskID()
+	if err != nil {
+		return nil, fmt.Errorf("generate task id: %w", err)
+	}
+	executor, err := newExecutor()
+	if err != nil {
+		return nil, fmt.Errorf("start the sandbox: %w", err)
+	}
+	stop := func() {
+		if closer, ok := executor.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}
+	if err := executor.Healthy(ctx); err != nil {
+		stop()
+		return nil, fmt.Errorf("start the sandbox: %w", err)
+	}
+	taskPath := filepath.Join(m.taskDir, taskID+".output")
+	file, err := os.Create(taskPath)
+	if err != nil {
+		stop()
+		return nil, fmt.Errorf("create output file: %w", err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	task := &BackgroundTask{
+		ID:          taskID,
+		Command:     command,
+		Output:      NewTaskOutput(taskPath),
+		Status:      TaskStatusRunning,
+		StartTime:   time.Now(),
+		done:        make(chan struct{}),
+		cleanupStop: make(chan struct{}),
+		cancel:      cancel,
+	}
+	m.mu.Lock()
+	m.tasks[taskID] = task
+	m.mu.Unlock()
+
+	go func() {
+		defer close(task.done)
+		defer cancel()
+		res, runErr := executor.Run(runCtx, sandbox.RunRequest{
+			Command: command,
+			WorkDir: workingDir,
+			OnOutput: func(_ string, data []byte) {
+				_, _ = file.Write(data)
+			},
+		})
+		if runErr != nil && runCtx.Err() == nil {
+			_, _ = fmt.Fprintf(file, "%v\n", runErr)
+		}
+		file.Close()
+		stop()
+
+		task.mu.Lock()
+		task.ExitCode = res.ExitCode
+		if runErr != nil {
+			task.ExitCode = 1
+		}
+		task.Status = TaskStatusCompleted
+		if runCtx.Err() != nil {
+			task.Status = TaskStatusKilled
+		}
+		now := time.Now()
+		task.EndTime = &now
+		task.mu.Unlock()
+
+		select {
+		case <-task.cleanupStop:
+		case <-time.After(5 * time.Minute):
+			m.RemoveTask(task.ID)
+		}
+	}()
 
 	return task, nil
 }
@@ -316,6 +411,10 @@ func (m *BackgroundTaskManager) KillTask(id string) error {
 
 // KillTaskProcess kills a task's entire process group.
 func KillTaskProcess(task *BackgroundTask) error {
+	if task.cancel != nil {
+		task.cancel()
+		return nil
+	}
 	if task.Process == nil || task.Process.Process == nil {
 		return nil
 	}

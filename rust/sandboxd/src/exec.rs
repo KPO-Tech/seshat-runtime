@@ -1,18 +1,24 @@
 //! Running one command.
 //!
-//! Phase 0 does not confine the filesystem or the network yet — that is the
-//! next phase, behind this same entry point. What it already enforces is the
-//! part that has nothing to do with the operating system: a deadline, an output
-//! cap that never hides the real size, and an environment built from the
-//! request alone instead of inherited from the parent.
+//! What this layer enforces has nothing to do with the operating system: a
+//! deadline, an output cap that never hides the real size, and an environment
+//! built from the request alone instead of inherited from the parent. The
+//! confinement belongs to `confinement.rs` — this file only asks it for a
+//! process, so the same run loop serves a host that confines and one that does
+//! not.
+//!
+//! `Outcome::error` exists because a command that never started used to look
+//! exactly like one that printed nothing and exited -1. A refusal the client
+//! cannot read is the failure mode `docs/sandboxd-protocol.md` forbids.
 
 use std::io::{self, Read};
-use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::confinement::Confinement;
 use crate::frame::{Run, STREAM_STDERR, STREAM_STDOUT};
+use crate::process::Process;
 
 /// How often the loop wakes up to check the deadline and the cancel channel.
 const POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -38,11 +44,13 @@ pub struct Outcome {
     pub truncated: bool,
     pub stdout_bytes: u64,
     pub stderr_bytes: u64,
+    /// Why the command never started, when it never started.
+    pub error: Option<String>,
 }
 
 impl Outcome {
-    /// A run that never started.
-    pub fn failed(duration: Duration) -> Self {
+    /// A run that never started, with the reason it did not.
+    pub fn failed(duration: Duration, error: String) -> Self {
         Self {
             exit_code: -1,
             duration_ms: duration.as_millis() as u64,
@@ -50,6 +58,7 @@ impl Outcome {
             truncated: false,
             stdout_bytes: 0,
             stderr_bytes: 0,
+            error: Some(error),
         }
     }
 }
@@ -62,14 +71,19 @@ type Event = (&'static str, Vec<u8>);
 /// `cancel` is the channel the protocol reader writes to when the client sends
 /// a `cancel` for this run; a message on it kills the child exactly as a
 /// deadline does.
-pub fn execute<F>(run: &Run, sink: &mut F, cancel: &Receiver<()>) -> Outcome
+pub fn execute<F>(
+    run: &Run,
+    sink: &mut F,
+    cancel: &Receiver<()>,
+    confinement: &Confinement,
+) -> Outcome
 where
     F: FnMut(&str, &[u8]) -> io::Result<()>,
 {
     let started = Instant::now();
-    let mut child = match spawn(run) {
+    let mut child = match spawn(run, confinement) {
         Ok(child) => child,
-        Err(_) => return Outcome::failed(started.elapsed()),
+        Err(err) => return Outcome::failed(started.elapsed(), err.to_string()),
     };
 
     let (tx, rx) = mpsc::channel::<Event>();
@@ -88,8 +102,9 @@ where
         truncated: false,
         stdout_bytes: 0,
         stderr_bytes: 0,
+        error: None,
     };
-    let mut status: Option<ExitStatus> = None;
+    let mut status: Option<i32> = None;
     let mut killed_at: Option<Instant> = None;
     let mut drained = false;
 
@@ -121,7 +136,7 @@ where
         let expired = deadline.is_some_and(|at| Instant::now() >= at);
         if (cancelled || expired) && killed_at.is_none() {
             outcome.timed_out = expired;
-            terminate(&mut child);
+            child.terminate();
             killed_at = Some(Instant::now());
         }
 
@@ -143,7 +158,7 @@ where
     }
 
     if let Some(code) = status.or_else(|| child.wait().ok()) {
-        outcome.exit_code = code.code().unwrap_or(-1);
+        outcome.exit_code = code;
     }
     if outcome.timed_out {
         outcome.exit_code = TIMEOUT_EXIT_CODE;
@@ -186,94 +201,9 @@ where
     let _ = sink(stream, &data[..take]);
 }
 
-fn spawn(run: &Run) -> io::Result<Child> {
-    let (program, mut args) = shell_for(run);
-    args.push(run.command.clone());
-
-    let mut cmd = Command::new(program);
-    cmd.args(&args);
-    cmd.stdin(Stdio::null());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    // Nothing of the sidecar's own environment reaches the command: a variable
-    // the client did not send cannot leak, including its own API keys.
-    cmd.env_clear();
-    for (key, value) in &run.env {
-        cmd.env(key, value);
-    }
-
-    if !run.work_dir.is_empty() {
-        cmd.current_dir(&run.work_dir);
-    }
-
-    configure_process_group(&mut cmd);
-
-    cmd.spawn()
-}
-
-/// Put the child in its own process group (Unix) so the whole tree can be
-/// signalled at once. On Windows the equivalent is done at kill time.
-#[cfg(unix)]
-fn configure_process_group(cmd: &mut Command) {
-    // Safe API since 1.64: no raw syscall, no unsafe block, no libc dependency.
-    std::os::unix::process::CommandExt::process_group(cmd, 0);
-}
-
-#[cfg(not(unix))]
-fn configure_process_group(_cmd: &mut Command) {}
-
-/// Kill the command *and everything it started*.
-///
-/// `Child::kill` terminates one process. A shell is a tree: killing `cmd.exe`
-/// leaves `ping.exe` running, still holding the pipes, still consuming the
-/// machine — which is how a "timeout" turns into a leak. Until a real Job
-/// Object backend exists, `taskkill /T` is the tree kill Windows gives us
-/// without unsafe code; on Unix the child leads its own process group and the
-/// group is signalled.
-fn terminate(child: &mut Child) {
-    #[cfg(windows)]
-    {
-        let pid = child.id().to_string();
-        let _ = Command::new("taskkill")
-            .args(["/T", "/F", "/PID", &pid])
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-
-    #[cfg(unix)]
-    signal_group(child.id());
-
-    // The group signal covers the tree; this covers the direct child even if
-    // the group signal was refused.
-    let _ = child.kill();
-}
-
-/// Signal the child's whole process group (Unix).
-///
-/// The child leads its own group (`configure_process_group`), so a negated pid
-/// names everything it started.
-///
-/// This is `kill(2)` and not `kill(1)`. Shelling out looked harmless and was
-/// not: the command-line tool reads `-1234` as a *signal name* when that number
-/// is a valid signal and as a *process group* otherwise, so whether the tree
-/// died depended on how large the pid happened to be. It worked on a machine
-/// whose pids were in the thousands and silently signalled nothing on one where
-/// the group leader got pid 41 — the shell died, its child kept the pipe open,
-/// and every killed run waited out the whole post-kill grace.
-#[cfg(unix)]
-#[allow(unsafe_code)] // one `kill(2)` call: no pointer, no memory, no invariant of ours
-fn signal_group(pid: u32) {
-    // SAFETY: `kill` takes an integer pid and an integer signal and touches no
-    // memory belonging to this process. A negative pid names the process group
-    // this code created in `configure_process_group`. A failure (the group is
-    // already gone) is reported through the return value, which is ignored on
-    // purpose: the caller also signals the direct child.
-    unsafe {
-        libc::kill(-(pid as i32), libc::SIGKILL);
-    }
+fn spawn(run: &Run, confinement: &Confinement) -> io::Result<Process> {
+    let (program, args) = shell_for(run);
+    confinement.spawn(&program, &args, &run.command, &run.env, &run.work_dir)
 }
 
 fn shell_for(run: &Run) -> (String, Vec<String>) {
@@ -295,13 +225,13 @@ fn shell_for(run: &Run) -> (String, Vec<String>) {
     (program, parts)
 }
 
-fn pump_output(child: &mut Child, tx: Sender<Event>) -> Vec<thread::JoinHandle<()>> {
+fn pump_output(child: &mut Process, tx: Sender<Event>) -> Vec<thread::JoinHandle<()>> {
     let mut handles = Vec::with_capacity(2);
 
-    if let Some(stdout) = child.stdout.take() {
+    if let Some(stdout) = child.take_stdout() {
         handles.push(reader_thread(stdout, STREAM_STDOUT, tx.clone()));
     }
-    if let Some(stderr) = child.stderr.take() {
+    if let Some(stderr) = child.take_stderr() {
         handles.push(reader_thread(stderr, STREAM_STDERR, tx));
     }
     handles
@@ -362,6 +292,13 @@ mod tests {
         run
     }
 
+    /// These tests measure the deadline, the cap and the tree kill, not the
+    /// identity: they run without one, which `Confinement::direct` documents as
+    /// test-only. The confined path has its own tests in `appcontainer.rs`.
+    fn unconfined() -> Confinement {
+        Confinement::direct()
+    }
+
     #[test]
     fn a_command_streams_its_output_and_reports_its_code() {
         let (_tx, rx) = mpsc::channel();
@@ -373,9 +310,11 @@ mod tests {
                 Ok(())
             },
             &rx,
+            &unconfined(),
         );
 
         assert_eq!(outcome.exit_code, 0);
+        assert!(outcome.error.is_none(), "{:?}", outcome.error);
         let text: String = seen
             .iter()
             .map(|(_, data)| String::from_utf8_lossy(data).into_owned())
@@ -401,7 +340,12 @@ mod tests {
     #[test]
     fn a_command_that_times_out_reports_124() {
         let (_tx, rx) = mpsc::channel();
-        let outcome = execute(&run_with_path(tree_command(), 300), &mut |_, _| Ok(()), &rx);
+        let outcome = execute(
+            &run_with_path(tree_command(), 300),
+            &mut |_, _| Ok(()),
+            &rx,
+            &unconfined(),
+        );
 
         assert!(outcome.timed_out, "expected the deadline to fire");
         assert_eq!(outcome.exit_code, TIMEOUT_EXIT_CODE);
@@ -424,6 +368,7 @@ mod tests {
                 Ok(())
             },
             &rx,
+            &unconfined(),
         );
 
         assert_eq!(outcome.exit_code, 0);
@@ -444,56 +389,39 @@ mod tests {
             let _ = tx.send(());
         });
 
-        let outcome = execute(&run_with_path(tree_command(), 0), &mut |_, _| Ok(()), &rx);
+        let outcome = execute(
+            &run_with_path(tree_command(), 0),
+            &mut |_, _| Ok(()),
+            &rx,
+            &unconfined(),
+        );
 
         // Cancelling is not a timeout: the caller asked for it.
         assert!(!outcome.timed_out);
         assert!(outcome.duration_ms < 5000, "took {}ms", outcome.duration_ms);
     }
 
-    /// The group signal must reach the processes the shell started, not only
-    /// the shell.
-    ///
-    /// It is asserted on the pipes rather than on a duration. A survivor keeps
-    /// the write end open, so `read_to_end` never returns; a duration threshold
-    /// can be met by a run that leaked the process, which is exactly how a tree
-    /// kill that only reached the shell went unnoticed.
-    #[cfg(unix)]
+    /// A command that cannot be started must say so. Before `Outcome::error`
+    /// existed, a missing interpreter produced exit -1 and no message at all.
     #[test]
-    fn the_group_signal_reaches_the_processes_the_shell_started() {
-        let mut command = Command::new("/bin/sh");
-        // The marker makes the test wait until the shell really has a child of
-        // its own, instead of racing the signal against the spawn.
-        command.args(["-c", "sleep 10 & echo started; wait"]);
-        command.stdin(Stdio::null());
-        command.stdout(Stdio::piped());
-        command.stderr(Stdio::null());
-        std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    fn a_command_that_cannot_start_reports_why() {
+        let (_tx, rx) = mpsc::channel();
+        let mut run = run_of("echo hello", 0, 0);
+        run.shell = vec!["/nonexistent/interpreter".to_string(), "-c".to_string()];
 
-        let mut child = command.spawn().expect("spawn the shell");
-        let leader = child.id();
-        let mut stdout = child.stdout.take().expect("stdout");
+        let outcome = execute(&run, &mut |_, _| Ok(()), &rx, &unconfined());
 
-        let mut marker = [0u8; 8];
-        let _ = stdout.read(&mut marker);
-
-        signal_group(leader);
-
-        let (closed_tx, closed_rx) = mpsc::channel();
-        let reader = thread::spawn(move || {
-            let mut sink = Vec::new();
-            let _ = stdout.read_to_end(&mut sink);
-            let _ = closed_tx.send(());
-        });
-
-        let closed = closed_rx.recv_timeout(Duration::from_secs(2)).is_ok();
-        let _ = child.kill();
-        let _ = child.wait();
-        let _ = reader.join();
-
+        assert_eq!(outcome.exit_code, -1);
+        let error = outcome.error.expect("the reason must survive");
+        // The wording is the platform's: Unix says "No such file or directory",
+        // Windows says "The system cannot find the path specified". What is
+        // asserted is that the reason reaches the caller at all, after the path
+        // is named where the platform names it.
         assert!(
-            closed,
-            "a process the shell started still held the pipe: the group signal did not reach it"
+            error.contains("interpreter")
+                || error.contains("No such file")
+                || error.contains("cannot find"),
+            "unexpected message: {error}"
         );
     }
 
@@ -514,6 +442,7 @@ mod tests {
             &run_with_path(flood_command(), 500),
             &mut |_, _| Ok(()),
             &rx,
+            &unconfined(),
         );
 
         assert!(outcome.timed_out, "expected the deadline to fire");
@@ -532,7 +461,12 @@ mod tests {
             thread::sleep(Duration::from_millis(300));
             let _ = tx.send(());
         });
-        let outcome = execute(&run_with_path(flood_command(), 0), &mut |_, _| Ok(()), &rx);
+        let outcome = execute(
+            &run_with_path(flood_command(), 0),
+            &mut |_, _| Ok(()),
+            &rx,
+            &unconfined(),
+        );
         let _ = canceller.join();
 
         assert!(!outcome.timed_out);
