@@ -166,12 +166,21 @@ impl Confinement {
                  working directory"
                     .to_string(),
             ],
-            Identity::Project(_) => vec![
-                "reads are not confined: only the folders the client named are refused".to_string(),
-                "the network is open".to_string(),
-                "secrets of this user remain reachable through DPAPI and the Credential Manager"
-                    .to_string(),
-            ],
+            Identity::Project(identity) => {
+                let mut reasons = vec![
+                    "reads are not confined: only the folders the client named are refused"
+                        .to_string(),
+                    "the network is open".to_string(),
+                    "secrets of this user remain reachable through DPAPI and the Credential Manager"
+                        .to_string(),
+                ];
+                if identity.elevated() {
+                    reasons.push(
+                        "Git Bash cannot start while the app runs as an administrator".to_string(),
+                    );
+                }
+                reasons
+            }
             Identity::Refused(refusal) => {
                 vec![format!("no identity: {refusal}")]
             }

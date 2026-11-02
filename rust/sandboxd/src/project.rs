@@ -35,7 +35,9 @@ use crate::appcontainer::{
 use crate::process::Process;
 
 const TOKEN_ALL_ACCESS: u32 = 0x000F_01FF;
+const TOKEN_QUERY: u32 = 0x0008;
 const TOKEN_USER: i32 = 1;
+const TOKEN_ELEVATION: i32 = 20;
 const TOKEN_INTEGRITY_LEVEL: i32 = 25;
 const TOKEN_LOGON_SID: i32 = 28;
 const DISABLE_MAX_PRIVILEGE: u32 = 0x01;
@@ -48,9 +50,6 @@ const LOW_INTEGRITY_SID: &str = "S-1-16-4096";
 const RESTRICTING_WELL_KNOWN: [&str; 4] = ["S-1-1-0", "S-1-5-32-545", "S-1-5-11", "S-1-5-4"];
 
 const SE_FILE_OBJECT: i32 = 1;
-const SE_KERNEL_OBJECT: i32 = 6;
-const GENERIC_ALL: u32 = 0x1000_0000;
-const OWNER_SECURITY_INFORMATION: u32 = 0x1;
 const DACL_SECURITY_INFORMATION: u32 = 0x4;
 const ACCESS_DENIED_ACE_TYPE: u8 = 1;
 const INHERITED_ACE: u8 = 0x10;
@@ -144,16 +143,6 @@ extern "system" {
         sid: *mut c_void,
     ) -> i32;
     fn AddAce(acl: *mut c_void, revision: u32, start: u32, ace: *mut c_void, len: u32) -> i32;
-    fn AddAccessAllowedAce(acl: *mut c_void, revision: u32, mask: u32, sid: *mut c_void) -> i32;
-    fn SetSecurityInfo(
-        handle: *mut c_void,
-        object_type: i32,
-        info: u32,
-        owner: *mut c_void,
-        group: *mut c_void,
-        dacl: *mut c_void,
-        sacl: *mut c_void,
-    ) -> u32;
 }
 
 #[repr(C)]
@@ -210,6 +199,7 @@ impl Drop for Sid {
 pub struct ProjectIdentity {
     token: OwnedHandle,
     scratch: PathBuf,
+    elevated: bool,
 }
 
 impl ProjectIdentity {
@@ -220,7 +210,16 @@ impl ProjectIdentity {
         for dir in SCRATCH_DIRS {
             std::fs::create_dir_all(scratch.join(dir))?;
         }
-        Ok(Self { token, scratch })
+        Ok(Self {
+            token,
+            scratch,
+            elevated: is_elevated()?,
+        })
+    }
+
+    /// Whether the app runs as an administrator, which Git Bash cannot start under.
+    pub fn elevated(&self) -> bool {
+        self.elevated
     }
 
     /// Lets the identity write in `dir`, what is already there included.
@@ -257,6 +256,15 @@ impl ProjectIdentity {
         let Some(install) = msys_install(Path::new(program)) else {
             return Ok((program.to_string(), None));
         };
+        // Under an elevated app its runtime stops at `NtSetInformationToken
+        // (TokenDefaultDacl), 0xC0000022`, measured on CI. Naming the user in the token's
+        // DACL and making it the owner did not change that. A clear refusal beats a shell
+        // that dies at startup, and an agent should not run as an administrator anyway.
+        if self.elevated {
+            return Err(io::Error::other(
+                "Git Bash cannot run in the project sandbox while the app runs as an administrator: start it normally",
+            ));
+        }
         let copy = private_msys(&install, &self.scratch)?;
         let bin = copy.join("usr").join("bin");
         Ok((
@@ -488,47 +496,34 @@ fn restricted_low_token(capability_sid: &str) -> io::Result<OwnedHandle> {
     if ok == 0 {
         return Err(io::Error::last_os_error());
     }
-    allow_own_token(&restricted, user_sid)?;
     Ok(restricted)
 }
 
-/// Lets a process under this token use the token itself.
-///
-/// A token's own DACL comes from the token it was made from. When the app runs as an
-/// administrator, that DACL grants Administrators, which the restricted check does
-/// not pass, and Git Bash stops at startup on `NtSetInformationToken (TokenDefaultDacl),
-/// 0xC0000022`. The user's SID is in the restricting list, so naming it here works
-/// whether the app is elevated or not, and gives the command nothing but its own token.
-fn allow_own_token(token: &OwnedHandle, user_sid: *mut c_void) -> io::Result<()> {
-    // SAFETY: `user_sid` is a valid SID, kept alive by the caller.
-    let size = 16 + ACE_SID_OFFSET as u32 + unsafe { GetLengthSid(user_sid) };
-    // `u64` elements, so the ACL has the alignment the API asks of it.
-    let mut buffer = vec![0u64; size.div_ceil(8) as usize];
-    let acl = buffer.as_mut_ptr() as *mut c_void;
-    // SAFETY: the buffer is at least `size` bytes and lives past both calls.
-    if unsafe { InitializeAcl(acl, (buffer.len() * 8) as u32, ACL_REVISION) } == 0 {
+/// Whether this process runs elevated.
+fn is_elevated() -> io::Result<bool> {
+    let mut own = ptr::null_mut();
+    // SAFETY: the pseudo-handle needs no closing; the call writes one handle.
+    if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut own) } == 0 {
         return Err(io::Error::last_os_error());
     }
-    // SAFETY: as above, and the buffer has room for this one ACE.
-    if unsafe { AddAccessAllowedAce(acl, ACL_REVISION, GENERIC_ALL, user_sid) } == 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: the handle and the ACL are valid; the owner, group and SACL are not being set.
-    let code = unsafe {
-        SetSecurityInfo(
-            token.as_raw_handle(),
-            SE_KERNEL_OBJECT,
-            DACL_SECURITY_INFORMATION | OWNER_SECURITY_INFORMATION,
-            user_sid,
-            ptr::null_mut(),
-            acl,
-            ptr::null_mut(),
+    // SAFETY: the call just produced this handle and nothing else owns it.
+    let own = unsafe { OwnedHandle::from_raw_handle(own) };
+    let mut elevated = 0u32;
+    let mut needed = 0u32;
+    // SAFETY: TOKEN_ELEVATION is one DWORD, and `elevated` is one.
+    let ok = unsafe {
+        GetTokenInformation(
+            own.as_raw_handle(),
+            TOKEN_ELEVATION,
+            &mut elevated as *mut u32 as *mut c_void,
+            std::mem::size_of::<u32>() as u32,
+            &mut needed,
         )
     };
-    if code != 0 {
-        return Err(io::Error::from_raw_os_error(code as i32));
+    if ok == 0 {
+        return Err(io::Error::last_os_error());
     }
-    Ok(())
+    Ok(elevated != 0)
 }
 
 fn token_info(token: &OwnedHandle, class: i32) -> io::Result<Vec<usize>> {
@@ -1014,6 +1009,14 @@ mod tests {
         let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
         let work = Dir::new("bash");
         identity.grant(&work.0).expect("grant");
+        if identity.elevated() {
+            // CI runs elevated: there the shell must refuse, and say why.
+            let err = identity
+                .shell(bash)
+                .expect_err("Git Bash cannot run elevated");
+            assert!(err.to_string().contains("administrator"), "{err}");
+            return;
+        }
         let (program, bin) = identity.shell(bash).expect("private copy");
         assert_ne!(program, bash);
         let bin = bin.expect("a folder for PATH");
