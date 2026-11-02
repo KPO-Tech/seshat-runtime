@@ -324,3 +324,21 @@ func TestSandboxdAgainstTheRealSidecar(t *testing.T) {
 		t.Fatalf("stdout = %q, want \"hello\"", result.Stdout)
 	}
 }
+
+func TestSandboxdProtectionCommandsReportFailureAndSkipAnEmptyList(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "no-such-sidecar")
+	const sid = "S-1-5-21-1-2-3-4"
+	commands := map[string]func(context.Context, string, string, []string) error{
+		"protect":   ApplySandboxdProtection,
+		"unprotect": RemoveSandboxdProtection,
+	}
+	for name, run := range commands {
+		if err := run(context.Background(), missing, sid, nil); err != nil {
+			t.Errorf("%s with no paths must not start the sidecar: %v", name, err)
+		}
+		err := run(context.Background(), missing, sid, []string{"a"})
+		if err == nil || !strings.Contains(err.Error(), name) {
+			t.Errorf("%s with no sidecar: %v", name, err)
+		}
+	}
+}

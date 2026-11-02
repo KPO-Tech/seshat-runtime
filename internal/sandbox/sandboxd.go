@@ -70,6 +70,22 @@ const (
 	SandboxdProfileProject = "project"
 )
 
+// ApplySandboxdProtection writes the deny ACEs of the project profile on paths ahead of
+// a session. A session's handshake also writes them but is bounded, and a first
+// protection walks every file below a path, so an embedder protects a large folder here,
+// with a ctx as long as it can wait. Paths that do not exist are skipped, and doing it
+// twice changes nothing.
+func ApplySandboxdProtection(ctx context.Context, binaryPath, capabilitySID string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"protect", capabilitySID}, paths...)
+	if out, err := exec.CommandContext(ctx, binaryPath, args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("sandboxd: protect: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // RemoveSandboxdProtection takes back the deny ACEs the project profile wrote on
 // paths. It needs no session, so it also works after a crash. Paths that are gone or
 // were never protected are not an error.
