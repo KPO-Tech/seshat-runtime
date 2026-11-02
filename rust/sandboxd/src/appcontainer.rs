@@ -41,10 +41,10 @@ use crate::process::{Job, Process};
 /// an HRESULT when a profile of that name survived a crash.
 const ERROR_ALREADY_EXISTS: i32 = 183;
 
-const CREATE_UNICODE_ENVIRONMENT: u32 = 0x0000_0400;
+pub const CREATE_UNICODE_ENVIRONMENT: u32 = 0x0000_0400;
 /// The child is created suspended so it cannot start a process before it is
 /// in the job object; `ResumeThread` starts it once it is.
-const CREATE_SUSPENDED: u32 = 0x0000_0004;
+pub const CREATE_SUSPENDED: u32 = 0x0000_0004;
 const EXTENDED_STARTUPINFO_PRESENT: u32 = 0x0008_0000;
 const STARTF_USESTDHANDLES: u32 = 0x0000_0100;
 const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
@@ -145,7 +145,7 @@ struct SecurityAttributes {
 }
 
 #[repr(C)]
-struct StartupInfo {
+pub struct StartupInfo {
     length: u32,
     reserved: *mut u16,
     desktop: *mut u16,
@@ -173,7 +173,7 @@ struct StartupInfoEx {
 }
 
 #[repr(C)]
-struct ProcessInformation {
+pub struct ProcessInformation {
     process: *mut c_void,
     thread: *mut c_void,
     process_id: u32,
@@ -357,110 +357,155 @@ impl AppContainer {
             .set_security_capabilities(&capabilities)
             .map_err(|e| step("UpdateProcThreadAttribute", e))?;
 
-        // The handles a confined command is allowed to inherit: its two output
-        // pipes and the null device. `inherit: 1` here, and inheritance turned
-        // back off on the read ends below, so the child cannot hold a pipe the
-        // sidecar needs to see close.
-        let inherited = SecurityAttributes {
-            length: std::mem::size_of::<SecurityAttributes>() as u32,
-            descriptor: ptr::null_mut(),
-            inherit: 1,
-        };
-        let (out_read, out_write) = create_pipe(&inherited)?;
-        let (err_read, err_write) = create_pipe(&inherited)?;
-        set_inherit(&out_read, false)?;
-        set_inherit(&err_read, false)?;
-        let stdin = open_null(&inherited)?;
-
-        // SAFETY: STARTUPINFOEXW is a plain-old-data structure; zero is the
-        // documented initial state before the fields we set.
-        let mut info: StartupInfoEx = unsafe { std::mem::zeroed() };
-        info.startup.length = std::mem::size_of::<StartupInfoEx>() as u32;
-        info.startup.flags = STARTF_USESTDHANDLES;
-        info.startup.std_input = stdin.as_raw_handle();
-        info.startup.std_output = out_write.as_raw_handle();
-        info.startup.std_error = err_write.as_raw_handle();
-        info.attribute_list = attributes.as_ptr();
-
-        let block = environment_block(env);
-        let mut line = wide(command_line);
-        let directory = if work_dir.is_empty() {
-            None
-        } else {
-            Some(wide(work_dir))
-        };
-
-        // SAFETY: zero is the documented initial state, and the call fills it.
-        let mut created: ProcessInformation = unsafe { std::mem::zeroed() };
-        // SAFETY: every pointer below is either a NUL-terminated UTF-16 buffer,
-        // the environment block, or the attribute list, each kept alive by a
-        // local that outlives the call. `inherit_handles` is 1 because the three
-        // handles handed to the child are marked inheritable, and only those.
-        let ok = unsafe {
-            CreateProcessW(
-                ptr::null(),
-                line.as_mut_ptr(),
-                ptr::null(),
-                ptr::null(),
-                1,
-                EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
-                block.as_ptr() as *const c_void,
-                directory.as_ref().map_or(ptr::null(), |wide| wide.as_ptr()),
-                &info.startup,
-                &mut created,
-            )
-        };
-        if ok == 0 {
-            return Err(step("CreateProcessW", io::Error::last_os_error()));
-        }
-
-        // SAFETY: `created.thread` and `created.process` are handles this call
-        // just produced and that nobody else owns.
-        let process_handle = unsafe { OwnedHandle::from_raw_handle(created.process) };
-        let thread_handle = unsafe { OwnedHandle::from_raw_handle(created.thread) };
-
-        // The job is what makes the tree kill enforceable: every process the
-        // command starts is born inside it, and closing the handle ends all of
-        // them. The child is still suspended here, so it cannot start anything
-        // before it is a member.
-        let job = match Job::new().and_then(|job| job.assign(&process_handle).map(|()| job)) {
-            Ok(job) => job,
-            Err(err) => {
-                // Suspended and never resumed: end it rather than leave behind a
-                // process nobody can reach.
-                // SAFETY: the handle is owned here and the process is this call's.
+        let list = attributes.as_ptr();
+        launch_in_job(
+            command_line,
+            env,
+            work_dir,
+            Some(list),
+            "CreateProcessW",
+            |parts| {
+                // SAFETY: every pointer in `parts` is kept alive by `launch_in_job`, and the
+                // attribute list and the capabilities it points at by this function, for the
+                // duration of the call. `inherit_handles` is 1 because the three handles
+                // handed to the child are marked inheritable, and only those.
                 unsafe {
-                    TerminateProcess(process_handle.as_raw_handle(), 1);
+                    CreateProcessW(
+                        ptr::null(),
+                        parts.line,
+                        ptr::null(),
+                        ptr::null(),
+                        1,
+                        EXTENDED_STARTUPINFO_PRESENT
+                            | CREATE_UNICODE_ENVIRONMENT
+                            | CREATE_SUSPENDED,
+                        parts.environment,
+                        parts.directory,
+                        parts.startup,
+                        parts.created,
+                    )
                 }
-                return Err(step("job object", err));
-            }
-        };
+            },
+        )
+    }
+}
 
-        // SAFETY: the thread handle is owned here and still suspended.
-        let resumed = unsafe { ResumeThread(thread_handle.as_raw_handle()) };
-        if resumed == u32::MAX {
-            // SAFETY: as above.
+/// What a process-creating call needs, kept alive by `launch_in_job` around it.
+pub struct LaunchParts {
+    pub line: *mut u16,
+    pub environment: *const c_void,
+    pub directory: *const u16,
+    pub startup: *const StartupInfo,
+    pub created: *mut ProcessInformation,
+}
+
+/// The launch both identities share: the pipes, the child created suspended by `create`,
+/// its place in a job object, then the resume. `attribute_list` is set by an identity
+/// whose call takes a `STARTUPINFOEX`. `api` names `create` in errors.
+pub fn launch_in_job(
+    command_line: &str,
+    env: &BTreeMap<String, String>,
+    work_dir: &str,
+    attribute_list: Option<*mut c_void>,
+    api: &str,
+    create: impl FnOnce(&LaunchParts) -> i32,
+) -> io::Result<Process> {
+    // The handles a confined command is allowed to inherit: its two output
+    // pipes and the null device. `inherit: 1` here, and inheritance turned
+    // back off on the read ends below, so the child cannot hold a pipe the
+    // sidecar needs to see close.
+    let inherited = SecurityAttributes {
+        length: std::mem::size_of::<SecurityAttributes>() as u32,
+        descriptor: ptr::null_mut(),
+        inherit: 1,
+    };
+    let (out_read, out_write) = create_pipe(&inherited)?;
+    let (err_read, err_write) = create_pipe(&inherited)?;
+    set_inherit(&out_read, false)?;
+    set_inherit(&err_read, false)?;
+    let stdin = open_null(&inherited)?;
+
+    // SAFETY: STARTUPINFOEXW is a plain-old-data structure; zero is the
+    // documented initial state before the fields we set.
+    let mut info: StartupInfoEx = unsafe { std::mem::zeroed() };
+    info.startup.length = if attribute_list.is_some() {
+        std::mem::size_of::<StartupInfoEx>() as u32
+    } else {
+        std::mem::size_of::<StartupInfo>() as u32
+    };
+    info.startup.flags = STARTF_USESTDHANDLES;
+    info.startup.std_input = stdin.as_raw_handle();
+    info.startup.std_output = out_write.as_raw_handle();
+    info.startup.std_error = err_write.as_raw_handle();
+    info.attribute_list = attribute_list.unwrap_or(ptr::null_mut());
+
+    let block = environment_block(env);
+    let mut line = wide(command_line);
+    let directory = if work_dir.is_empty() {
+        None
+    } else {
+        Some(wide(work_dir))
+    };
+
+    // SAFETY: zero is the documented initial state, and the call fills it.
+    let mut created: ProcessInformation = unsafe { std::mem::zeroed() };
+    let ok = create(&LaunchParts {
+        line: line.as_mut_ptr(),
+        environment: block.as_ptr() as *const c_void,
+        directory: directory.as_ref().map_or(ptr::null(), |wide| wide.as_ptr()),
+        startup: &info.startup,
+        created: &mut created,
+    });
+    if ok == 0 {
+        return Err(step(api, io::Error::last_os_error()));
+    }
+
+    // SAFETY: `created.thread` and `created.process` are handles this call
+    // just produced and that nobody else owns.
+    let process_handle = unsafe { OwnedHandle::from_raw_handle(created.process) };
+    let thread_handle = unsafe { OwnedHandle::from_raw_handle(created.thread) };
+
+    // The job is what makes the tree kill enforceable: every process the
+    // command starts is born inside it, and closing the handle ends all of
+    // them. The child is still suspended here, so it cannot start anything
+    // before it is a member.
+    let job = match Job::new().and_then(|job| job.assign(&process_handle).map(|()| job)) {
+        Ok(job) => job,
+        Err(err) => {
+            // Suspended and never resumed: end it rather than leave behind a
+            // process nobody can reach.
+            // SAFETY: the handle is owned here and the process is this call's.
             unsafe {
                 TerminateProcess(process_handle.as_raw_handle(), 1);
             }
-            return Err(step("ResumeThread", io::Error::last_os_error()));
+            return Err(step("job object", err));
         }
-        drop(thread_handle);
+    };
 
-        // Drop our copies of the write ends so the pipes report end-of-file once
-        // the command exits.
-        drop(out_write);
-        drop(err_write);
-        drop(stdin);
-
-        Ok(Process::from_windows(
-            job,
-            process_handle,
-            created.process_id,
-            Some(File::from(out_read)),
-            Some(File::from(err_read)),
-        ))
+    // SAFETY: the thread handle is owned here and still suspended.
+    let resumed = unsafe { ResumeThread(thread_handle.as_raw_handle()) };
+    if resumed == u32::MAX {
+        // SAFETY: as above.
+        unsafe {
+            TerminateProcess(process_handle.as_raw_handle(), 1);
+        }
+        return Err(step("ResumeThread", io::Error::last_os_error()));
     }
+    drop(thread_handle);
+
+    // Drop our copies of the write ends so the pipes report end-of-file once
+    // the command exits.
+    drop(out_write);
+    drop(err_write);
+    drop(stdin);
+
+    Ok(Process::from_windows(
+        job,
+        process_handle,
+        created.process_id,
+        Some(File::from(out_read)),
+        Some(File::from(err_read)),
+    ))
 }
 
 impl Drop for AppContainer {
@@ -677,7 +722,7 @@ fn open_null(attributes: &SecurityAttributes) -> io::Result<OwnedHandle> {
     Ok(unsafe { OwnedHandle::from_raw_handle(handle) })
 }
 
-fn wide(text: &str) -> Vec<u16> {
+pub fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 

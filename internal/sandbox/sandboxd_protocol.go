@@ -23,7 +23,7 @@ import (
 // instead of rejecting it.
 const (
 	sandboxdProtocolMajor = 1
-	sandboxdProtocolMinor = 0
+	sandboxdProtocolMinor = 1
 
 	sandboxdTypeHello    = "hello"
 	sandboxdTypeHelloAck = "hello_ack"
@@ -65,6 +65,10 @@ type sandboxdHello struct {
 	ProtocolMajor uint32 `json:"protocol_major"`
 	ProtocolMinor uint32 `json:"protocol_minor"`
 	ClientVersion string `json:"client_version"`
+	Profile       string `json:"profile"`
+	CapabilitySID string `json:"capability_sid"`
+	// DenyRead is always encoded, never null: see the arrays rule of the protocol.
+	DenyRead []string `json:"deny_read"`
 }
 
 type sandboxdHelloAck struct {
