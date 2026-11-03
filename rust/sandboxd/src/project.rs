@@ -28,7 +28,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::ptr;
 
-use crate::appcontainer::{launch_in_job, wide, ProcessInformation, StartupInfo, LAUNCH_FLAGS};
+use crate::appcontainer::{
+    launch_in_job, wide, ProcessInformation, StartupInfo, CREATE_NO_WINDOW, LAUNCH_FLAGS,
+};
 use crate::process::Process;
 
 const TOKEN_ALL_ACCESS: u32 = 0x000F_01FF;
@@ -219,8 +221,6 @@ struct DesktopAttributes {
 }
 
 const DESKTOP_ALL_ACCESS: u32 = 0x000F_01FF;
-/// How a process dies when it cannot use the desktop it was given.
-const STATUS_DLL_INIT_FAILED: i32 = 0xC000_0142_u32 as i32;
 
 /// A desktop of the session's own, which is what keeps a command from the user's screen: a job
 /// refuses the clipboard and window handles, but a capture of the screen is not one of those.
@@ -312,7 +312,7 @@ pub struct ProjectIdentity {
     token: OwnedHandle,
     scratch: PathBuf,
     elevated: bool,
-    desktop: Option<PrivateDesktop>,
+    desktop: PrivateDesktop,
 }
 
 impl ProjectIdentity {
@@ -323,44 +323,12 @@ impl ProjectIdentity {
         for dir in SCRATCH_DIRS {
             std::fs::create_dir_all(scratch.join(dir))?;
         }
-        let mut identity = Self {
+        Ok(Self {
             token,
             scratch,
             elevated: is_elevated()?,
-            desktop: None,
-        };
-        if std::env::var_os("ZZ_NODESK").is_none() {
-            identity.try_private_desktop();
-        }
-        Ok(identity)
-    }
-
-    /// Moves commands to a private desktop if a process really starts on one. On a GitHub
-    /// Windows runner it dies at startup, for a reason not established, while it works on a
-    /// normal session. The desktop adds to the boundary and is not the boundary, so losing it
-    /// must not stop every command: `Confinement::reasons` says so instead.
-    fn try_private_desktop(&mut self) {
-        let Ok(user) = token_user_sid_string() else {
-            return;
-        };
-        let Ok(desktop) = PrivateDesktop::create(&user) else {
-            return;
-        };
-        self.desktop = Some(desktop);
-        let system = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".to_string());
-        let probe = format!(r#""{system}\System32\cmd.exe" /d /c exit 0"#);
-        let works = self
-            .launch(&probe, &BTreeMap::new(), "")
-            .and_then(|mut child| child.wait())
-            .is_ok_and(|code| code != STATUS_DLL_INIT_FAILED);
-        if !works {
-            self.desktop = None;
-        }
-    }
-
-    /// Whether commands run on a desktop of their own, away from the user's screen.
-    pub fn has_private_desktop(&self) -> bool {
-        self.desktop.is_some()
+            desktop: PrivateDesktop::create(&token_user_sid_string()?)?,
+        })
     }
 
     /// Whether the app runs as an administrator, which Git Bash cannot start under.
@@ -428,12 +396,20 @@ impl ProjectIdentity {
     ) -> io::Result<Process> {
         let env = with_scratch(env, &self.scratch);
         let token = self.token.as_raw_handle();
+        // Under an elevated app a command dies at startup with `STATUS_DLL_INIT_FAILED` when
+        // told to have no console window, measured on a CI runner. An agent should not run as
+        // an administrator, so a window there is the lesser problem.
+        let flags = if self.elevated {
+            LAUNCH_FLAGS & !CREATE_NO_WINDOW
+        } else {
+            LAUNCH_FLAGS
+        };
         launch_in_job(
             command_line,
             &env,
             work_dir,
             None,
-            self.desktop.as_ref().map(|desktop| desktop.name.as_slice()),
+            Some(&self.desktop.name),
             "CreateProcessAsUserW",
             |parts| {
                 // SAFETY: the token is owned by `self`; every pointer in `parts` is kept
@@ -446,11 +422,7 @@ impl ProjectIdentity {
                         ptr::null(),
                         ptr::null(),
                         1,
-                        if std::env::var_os("ZZ_CONSOLE").is_some() {
-                            LAUNCH_FLAGS & !0x0800_0000
-                        } else {
-                            LAUNCH_FLAGS
-                        },
+                        flags,
                         parts.environment,
                         parts.directory,
                         parts.startup,
@@ -1103,79 +1075,6 @@ mod tests {
     /// The runtime's pipes to the sidecar are inheritable handles the sidecar received. A
     /// command holding them could forge protocol frames.
     #[test]
-    fn zz_one() {
-        if std::env::var_os("ZZ_RUN").is_none() {
-            return;
-        }
-        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
-        let work = Dir::new("zz");
-        identity.grant(&work.0).expect("grant");
-        let comspec = std::env::var("ComSpec").expect("ComSpec");
-        let mut child = identity
-            .launch(
-                &format!("\"{comspec}\" /d /c exit 3"),
-                &env(),
-                &work.0.display().to_string(),
-            )
-            .expect("launch");
-        println!(
-            "ZZRESULT rc={} desktop={} elevated={}",
-            child.wait().expect("wait"),
-            identity.has_private_desktop(),
-            identity.elevated()
-        );
-    }
-
-    #[test]
-    fn zz_matrix() {
-        let exe = std::env::current_exe().unwrap();
-        for (label, envs) in [
-            ("everything on", vec![]),
-            ("no desktop", vec![("ZZ_NODESK", "1")]),
-            (
-                "no desktop, no ui limits",
-                vec![("ZZ_NODESK", "1"), ("ZZ_UI", "0")],
-            ),
-            (
-                "no desktop, console window",
-                vec![("ZZ_NODESK", "1"), ("ZZ_CONSOLE", "1")],
-            ),
-            (
-                "no desktop, no ui limits, console window",
-                vec![("ZZ_NODESK", "1"), ("ZZ_UI", "0"), ("ZZ_CONSOLE", "1")],
-            ),
-            ("desktop, no ui limits", vec![("ZZ_UI", "0")]),
-            ("desktop, console window", vec![("ZZ_CONSOLE", "1")]),
-            (
-                "desktop, no ui limits, console window",
-                vec![("ZZ_UI", "0"), ("ZZ_CONSOLE", "1")],
-            ),
-            ("ui handles only", vec![("ZZ_NODESK", "1"), ("ZZ_UI", "1")]),
-            (
-                "ui clipboard only",
-                vec![("ZZ_NODESK", "1"), ("ZZ_UI", "6")],
-            ),
-            ("ui desktop only", vec![("ZZ_NODESK", "1"), ("ZZ_UI", "40")]),
-            ("ui others", vec![("ZZ_NODESK", "1"), ("ZZ_UI", "B8")]),
-        ] {
-            let mut cmd = Command::new(&exe);
-            cmd.args(["project::tests::zz_one", "--exact", "--nocapture"])
-                .env("ZZ_RUN", "1");
-            for (k, v) in envs {
-                cmd.env(k, v);
-            }
-            let out = cmd.output().unwrap();
-            let text = String::from_utf8_lossy(&out.stdout);
-            let line = text
-                .lines()
-                .find(|l| l.contains("ZZRESULT"))
-                .unwrap_or("no result");
-            println!("ZZMATRIX {label}: {line}");
-        }
-        panic!("show the matrix");
-    }
-
-    #[test]
     fn a_command_inherits_only_its_own_pipes() {
         use crate::appcontainer::{create_pipe, SecurityAttributes};
         let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
@@ -1250,9 +1149,6 @@ try { $b=New-Object Drawing.Bitmap 100,100; $g=[Drawing.Graphics]::FromImage($b)
         assert_eq!(code, 0, "{text}");
         assert!(text.contains("clipboard=False"), "{text}");
         assert!(text.contains("windows=0"), "{text}");
-        if !identity.has_private_desktop() {
-            return;
-        }
         // A blank private desktop captures as one colour at most.
         let colours: u32 = text
             .split("colours=")

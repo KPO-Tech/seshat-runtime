@@ -141,10 +141,7 @@ impl Job {
             return Err(io::Error::last_os_error());
         }
 
-        let restrictions: u32 = std::env::var("ZZ_UI")
-            .ok()
-            .and_then(|v| u32::from_str_radix(&v, 16).ok())
-            .unwrap_or(JOB_OBJECT_UILIMIT_ALL);
+        let restrictions = JOB_OBJECT_UILIMIT_ALL;
         // SAFETY: the job handle is owned above; this information class is one DWORD of flags.
         let ok = unsafe {
             SetInformationJobObject(
