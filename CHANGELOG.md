@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-11-03
+
 ### Changed
 
 - **BREAKING: the Docker sandbox is gone.** `SandboxKindDocker`, `SandboxDockerConfig` and `ClientConfig.SandboxDocker` are removed. `SandboxKindMicroVM` gives a whole environment with no Docker to install, and microsandbox does not cover Windows 10 or Intel Macs, which are left with no isolated mode. See ADR 0003.
