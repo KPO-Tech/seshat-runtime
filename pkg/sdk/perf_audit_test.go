@@ -41,7 +41,7 @@ func TestAuditNewClient(t *testing.T) {
 	if os.Getenv("AUDIT") == "" {
 		t.Skip("AUDIT is not set")
 	}
-	for _, kind := range []SandboxKind{SandboxKindLocal, SandboxKindDocker} {
+	for _, kind := range []SandboxKind{SandboxKindLocal} {
 		for i := 0; i < 3; i++ {
 			start := time.Now()
 			c, err := NewClient(auditConfig(t, kind))
@@ -74,7 +74,7 @@ func TestAuditNewClientProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 5; i++ {
-		c, err := NewClient(auditConfig(t, SandboxKindDocker))
+		c, err := NewClient(auditConfig(t, SandboxKindLocal))
 		if err != nil {
 			t.Fatal(err)
 		}

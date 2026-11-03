@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	reader "github.com/KPO-Tech/seshat-runtime/internal/documentreader"
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	fileReadTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/read"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
@@ -45,7 +46,7 @@ const (
 type ConvertTool struct {
 	workingDir       string
 	documentReader   reader.Converter
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 // NewConvertTool creates a new convert_document tool.
@@ -53,7 +54,7 @@ func NewConvertTool(cfg Config, workingDir string) *ConvertTool {
 	return &ConvertTool{
 		workingDir:       workingDir,
 		documentReader:   cfg.converter(),
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -122,15 +123,15 @@ func (t *ConvertTool) Call(
 	}
 
 	if permissionCheck != nil {
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      ConvertToolName,
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessRead,
+			Access:        access.AccessRead,
 			Paths:         []string{absolutePath},
 			Justification: "Convert document via configured document reader",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 		}
-		permResult, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		permResult, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput: map[string]any{
 				"path": absolutePath,
 			},
@@ -144,7 +145,7 @@ func (t *ConvertTool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(permResult, "document conversion requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(permResult, "document conversion requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}
@@ -251,7 +252,7 @@ func (t *ConvertTool) BackfillInput(_ context.Context, input map[string]any) map
 }
 
 func (t *ConvertTool) validateReadPath(toolCtx tool.ToolUseContext, path string) error {
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -259,11 +260,11 @@ func (t *ConvertTool) validateReadPath(toolCtx tool.ToolUseContext, path string)
 	if toolCtx.Workspace != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(toolCtx.Workspace.Root)
 	}
-	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, path, sandbox.AccessRead)
+	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, path, access.AccessRead)
 	if err != nil {
 		return err
 	}
-	return sandbox.ErrorForDecision(decision.DecisionResult)
+	return access.ErrorForDecision(decision.DecisionResult)
 }
 
 func (t *ConvertTool) resolvePath(path string, toolCtx tool.ToolUseContext) (string, error) {

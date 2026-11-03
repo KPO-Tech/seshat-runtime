@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/KPO-Tech/seshat-runtime/internal/envfilter"
-	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/schema"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
@@ -38,7 +38,7 @@ type MonitorTool struct {
 	// validator and policy are the hard checks of the bash tool: a monitor runs a
 	// shell command, so it gets the same ones.
 	validator   *SecurityValidator
-	policy      *sandbox.CommandPolicy
+	policy      *access.CommandPolicy
 	workingDir  string
 	taskManager *BackgroundTaskManager
 }
@@ -48,7 +48,7 @@ func NewMonitorTool(workingDir string) *MonitorTool {
 	return &MonitorTool{
 		workingDir:  workingDir,
 		validator:   NewSecurityValidator(),
-		policy:      sandbox.NewDefaultCommandPolicy(),
+		policy:      access.NewDefaultCommandPolicy(),
 		taskManager: NewBackgroundTaskManager(""),
 	}
 }
@@ -131,7 +131,7 @@ func (t *MonitorTool) hardDeny(command, workingDir string) string {
 	if viol := t.validator.ValidateWorkspace(command, workingDir); viol != nil {
 		return "workspace violation: " + viol.Reason
 	}
-	if result := t.policy.Evaluate(command); result.Decision == sandbox.DecisionDeny {
+	if result := t.policy.Evaluate(command); result.Decision == access.DecisionDeny {
 		return result.Reason
 	}
 	return ""

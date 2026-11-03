@@ -338,7 +338,7 @@ fmt.Println(resp.Content)
 | gRPC server (any language) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Multi-provider | ✅ (15) | ❌ Claude only | ❌ OpenAI only | ✅ | ✅ |
 | MCP client | ✅ | ✅ | ✅ | Partial | ❌ |
-| Sandboxed bash (Landlock, srt, Docker) | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Sandboxed bash (Landlock, Windows sidecar, microVM) | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Skills system | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Built-in RAG | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Browser automation | ✅ | ✅ | ❌ | ❌ | ❌ |
@@ -353,7 +353,7 @@ fmt.Println(resp.Content)
 | Capability | Details |
 |---|---|
 | 🌍 **Multi-provider** | Anthropic, OpenAI, Gemini, Mistral, DeepSeek, Ollama, OpenRouter, Codex, MiniMax, Z.ai, OpenCode, Cloudflare Workers AI |
-| 🛠️ **60+ built-in tools** | File read/write/patch, bash (Landlock, srt or Docker sandbox), web search, web fetch, browser (Playwright), grep/glob, LSP, sub-agents, RAG, tasks, memory, worktree, notebooks, image generation, TTS/STT |
+| 🛠️ **60+ built-in tools** | File read/write/patch, bash (Landlock, Windows sidecar or microVM), web search, web fetch, browser (Playwright), grep/glob, LSP, sub-agents, RAG, tasks, memory, worktree, notebooks, image generation, TTS/STT |
 | 🔌 **MCP client** | Universal MCP client: plug in any MCP server (GitHub, Postgres, Slack, Docker, Notion, ...) |
 | ⚡ **Skills** | Markdown instruction files injected into the system prompt: encode your team's conventions and domain expertise |
 | 🎯 **Execution modes** | `execute` (default), `plan` (review before act), `pair_programming` (collaborative) |

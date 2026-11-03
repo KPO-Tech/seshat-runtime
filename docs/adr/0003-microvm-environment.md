@@ -3,8 +3,10 @@
 - **Status:** accepted
 - **Date:** 2026-11-03
 - **Deciders:** maintainer
-- **Supersedes:** nothing. **Amends:** [ADR-0001](0001-go-rust-boundary.md), on one point: Rust
-  confinement for Linux and macOS is no longer planned in `seshat-sandboxd`.
+- **Supersedes:** nothing. **Amends:** [ADR-0001](0001-go-rust-boundary.md), on two points: Rust
+  confinement for Linux and macOS is no longer planned in `seshat-sandboxd`, and command-policy
+  evaluation stays in Go, in `internal/permissions/access`. That policy is a list of commands to
+  refuse or to confirm, and confinement is what holds, so porting a shell parser would add little.
 
 ## Context
 
@@ -82,7 +84,11 @@ It fails closed, like the sidecar: an `msb` that is missing or unhealthy refuses
 
 - A real boundary on every platform with a hypervisor, including what `project` leaves open.
 - The planned Linux and macOS backends in Rust are dropped. `project` stays for Windows, where
-  working with the user's own tools is the point. Docker can go once this mode has proved itself.
+  working with the user's own tools is the point. Landlock stays too: SeshatCloud relies on it on a
+  server, where a microVM would need KVM inside a container.
+- The Docker backend and the `srt` backend are removed: this mode replaces the first, and `srt` failed
+  on Windows. Windows 10 and Intel Macs are left with no isolated mode, and macOS with no confinement
+  in direct mode.
 
 **Negative, accepted**
 

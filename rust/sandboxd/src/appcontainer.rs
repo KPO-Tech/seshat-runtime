@@ -46,6 +46,14 @@ pub const CREATE_UNICODE_ENVIRONMENT: u32 = 0x0000_0400;
 /// in the job object; `ResumeThread` starts it once it is.
 pub const CREATE_SUSPENDED: u32 = 0x0000_0004;
 const EXTENDED_STARTUPINFO_PRESENT: u32 = 0x0008_0000;
+/// A console program started from an app with no console opens a window of its own without
+/// this: one flashing on the user's screen per command.
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+/// How every confined command is created: `launch_in_job` passes a `STARTUPINFOEX`, and the
+/// child starts suspended so it joins its job before it can start anything.
+pub const LAUNCH_FLAGS: u32 =
+    EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED | CREATE_NO_WINDOW;
+const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
 const STARTF_USESTDHANDLES: u32 = 0x0000_0100;
 const HANDLE_FLAG_INHERIT: u32 = 0x0000_0001;
 
@@ -138,10 +146,10 @@ extern "system" {
 const INVALID_HANDLE_VALUE: *mut c_void = -1isize as *mut c_void;
 
 #[repr(C)]
-struct SecurityAttributes {
-    length: u32,
-    descriptor: *mut c_void,
-    inherit: i32,
+pub(crate) struct SecurityAttributes {
+    pub(crate) length: u32,
+    pub(crate) descriptor: *mut c_void,
+    pub(crate) inherit: i32,
 }
 
 #[repr(C)]
@@ -181,7 +189,7 @@ pub struct ProcessInformation {
 }
 
 #[repr(C)]
-struct SecurityCapabilities {
+pub struct SecurityCapabilities {
     app_container_sid: *mut c_void,
     capabilities: *mut c_void,
     capability_count: u32,
@@ -340,8 +348,6 @@ impl AppContainer {
         work_dir: &str,
     ) -> io::Result<Process> {
         let sid = self.sid()?;
-        let mut attributes =
-            AttributeList::new().map_err(|e| step("InitializeProcThreadAttributeList", e))?;
         // The attribute list keeps a pointer to this value and `CreateProcessW`
         // reads it while launching, so it has to outlive the whole call. A local
         // inside `set_security_capabilities` would be stack memory nobody owns
@@ -353,22 +359,18 @@ impl AppContainer {
             capability_count: 0,
             reserved: 0,
         };
-        attributes
-            .set_security_capabilities(&capabilities)
-            .map_err(|e| step("UpdateProcThreadAttribute", e))?;
-
-        let list = attributes.as_ptr();
         launch_in_job(
             command_line,
             env,
             work_dir,
-            Some(list),
+            Some(&capabilities),
+            None,
             "CreateProcessW",
             |parts| {
                 // SAFETY: every pointer in `parts` is kept alive by `launch_in_job`, and the
-                // attribute list and the capabilities it points at by this function, for the
-                // duration of the call. `inherit_handles` is 1 because the three handles
-                // handed to the child are marked inheritable, and only those.
+                // capabilities the attribute list points at by this function, for the
+                // duration of the call. `inherit_handles` is 1 because the handle list
+                // narrows it to the three handles handed to the child.
                 unsafe {
                     CreateProcessW(
                         ptr::null(),
@@ -376,9 +378,7 @@ impl AppContainer {
                         ptr::null(),
                         ptr::null(),
                         1,
-                        EXTENDED_STARTUPINFO_PRESENT
-                            | CREATE_UNICODE_ENVIRONMENT
-                            | CREATE_SUSPENDED,
+                        LAUNCH_FLAGS,
                         parts.environment,
                         parts.directory,
                         parts.startup,
@@ -400,13 +400,15 @@ pub struct LaunchParts {
 }
 
 /// The launch both identities share: the pipes, the child created suspended by `create`,
-/// its place in a job object, then the resume. `attribute_list` is set by an identity
-/// whose call takes a `STARTUPINFOEX`. `api` names `create` in errors.
+/// its place in a job object, then the resume. `capabilities` makes the child an
+/// AppContainer, and `desktop` names the desktop it runs on, as a nul-terminated wide string.
+/// `api` names `create` in errors.
 pub fn launch_in_job(
     command_line: &str,
     env: &BTreeMap<String, String>,
     work_dir: &str,
-    attribute_list: Option<*mut c_void>,
+    capabilities: Option<&SecurityCapabilities>,
+    desktop: Option<&[u16]>,
     api: &str,
     create: impl FnOnce(&LaunchParts) -> i32,
 ) -> io::Result<Process> {
@@ -425,19 +427,38 @@ pub fn launch_in_job(
     set_inherit(&err_read, false)?;
     let stdin = open_null(&inherited)?;
 
+    // Marking handles inheritable is not enough. `inherit_handles` passes every inheritable
+    // handle this process holds, and that includes the pipes the runtime gave the sidecar
+    // for its protocol: a command could write forged frames to them, and would hold them
+    // open. The list limits it to these three.
+    let handles = [
+        stdin.as_raw_handle(),
+        out_write.as_raw_handle(),
+        err_write.as_raw_handle(),
+    ];
+    let attribute_count = if capabilities.is_some() { 2 } else { 1 };
+    let mut attributes = AttributeList::new(attribute_count)
+        .map_err(|e| step("InitializeProcThreadAttributeList", e))?;
+    attributes
+        .set_handle_list(&handles)
+        .map_err(|e| step("UpdateProcThreadAttribute", e))?;
+    if let Some(capabilities) = capabilities {
+        attributes
+            .set_security_capabilities(capabilities)
+            .map_err(|e| step("UpdateProcThreadAttribute", e))?;
+    }
+
     // SAFETY: STARTUPINFOEXW is a plain-old-data structure; zero is the
     // documented initial state before the fields we set.
     let mut info: StartupInfoEx = unsafe { std::mem::zeroed() };
-    info.startup.length = if attribute_list.is_some() {
-        std::mem::size_of::<StartupInfoEx>() as u32
-    } else {
-        std::mem::size_of::<StartupInfo>() as u32
-    };
+    info.startup.length = std::mem::size_of::<StartupInfoEx>() as u32;
     info.startup.flags = STARTF_USESTDHANDLES;
     info.startup.std_input = stdin.as_raw_handle();
     info.startup.std_output = out_write.as_raw_handle();
     info.startup.std_error = err_write.as_raw_handle();
-    info.attribute_list = attribute_list.unwrap_or(ptr::null_mut());
+    info.attribute_list = attributes.as_ptr();
+    // The API takes a mutable pointer and does not write through it.
+    info.startup.desktop = desktop.map_or(ptr::null_mut(), |name| name.as_ptr() as *mut u16);
 
     let block = environment_block(env);
     let mut line = wide(command_line);
@@ -549,12 +570,12 @@ struct AttributeList {
 }
 
 impl AttributeList {
-    fn new() -> io::Result<Self> {
+    fn new(count: u32) -> io::Result<Self> {
         let mut size = 0usize;
         // SAFETY: the documented way to ask for the size; a null list is
         // expected to fail with ERROR_INSUFFICIENT_BUFFER.
         unsafe {
-            InitializeProcThreadAttributeList(ptr::null_mut(), 1, 0, &mut size);
+            InitializeProcThreadAttributeList(ptr::null_mut(), count, 0, &mut size);
         }
         if size == 0 {
             return Err(io::Error::last_os_error());
@@ -563,7 +584,12 @@ impl AttributeList {
         // SAFETY: `words` is at least `size` bytes, and `size` is passed back
         // exactly as the first call produced it.
         let ok = unsafe {
-            InitializeProcThreadAttributeList(words.as_mut_ptr() as *mut c_void, 1, 0, &mut size)
+            InitializeProcThreadAttributeList(
+                words.as_mut_ptr() as *mut c_void,
+                count,
+                0,
+                &mut size,
+            )
         };
         if ok == 0 {
             return Err(io::Error::last_os_error());
@@ -573,6 +599,28 @@ impl AttributeList {
 
     fn as_ptr(&mut self) -> *mut c_void {
         self.words.as_mut_ptr() as *mut c_void
+    }
+
+    /// Limits what the child inherits to `handles`. The caller keeps the slice alive until
+    /// the process is created: the list holds a pointer to it.
+    fn set_handle_list(&mut self, handles: &[*mut c_void]) -> io::Result<()> {
+        // SAFETY: the list was initialised above, the size is that of the slice, and the
+        // caller keeps the slice alive past `CreateProcessW`.
+        let ok = unsafe {
+            UpdateProcThreadAttribute(
+                self.words.as_mut_ptr() as *mut c_void,
+                0,
+                PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                handles.as_ptr() as *const c_void,
+                std::mem::size_of_val(handles),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
     }
 
     /// Names the identity the child runs under. No capabilities are requested:
@@ -603,8 +651,8 @@ impl AttributeList {
 
 impl Drop for AttributeList {
     fn drop(&mut self) {
-        // SAFETY: the buffer is this struct's and was initialised with exactly
-        // one attribute; the API frees only what it put there.
+        // SAFETY: the buffer is this struct's and was initialised by `new`; the API frees
+        // only what it put there.
         unsafe {
             DeleteProcThreadAttributeList(self.words.as_mut_ptr() as *mut c_void);
         }
@@ -668,7 +716,9 @@ fn step(name: &str, err: io::Error) -> io::Error {
     io::Error::new(err.kind(), format!("{name}: {err}"))
 }
 
-fn create_pipe(attributes: &SecurityAttributes) -> io::Result<(OwnedHandle, OwnedHandle)> {
+pub(crate) fn create_pipe(
+    attributes: &SecurityAttributes,
+) -> io::Result<(OwnedHandle, OwnedHandle)> {
     let mut read: *mut c_void = ptr::null_mut();
     let mut write: *mut c_void = ptr::null_mut();
     // SAFETY: `attributes` outlives the call and both handles are out-parameters.
