@@ -329,7 +329,9 @@ impl ProjectIdentity {
             elevated: is_elevated()?,
             desktop: None,
         };
-        identity.try_private_desktop();
+        if std::env::var_os("ZZ_NODESK").is_none() {
+            identity.try_private_desktop();
+        }
         Ok(identity)
     }
 
@@ -444,7 +446,11 @@ impl ProjectIdentity {
                         ptr::null(),
                         ptr::null(),
                         1,
-                        LAUNCH_FLAGS,
+                        if std::env::var_os("ZZ_CONSOLE").is_some() {
+                            LAUNCH_FLAGS & !0x0800_0000
+                        } else {
+                            LAUNCH_FLAGS
+                        },
                         parts.environment,
                         parts.directory,
                         parts.startup,
@@ -1096,6 +1102,78 @@ mod tests {
 
     /// The runtime's pipes to the sidecar are inheritable handles the sidecar received. A
     /// command holding them could forge protocol frames.
+    #[test]
+    fn zz_one() {
+        if std::env::var_os("ZZ_RUN").is_none() {
+            return;
+        }
+        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
+        let work = Dir::new("zz");
+        identity.grant(&work.0).expect("grant");
+        let comspec = std::env::var("ComSpec").expect("ComSpec");
+        let mut child = identity
+            .launch(
+                &format!("\"{comspec}\" /d /c exit 3"),
+                &env(),
+                &work.0.display().to_string(),
+            )
+            .expect("launch");
+        println!(
+            "ZZRESULT rc={} desktop={} elevated={}",
+            child.wait().expect("wait"),
+            identity.has_private_desktop(),
+            identity.elevated()
+        );
+    }
+
+    #[test]
+    fn zz_matrix() {
+        let exe = std::env::current_exe().unwrap();
+        for (label, envs) in [
+            ("everything on", vec![]),
+            ("no desktop", vec![("ZZ_NODESK", "1")]),
+            (
+                "no desktop, no ui limits",
+                vec![("ZZ_NODESK", "1"), ("ZZ_UI", "0")],
+            ),
+            (
+                "no desktop, console window",
+                vec![("ZZ_NODESK", "1"), ("ZZ_CONSOLE", "1")],
+            ),
+            (
+                "no desktop, no ui limits, console window",
+                vec![("ZZ_NODESK", "1"), ("ZZ_UI", "0"), ("ZZ_CONSOLE", "1")],
+            ),
+            ("desktop, no ui limits", vec![("ZZ_UI", "0")]),
+            ("desktop, console window", vec![("ZZ_CONSOLE", "1")]),
+            (
+                "desktop, no ui limits, console window",
+                vec![("ZZ_UI", "0"), ("ZZ_CONSOLE", "1")],
+            ),
+            ("ui handles only", vec![("ZZ_NODESK", "1"), ("ZZ_UI", "1")]),
+            (
+                "ui clipboard only",
+                vec![("ZZ_NODESK", "1"), ("ZZ_UI", "6")],
+            ),
+            ("ui desktop only", vec![("ZZ_NODESK", "1"), ("ZZ_UI", "40")]),
+            ("ui others", vec![("ZZ_NODESK", "1"), ("ZZ_UI", "B8")]),
+        ] {
+            let mut cmd = Command::new(&exe);
+            cmd.args(["project::tests::zz_one", "--exact", "--nocapture"])
+                .env("ZZ_RUN", "1");
+            for (k, v) in envs {
+                cmd.env(k, v);
+            }
+            let out = cmd.output().unwrap();
+            let text = String::from_utf8_lossy(&out.stdout);
+            let line = text
+                .lines()
+                .find(|l| l.contains("ZZRESULT"))
+                .unwrap_or("no result");
+            println!("ZZMATRIX {label}: {line}");
+        }
+    }
+
     #[test]
     fn a_command_inherits_only_its_own_pipes() {
         use crate::appcontainer::{create_pipe, SecurityAttributes};
