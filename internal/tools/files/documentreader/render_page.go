@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -39,14 +40,14 @@ const (
 type RenderPageTool struct {
 	workingDir       string
 	renderer         pdfsmart.PageRenderer
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 func NewRenderPageTool(cfg Config, workingDir string) *RenderPageTool {
 	return &RenderPageTool{
 		workingDir:       workingDir,
 		renderer:         cfg.pageRenderer(),
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -116,15 +117,15 @@ func (t *RenderPageTool) Call(ctx context.Context, input tool.CallInput, permiss
 	}
 
 	if permissionCheck != nil {
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      RenderPageToolName,
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessRead,
+			Access:        access.AccessRead,
 			Paths:         []string{absolutePath},
 			Justification: "Render document page for visual inspection",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 		}
-		permResult, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		permResult, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput: map[string]any{
 				"path": absolutePath,
 				"page": page,
@@ -139,7 +140,7 @@ func (t *RenderPageTool) Call(ctx context.Context, input tool.CallInput, permiss
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(permResult, "document page rendering requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(permResult, "document page rendering requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}
@@ -268,7 +269,7 @@ func (t *RenderPageTool) BackfillInput(_ context.Context, input map[string]any) 
 }
 
 func (t *RenderPageTool) validateReadPath(toolCtx tool.ToolUseContext, path string) error {
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -276,11 +277,11 @@ func (t *RenderPageTool) validateReadPath(toolCtx tool.ToolUseContext, path stri
 	if toolCtx.Workspace != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(toolCtx.Workspace.Root)
 	}
-	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, path, sandbox.AccessRead)
+	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, path, access.AccessRead)
 	if err != nil {
 		return err
 	}
-	return sandbox.ErrorForDecision(decision.DecisionResult)
+	return access.ErrorForDecision(decision.DecisionResult)
 }
 
 func (t *RenderPageTool) resolvePath(path string, toolCtx tool.ToolUseContext) (string, error) {

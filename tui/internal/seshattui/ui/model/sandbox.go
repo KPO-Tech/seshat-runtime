@@ -12,8 +12,6 @@ func sandboxLabel(backend string) (label string, confined bool) {
 	switch backend {
 	case bash.BackendLandlock:
 		return "Confined by Landlock", true
-	case bash.BackendSrt:
-		return "Confined by srt", true
 	}
 	return "Commands not confined", false
 }

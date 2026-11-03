@@ -21,16 +21,16 @@ const (
 	// SandboxKindLocal is the zero value — Landlock on Linux, unconfined
 	// elsewhere unless RequireSandbox is also set. Today's existing behavior.
 	SandboxKindLocal = sandbox.EnvironmentLocal
-	// SandboxKindDocker routes bash execution through a persistent Docker
-	// container (internal/sandbox.DockerExecutor) — real filesystem/process
-	// isolation plus enforced CPU/memory caps and optional network isolation.
-	// Falls back to SandboxKindLocal with a logged warning if Docker isn't
-	// reachable when the client is constructed.
-	SandboxKindDocker = sandbox.EnvironmentDocker
 	// SandboxKindSandboxed routes bash execution through the seshat-sandboxd sidecar,
-	// see Sandboxd. Unlike Docker it never falls back: a sidecar that cannot start
-	// refuses every command.
+	// see Sandboxd. It never falls back: a sidecar that cannot start refuses every command.
 	SandboxKindSandboxed = sandbox.EnvironmentSandboxed
+
+	// SandboxKindMicroVM runs bash execution in a Linux microVM per project, see MicroVM.
+	// Like the sidecar it never falls back: an unavailable msb refuses every command.
+	SandboxKindMicroVM = sandbox.EnvironmentMicroVM
+
+	// DefaultMicroVMImage is the environment's image when MicroVMConfig.Image is empty.
+	DefaultMicroVMImage = sandbox.DefaultMicroVMImage
 
 	// SandboxdProfileProject refuses writes outside the working directory and the reads
 	// named in SandboxdConfig.DenyRead. Other reads and the network stay open. It runs
@@ -45,6 +45,28 @@ const (
 // SandboxKindSandboxed. See sandbox.SandboxdConfig for field-by-field documentation.
 type SandboxdConfig = sandbox.SandboxdConfig
 
+// MicroVMConfig configures the backend used when ClientConfig.SandboxKind is
+// SandboxKindMicroVM. See sandbox.MicroVMConfig for field-by-field documentation.
+type MicroVMConfig = sandbox.MicroVMConfig
+
+// PrepareMicroVM checks that this host can run a sandbox and pulls the image. A pull takes
+// minutes, so call it when the user turns the mode on. onOutput receives msb's progress.
+func PrepareMicroVM(ctx context.Context, cfg MicroVMConfig, onOutput func(string)) error {
+	return sandbox.PrepareMicroVM(ctx, cfg, onOutput)
+}
+
+// StopMicroVMEnvironments stops every sandbox of this backend. A sandbox outlives the process
+// that started it, so call it at startup in case the last run did not close.
+func StopMicroVMEnvironments(ctx context.Context, cfg MicroVMConfig) error {
+	return sandbox.StopMicroVMEnvironments(ctx, cfg)
+}
+
+// RemoveMicroVMEnvironments deletes every sandbox and volume of this backend. Projects' folders
+// are not touched.
+func RemoveMicroVMEnvironments(ctx context.Context, cfg MicroVMConfig) error {
+	return sandbox.RemoveMicroVMEnvironments(ctx, cfg)
+}
+
 // ApplySandboxdProtection writes the project profile's read refusals on paths ahead of a
 // session. A session's handshake is bounded and a first protection walks every file below
 // a path, so a large folder is protected here. Missing paths are skipped.
@@ -57,11 +79,6 @@ func ApplySandboxdProtection(ctx context.Context, binaryPath, capabilitySID stri
 func RemoveSandboxdProtection(ctx context.Context, binaryPath, capabilitySID string, paths []string) error {
 	return sandbox.RemoveSandboxdProtection(ctx, binaryPath, capabilitySID, paths)
 }
-
-// SandboxDockerConfig configures the Docker sandbox backend used when
-// ClientConfig.SandboxKind is SandboxKindDocker. See
-// sandbox.DockerExecutorConfig for field-by-field documentation.
-type SandboxDockerConfig = sandbox.DockerExecutorConfig
 
 // CredentialResolver resolves the API key for an LLM provider at client
 // creation time. The provider argument matches types.APIProvider values
@@ -366,16 +383,12 @@ type ClientConfig struct {
 
 	// SandboxKind selects the OS-level sandbox backend for bash tool
 	// execution. Empty (SandboxKindLocal) preserves existing behavior.
-	// SandboxKindDocker routes execution through a persistent Docker
-	// container — see SandboxDocker.
 	SandboxKind SandboxKind `json:"sandbox_kind,omitempty"`
-	// SandboxDocker configures the Docker sandbox backend when SandboxKind
-	// is SandboxKindDocker. Zero value uses sane, security-conscious
-	// defaults (see sandbox.DefaultDockerConfig).
-	SandboxDocker SandboxDockerConfig `json:"-"`
 	// Sandboxd configures the sidecar backend when SandboxKind is
 	// SandboxKindSandboxed.
 	Sandboxd SandboxdConfig `json:"-"`
+	// MicroVM configures the microVM backend when SandboxKind is SandboxKindMicroVM.
+	MicroVM MicroVMConfig `json:"-"`
 
 	// EnableToolSearch keeps deferred tools (MCP tools, and any built-in
 	// tool registering with ShouldDefer, e.g. skill) out of the model's
@@ -424,7 +437,7 @@ func SandboxAvailable() bool {
 	return bashTool.SandboxAvailable()
 }
 
-// SandboxBackend names the confinement local bash commands get on this host: "landlock", "srt" or "none". "none"
+// SandboxBackend names the confinement local bash commands get on this host: "landlock" or "none". "none"
 // means commands run with the user's full rights; a host application should say so rather than show a lock.
 func SandboxBackend() string {
 	return bashTool.SandboxBackend()

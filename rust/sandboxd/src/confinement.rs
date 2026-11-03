@@ -17,11 +17,11 @@ use std::io;
 #[cfg(windows)]
 use std::sync::Mutex;
 
-use crate::frame::{Hello, CAP_LIMITS, LEVEL_DEGRADED};
+use crate::frame::{Hello, CAP_LIMITS, LEVEL_NONE};
 #[cfg(windows)]
 use crate::frame::{
-    CAP_FS_CONFINE, CAP_JOB_OBJECT, CAP_NETWORK_DENY, CAP_READ_DENY, LEVEL_NONE, PROFILE_PROJECT,
-    PROFILE_STRICT,
+    CAP_FS_CONFINE, CAP_JOB_OBJECT, CAP_NETWORK_DENY, CAP_READ_DENY, LEVEL_DEGRADED,
+    PROFILE_PROJECT, PROFILE_STRICT,
 };
 use crate::process::Process;
 
@@ -127,8 +127,10 @@ impl Confinement {
             #[cfg(test)]
             Identity::Direct => LEVEL_DEGRADED,
         };
+        // No backend here: Linux and macOS get their isolation from the microVM backend of the
+        // runtime (ADR-0003). `none` makes the client refuse rather than run unconfined.
         #[cfg(not(windows))]
-        let level = LEVEL_DEGRADED;
+        let level = LEVEL_NONE;
 
         level
     }

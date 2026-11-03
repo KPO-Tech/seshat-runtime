@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -17,13 +18,13 @@ import (
 // CreateDirectoryTool creates directories (mkdir -p equivalent).
 type CreateDirectoryTool struct {
 	workingDir       string
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 func NewCreateDirectoryTool(workingDir string) *CreateDirectoryTool {
 	return &CreateDirectoryTool{
 		workingDir:       workingDir,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -74,7 +75,7 @@ func (t *CreateDirectoryTool) Call(
 	}
 
 	toolCtx := input.ToolContextValue()
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -82,11 +83,11 @@ func (t *CreateDirectoryTool) Call(
 	if ws := toolCtx.Workspace; ws != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(ws.Root)
 	}
-	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, absPath, sandbox.AccessCreate)
+	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, absPath, access.AccessCreate)
 	if err != nil {
 		return tool.NewErrorResult(err), nil
 	}
-	if err := sandbox.ErrorForDecision(decision.DecisionResult); err != nil {
+	if err := access.ErrorForDecision(decision.DecisionResult); err != nil {
 		return tool.NewErrorResult(err), nil
 	}
 
@@ -95,15 +96,15 @@ func (t *CreateDirectoryTool) Call(
 		if effectiveDir == "" {
 			effectiveDir = strings.TrimSpace(t.workingDir)
 		}
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      "create_directory",
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessCreate,
+			Access:        access.AccessCreate,
 			Paths:         []string{absPath},
 			Justification: "Create directory",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 		}
-		res, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		res, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput:              map[string]any{"path": absPath},
 			ToolUseID:              toolCtx.ToolUseID,
 			SessionID:              toolCtx.SessionID,
@@ -115,7 +116,7 @@ func (t *CreateDirectoryTool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(res, "directory creation requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(res, "directory creation requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}

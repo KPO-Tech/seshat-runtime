@@ -9,6 +9,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	fileReadTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/read"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
@@ -59,14 +60,14 @@ type GitDiff = shared.GitDiff
 // Tool implements the edit file tool
 type Tool struct {
 	workingDir       string
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 // NewEditTool creates a new edit file tool
 func NewEditTool(workingDir string) *Tool {
 	return &Tool{
 		workingDir:       workingDir,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -185,7 +186,7 @@ func (e *Tool) Call(
 	}
 
 	toolCtx := input.ToolContextValue()
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -193,11 +194,11 @@ func (e *Tool) Call(
 	if ws := toolCtx.Workspace; ws != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(ws.Root)
 	}
-	policyDecision, policyErr := e.filesystemPolicy.EvaluatePath(sandboxCtx, absolutePath, sandbox.AccessWrite)
+	policyDecision, policyErr := e.filesystemPolicy.EvaluatePath(sandboxCtx, absolutePath, access.AccessWrite)
 	if policyErr != nil {
 		return tool.NewErrorResult(policyErr), nil
 	}
-	if err := sandbox.ErrorForDecision(policyDecision.DecisionResult); err != nil {
+	if err := access.ErrorForDecision(policyDecision.DecisionResult); err != nil {
 		return tool.NewErrorResult(err), nil
 	}
 
@@ -206,15 +207,15 @@ func (e *Tool) Call(
 		if effectiveDir == "" {
 			effectiveDir = strings.TrimSpace(e.workingDir)
 		}
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      ToolName,
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessWrite,
+			Access:        access.AccessWrite,
 			Paths:         []string{absolutePath},
 			Justification: "Edit file content",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 		}
-		res, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		res, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput: map[string]any{
 				"file_path":   absolutePath,
 				"old_string":  oldString,
@@ -231,7 +232,7 @@ func (e *Tool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(res, "file editing requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(res, "file editing requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}
