@@ -28,7 +28,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::ptr;
 
-use crate::appcontainer::{launch_in_job, wide, ProcessInformation, StartupInfo, LAUNCH_FLAGS};
+use crate::appcontainer::{
+    launch_in_job, wide, ProcessInformation, StartupInfo, CREATE_NO_WINDOW, LAUNCH_FLAGS,
+};
 use crate::process::Process;
 
 const TOKEN_ALL_ACCESS: u32 = 0x000F_01FF;
@@ -288,7 +290,9 @@ impl PrivateDesktop {
         created?;
         Ok(Self {
             handle,
-            name: wide(&format!("WinSta0\\{name}")),
+            // No window station in the name: Windows then takes this process's, and a service or
+            // a CI runner is not in `WinSta0`.
+            name: wide_name,
         })
     }
 }
@@ -392,6 +396,14 @@ impl ProjectIdentity {
     ) -> io::Result<Process> {
         let env = with_scratch(env, &self.scratch);
         let token = self.token.as_raw_handle();
+        // Under an elevated app a command dies at startup with `STATUS_DLL_INIT_FAILED` when
+        // told to have no console window, measured on a CI runner. An agent should not run as
+        // an administrator, so a window there is the lesser problem.
+        let flags = if self.elevated {
+            LAUNCH_FLAGS & !CREATE_NO_WINDOW
+        } else {
+            LAUNCH_FLAGS
+        };
         launch_in_job(
             command_line,
             &env,
@@ -410,7 +422,7 @@ impl ProjectIdentity {
                         ptr::null(),
                         ptr::null(),
                         1,
-                        LAUNCH_FLAGS,
+                        flags,
                         parts.environment,
                         parts.directory,
                         parts.startup,
