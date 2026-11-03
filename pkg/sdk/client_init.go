@@ -162,7 +162,6 @@ func initBuiltinRegistry(config *ClientConfig, browserManager browsercore.Manage
 		STTTranscriber:             initSpeechToTextTranscriber(config),
 		RequireSandbox:             config.RequireSandbox,
 		SandboxKind:                config.SandboxKind,
-		SandboxDocker:              config.SandboxDocker,
 		Sandboxd:                   config.Sandboxd,
 		MicroVM:                    config.MicroVM,
 		EnableToolSearch:           config.EnableToolSearch,

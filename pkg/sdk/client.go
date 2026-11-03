@@ -541,11 +541,9 @@ func (c *Client) RegisterTools(tools []Tool) error {
 }
 
 // SandboxKind reports which sandbox backend this client's bash tool actually
-// resolved to at construction (SandboxKindDocker only if it was requested via
-// ClientConfig.SandboxKind AND Docker passed its health check at startup;
-// SandboxKindLocal otherwise). Host applications use this instead of the
-// package-level SandboxAvailable(), which only ever checks Landlock and so
-// can't reflect a Docker sandbox this specific client is actually using.
+// resolved to at construction: the one requested via ClientConfig.SandboxKind, or
+// SandboxKindLocal otherwise. Host applications use this instead of the package-level
+// SandboxAvailable(), which only ever checks Landlock.
 func (c *Client) SandboxKind() SandboxKind {
 	toolInstance, ok := c.registry.Get(bashTool.ToolName)
 	if !ok {

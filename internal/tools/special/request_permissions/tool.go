@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/schema"
@@ -235,11 +236,11 @@ func (t *Tool) Call(
 
 	toolCtx := input.ToolContextValue()
 
-	req := sandbox.PermissionRequest{
+	req := access.PermissionRequest{
 		ToolName:       ToolName,
 		Description:    buildDescription(parsed),
 		Environment:    sandbox.EnvironmentLocal,
-		Access:         sandbox.AccessEscalate,
+		Access:         access.AccessEscalate,
 		Paths:          collectPaths(parsed),
 		NetworkTargets: collectNetworkTargets(parsed),
 		Justification:  parsed.Reason,
@@ -250,7 +251,7 @@ func (t *Tool) Call(
 		},
 	}
 
-	opts := sandbox.ToolPermissionOptions{
+	opts := access.ToolPermissionOptions{
 		ToolUseID:              toolCtx.ToolUseID,
 		SessionID:              toolCtx.SessionID,
 		TurnID:                 toolCtx.TurnID,
@@ -259,7 +260,7 @@ func (t *Tool) Call(
 		IsToolRunningInSandbox: toolCtx.EnableSandbox,
 	}
 
-	result, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, opts)
+	result, err := access.ResolveToolPermission(ctx, permissionCheck, req, opts)
 	if err != nil {
 		return tool.NewErrorResult(fmt.Errorf("permission resolution failed: %w", err)), nil
 	}
@@ -420,9 +421,9 @@ func collectNetworkTargets(in *Input) []string {
 }
 
 // mapScope converts a PermissionGrantScope to a sandbox ApprovalScope.
-func mapScope(scope PermissionGrantScope) sandbox.ApprovalScope {
+func mapScope(scope PermissionGrantScope) access.ApprovalScope {
 	if scope == GrantScopeSession {
-		return sandbox.ApprovalScopeSession
+		return access.ApprovalScopeSession
 	}
-	return sandbox.ApprovalScopeTurn
+	return access.ApprovalScopeTurn
 }

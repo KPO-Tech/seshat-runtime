@@ -108,12 +108,8 @@ type Config struct {
 
 	// SandboxKind selects the OS-level sandbox backend the bash tool
 	// attempts before falling back to Landlock/local. Empty preserves
-	// today's behavior. sandbox.EnvironmentDocker routes execution through
-	// a persistent Docker container — see SandboxDocker.
+	// today's behavior.
 	SandboxKind sandbox.EnvironmentKind
-	// SandboxDocker configures the Docker sandbox backend when SandboxKind
-	// is sandbox.EnvironmentDocker. Zero value uses sandbox.DefaultDockerConfig().
-	SandboxDocker sandbox.DockerExecutorConfig
 	// Sandboxd configures the sidecar backend when SandboxKind is
 	// sandbox.EnvironmentSandboxed. An unavailable sidecar refuses every command.
 	Sandboxd sandbox.SandboxdConfig

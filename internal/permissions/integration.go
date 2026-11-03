@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	automode "github.com/KPO-Tech/seshat-runtime/internal/permissions/auto"
 	"github.com/KPO-Tech/seshat-runtime/internal/providers"
-	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 	"github.com/KPO-Tech/seshat-runtime/internal/utils"
@@ -120,8 +120,8 @@ func (i *Integrator) ResolverWithContext(
 		}
 
 		// Whatever this specific request is asking to do to a path (write,
-		// create, read, ...) - derived from the sandbox.PermissionRequest the
-		// tool itself built (see sandbox.ResolveToolPermission), not from
+		// create, read, ...) - derived from the access.PermissionRequest the
+		// tool itself built (see access.ResolveToolPermission), not from
 		// toolName, so it matches regardless of which tool is asking. Empty
 		// for tools that don't go through the sandbox bridge or declare no
 		// paths (nothing to match a request_permissions grant against).
@@ -540,7 +540,7 @@ func (i *Integrator) grantForTurn(sessionID types.SessionID, turnID types.TurnID
 // per (access kind, path) pair granted - e.g. a request for
 // access=[write,create] on paths=[/a, /b] yields 4 keys. These are the same
 // keys filesystemGrantLookupKeys derives (by ancestor walk) from a *later*
-// tool's own sandbox.PermissionRequest, so a write_file call under one of
+// tool's own access.PermissionRequest, so a write_file call under one of
 // these exact paths matches directly.
 func requestedFilesystemGrantKeys(input map[string]any) []string {
 	perms, ok := input["permissions"].(map[string]any)
@@ -567,10 +567,10 @@ func requestedFilesystemGrantKeys(input map[string]any) []string {
 }
 
 // filesystemGrantLookupKeys derives the grant keys that would cover this
-// specific permission request, from the sandbox.PermissionRequest the
+// specific permission request, from the access.PermissionRequest the
 // requesting tool built (carried verbatim in metadata by
-// sandbox.ResolveToolPermission/PermissionRequest.MetadataMap - see
-// sandbox.MetadataRequestKey). For each declared path it includes the exact
+// access.ResolveToolPermission/PermissionRequest.MetadataMap - see
+// access.MetadataRequestKey). For each declared path it includes the exact
 // path plus every ancestor directory, since a request_permissions grant on
 // a directory covers files created/read underneath it, not just that exact
 // path. Returns nil for requests that didn't go through the sandbox bridge
@@ -579,7 +579,7 @@ func filesystemGrantLookupKeys(metadata map[string]any) []string {
 	if metadata == nil {
 		return nil
 	}
-	req, ok := metadata[sandbox.MetadataRequestKey].(sandbox.PermissionRequest)
+	req, ok := metadata[access.MetadataRequestKey].(access.PermissionRequest)
 	if !ok || req.Access == "" || len(req.Paths) == 0 {
 		return nil
 	}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 	"github.com/KPO-Tech/seshat-runtime/pkg/runtimepath"
 )
@@ -569,7 +569,7 @@ func TestResolverSessionAutoApprovalPersistence(t *testing.T) {
 }
 
 // writeFileRequest builds a permission request shaped the way write.go's own
-// sandbox.ResolveToolPermission call actually produces one - the thing a
+// access.ResolveToolPermission call actually produces one - the thing a
 // request_permissions grant needs to be findable by, not the tool-name/input
 // shape request_permissions itself uses.
 func writeFileRequest(path, toolUseID string, sessionID types.SessionID, turnID types.TurnID) types.ToolPermissionRequest {
@@ -582,11 +582,11 @@ func writeFileRequest(path, toolUseID string, sessionID types.SessionID, turnID 
 		types.PermissionModeOnRequest,
 		"",
 		map[string]any{
-			sandbox.MetadataRequestKey: sandbox.PermissionRequest{
+			access.MetadataRequestKey: access.PermissionRequest{
 				ToolName: "write_file",
-				Access:   sandbox.AccessWrite,
+				Access:   access.AccessWrite,
 				Paths:    []string{path},
-				Scope:    sandbox.ApprovalScopeToolCall,
+				Scope:    access.ApprovalScopeToolCall,
 			},
 		},
 	)

@@ -224,7 +224,7 @@ func TestEveryToolSharesOneTaskManager(t *testing.T) {
 }
 
 func TestBackgroundCommandIsRefusedWhenTheSandboxCannotRunIt(t *testing.T) {
-	tool := toolWithSandbox(t, &fakeExecutor{kind: sandbox.EnvironmentDocker})
+	tool := toolWithSandbox(t, &fakeExecutor{kind: sandbox.EnvironmentRemote})
 	command, marker := hostMarker(t)
 
 	result, err := tool.executeBackground(context.Background(), &ExecutionContext{Command: command, WorkingDirectory: t.TempDir()})
