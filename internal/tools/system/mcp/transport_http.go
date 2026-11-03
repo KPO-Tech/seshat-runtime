@@ -1,22 +1,39 @@
 package mcp
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// HTTPTransport implements the HTTP transport for MCP
+const (
+	// httpAcceptHeader is what the Streamable HTTP transport requires of every client: a server may answer either way,
+	// and some refuse a request that does not accept both.
+	httpAcceptHeader = "application/json, text/event-stream"
+	// httpSessionHeader carries the session a server gave at initialization, which it expects on every later request.
+	httpSessionHeader = "Mcp-Session-Id"
+	// httpErrorBodyLimit bounds what a refusal adds to its error.
+	httpErrorBodyLimit = 1 << 10
+)
+
+// HTTPTransport implements the Streamable HTTP transport for MCP
 type HTTPTransport struct {
 	// config is the transport configuration
 	config HTTPTransportConfig
+
+	// sessionID is the session the server gave, empty when it gave none
+	sessionID   string
+	sessionIDMu sync.RWMutex
 
 	// httpClient is the HTTP client
 	httpClient *http.Client
@@ -124,11 +141,7 @@ func (t *HTTPTransport) Send(ctx context.Context, req *JSONRPCRequest) (*JSONRPC
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	// Set headers
-	httpReq.Header.Set("Content-Type", "application/json")
-	for k, v := range t.config.Headers {
-		httpReq.Header.Set(k, v)
-	}
+	t.setHeaders(httpReq)
 
 	// Send request
 	httpResp, err := t.httpClient.Do(httpReq)
@@ -139,7 +152,13 @@ func (t *HTTPTransport) Send(ctx context.Context, req *JSONRPCRequest) (*JSONRPC
 
 	// Check status code
 	if httpResp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP error: %s", httpResp.Status)
+		return nil, httpStatusError(httpResp)
+	}
+	t.rememberSession(httpResp)
+
+	mediaType, _, _ := mime.ParseMediaType(httpResp.Header.Get("Content-Type"))
+	if mediaType == "text/event-stream" {
+		return readEventStreamResponse(httpResp.Body, req.ID)
 	}
 
 	// Parse response
@@ -149,6 +168,95 @@ func (t *HTTPTransport) Send(ctx context.Context, req *JSONRPCRequest) (*JSONRPC
 	}
 
 	return &resp, nil
+}
+
+// setHeaders sets what every request carries. The configured headers come last, so that a server needing another value can have it.
+func (t *HTTPTransport) setHeaders(httpReq *http.Request) {
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", httpAcceptHeader)
+	t.sessionIDMu.RLock()
+	sessionID := t.sessionID
+	t.sessionIDMu.RUnlock()
+	if sessionID != "" {
+		httpReq.Header.Set(httpSessionHeader, sessionID)
+	}
+	for k, v := range t.config.Headers {
+		httpReq.Header.Set(k, v)
+	}
+}
+
+func (t *HTTPTransport) rememberSession(httpResp *http.Response) {
+	sessionID := strings.TrimSpace(httpResp.Header.Get(httpSessionHeader))
+	if sessionID == "" {
+		return
+	}
+	t.sessionIDMu.Lock()
+	t.sessionID = sessionID
+	t.sessionIDMu.Unlock()
+}
+
+// httpStatusError names the status and what the server said about it: a server's refusal usually says what it wants.
+func httpStatusError(httpResp *http.Response) error {
+	body, _ := io.ReadAll(io.LimitReader(httpResp.Body, httpErrorBodyLimit))
+	detail := strings.TrimSpace(string(body))
+	var refusal JSONRPCResponse
+	if err := json.Unmarshal(body, &refusal); err == nil && refusal.Error != nil {
+		detail = refusal.Error.Message
+	}
+	if detail == "" {
+		return fmt.Errorf("HTTP error: %s", httpResp.Status)
+	}
+	return fmt.Errorf("HTTP error: %s: %s", httpResp.Status, detail)
+}
+
+// readEventStreamResponse reads a server-sent event stream up to the response to the request with this ID. The stream
+// may carry notifications and requests from the server first.
+func readEventStreamResponse(body io.Reader, id int64) (*JSONRPCResponse, error) {
+	want := []byte(strconv.FormatInt(id, 10))
+	reader := bufio.NewReader(body)
+	var data []string
+	for {
+		line, readErr := reader.ReadString('\n')
+		line = strings.TrimRight(line, "\r\n")
+		switch {
+		case line == "":
+			if resp := eventResponse(data, want); resp != nil {
+				return resp, nil
+			}
+			data = data[:0]
+		case strings.HasPrefix(line, "data:"):
+			data = append(data, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+		}
+		if readErr == io.EOF {
+			if resp := eventResponse(data, want); resp != nil {
+				return resp, nil
+			}
+			return nil, fmt.Errorf("event stream ended without a response")
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read event stream: %w", readErr)
+		}
+	}
+}
+
+// eventResponse gives the response an event holds when it answers the request with this ID, and nil otherwise.
+func eventResponse(data []string, want []byte) *JSONRPCResponse {
+	if len(data) == 0 {
+		return nil
+	}
+	payload := []byte(strings.Join(data, "\n"))
+	var message struct {
+		ID     json.RawMessage `json:"id"`
+		Method string          `json:"method"`
+	}
+	if err := json.Unmarshal(payload, &message); err != nil || message.Method != "" || !bytes.Equal(message.ID, want) {
+		return nil
+	}
+	var resp JSONRPCResponse
+	if err := json.Unmarshal(payload, &resp); err != nil {
+		return nil
+	}
+	return &resp
 }
 
 // SendNotification sends a JSON-RPC notification via HTTP
@@ -173,11 +281,7 @@ func (t *HTTPTransport) SendNotification(ctx context.Context, notification *JSON
 		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 
-	// Set headers
-	httpReq.Header.Set("Content-Type", "application/json")
-	for k, v := range t.config.Headers {
-		httpReq.Header.Set(k, v)
-	}
+	t.setHeaders(httpReq)
 
 	// Send request (don't wait for the answer to a notification), but read what is sent back and close the body: left open,
 	// the connection is never given back to the pool.
