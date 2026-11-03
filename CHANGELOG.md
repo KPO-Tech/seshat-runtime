@@ -9,6 +9,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.14.1] - 2026-11-03
+
+### Fixed
+
+- **MCP servers over HTTP now connect.** The transport did not follow Streamable HTTP, so a server such as `huggingface.co/mcp` refused it with a 406 and offered no tools. Requests now accept both response forms, event streams are read, and the session is kept.
+- **The client sends `notifications/initialized` after `initialize`**, on every transport, as the protocol asks.
+- **An HTTP refusal from an MCP server says what the server said**, not only the status.
+
 ## [1.14.0] - 2026-11-03
 
 ### Changed

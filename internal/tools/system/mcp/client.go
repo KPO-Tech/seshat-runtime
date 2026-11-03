@@ -228,6 +228,9 @@ func (c *Client) Initialize(ctx context.Context) (*InitializeResult, error) {
 	}
 	refreshConnectedStatus(&c.metadata)
 	c.mu.Unlock()
+	// The protocol asks for this before anything else is sent. A server that missed it says so on the next request, so a
+	// failure here does not fail the connection.
+	_ = c.transport.SendNotification(ctx, &JSONRPCNotification{JSONRPC: "2.0", Method: "notifications/initialized"})
 	return result, nil
 }
 
