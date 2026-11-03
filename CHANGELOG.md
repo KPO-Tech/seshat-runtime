@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **The agent can get a whole Linux environment.** `SandboxKindMicroVM` and `ClientConfig.MicroVM` run the bash tool in a microVM per project through microsandbox's `msb` command line, with no Docker. The project is mounted, what a package manager installs goes on a volume, and a dev server is reached on `localhost`. `PrepareMicroVM`, `StopMicroVMEnvironments` and `RemoveMicroVMEnvironments` manage it. Windows support depends on microsandbox's, which is in preview.
+
 ## [1.13.2] - 2026-11-03
 
 ### Added

@@ -134,6 +134,9 @@ type ExecutorConfig struct {
 	// Sandboxd holds sidecar configuration.
 	// Only used when Kind == EnvironmentSandboxed.
 	Sandboxd SandboxdConfig
+
+	// MicroVM configures the microVM backend when Kind is EnvironmentMicroVM.
+	MicroVM MicroVMConfig
 }
 
 // DockerExecutorConfig holds static configuration for the DockerExecutor.
@@ -266,6 +269,8 @@ func NewExecutor(cfg ExecutorConfig) (Executor, error) {
 	switch cfg.Kind {
 	case EnvironmentSandboxed:
 		return newSandboxdExecutor(cfg.Sandboxd)
+	case EnvironmentMicroVM:
+		return NewMicroVMExecutor(cfg.MicroVM)
 	case EnvironmentDocker:
 		dockerExecutorCacheMu.Lock()
 		defer dockerExecutorCacheMu.Unlock()

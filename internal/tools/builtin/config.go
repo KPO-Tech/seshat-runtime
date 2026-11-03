@@ -117,6 +117,9 @@ type Config struct {
 	// Sandboxd configures the sidecar backend when SandboxKind is
 	// sandbox.EnvironmentSandboxed. An unavailable sidecar refuses every command.
 	Sandboxd sandbox.SandboxdConfig
+	// MicroVM configures the microVM backend when SandboxKind is
+	// sandbox.EnvironmentMicroVM. An unavailable msb refuses every command.
+	MicroVM sandbox.MicroVMConfig
 
 	// EnableToolSearch keeps deferred tools (including MCP tools and any
 	// tool registering with ShouldDefer) out of the model's initial tool

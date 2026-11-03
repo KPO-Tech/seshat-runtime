@@ -14,6 +14,9 @@ const (
 	// boundary, and unlike EnvironmentDocker it needs no daemon: the sidecar is
 	// a process the runtime starts and stops with the session.
 	EnvironmentSandboxed EnvironmentKind = "sandboxd"
+	// EnvironmentMicroVM runs commands in a Linux microVM per project, through the msb
+	// command line. See docs/adr/0003-microvm-environment.md.
+	EnvironmentMicroVM EnvironmentKind = "microvm"
 )
 
 // AccessKind describes the resource access being requested.

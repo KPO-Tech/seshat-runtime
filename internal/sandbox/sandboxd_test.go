@@ -15,6 +15,9 @@ import (
 const fakeSidecarRoleEnv = "SESHAT_SANDBOXD_TEST_ROLE"
 
 func TestMain(m *testing.M) {
+	if state := os.Getenv(fakeMSBStateEnv); state != "" {
+		os.Exit(runFakeMSB(state))
+	}
 	if role := os.Getenv(fakeSidecarRoleEnv); role != "" {
 		os.Exit(runFakeSidecar(role))
 	}

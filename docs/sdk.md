@@ -114,6 +114,7 @@ type ClientConfig struct {
     SandboxKind   SandboxKind         // backend for the bash tool: SandboxKindDocker or SandboxKindSandboxed
     SandboxDocker SandboxDockerConfig // used with SandboxKindDocker
     Sandboxd      SandboxdConfig      // used with SandboxKindSandboxed, see "Sandboxing the bash tool"
+    MicroVM       MicroVMConfig       // used with SandboxKindMicroVM, see "Sandboxing the bash tool"
 
     // ── Persistence ───────────────────────────────────────────────────────
     PersistSessions   bool             // enable default filesystem persistence
@@ -181,6 +182,8 @@ client, _ := sdk.NewClient(&sdk.ClientConfig{
 On Windows, `SandboxdProfileProject` refuses writes outside the working directory and reads of the paths in `DenyRead`. Other reads and the network stay open, and the user's secrets remain reachable through DPAPI and the Credential Manager. `SandboxdProfileStrict` also refuses other reads and the network, and cannot run `git init`, `npm` or a Node script. See [ADR 0002](adr/0002-windows-execution-profiles.md).
 
 `sdk.ApplySandboxdProtection(ctx, sidecarPath, installSID, paths)` writes the read refusals ahead of a session. Use it for large folders: a session's handshake also writes them, but it is bounded, and a first protection walks every file below the path. `sdk.RemoveSandboxdProtection(ctx, sidecarPath, installSID, paths)` takes them back. It needs no session, so it also works after a crash.
+
+`SandboxKindMicroVM` gives the agent a whole Linux environment in a microVM per project, through the [microsandbox](https://github.com/superradcompany/microsandbox) `msb` command line. The embedder provides the binary, and `sdk.PrepareMicroVM` checks the host and pulls the image, which takes minutes, so call it when the user turns the mode on. The project is mounted at `/workspace`, `node_modules`, `.venv` and `target` go on volumes, and the host's environment is not passed in. A sandbox outlives its process: call `sdk.StopMicroVMEnvironments` at startup, and `sdk.RemoveMicroVMEnvironments` to give the disk back. See [ADR 0003](adr/0003-microvm-environment.md).
 
 With any sandbox configured:
 

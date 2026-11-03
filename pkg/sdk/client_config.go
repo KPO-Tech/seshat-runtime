@@ -32,6 +32,13 @@ const (
 	// refuses every command.
 	SandboxKindSandboxed = sandbox.EnvironmentSandboxed
 
+	// SandboxKindMicroVM runs bash execution in a Linux microVM per project, see MicroVM.
+	// Like the sidecar it never falls back: an unavailable msb refuses every command.
+	SandboxKindMicroVM = sandbox.EnvironmentMicroVM
+
+	// DefaultMicroVMImage is the environment's image when MicroVMConfig.Image is empty.
+	DefaultMicroVMImage = sandbox.DefaultMicroVMImage
+
 	// SandboxdProfileProject refuses writes outside the working directory and the reads
 	// named in SandboxdConfig.DenyRead. Other reads and the network stay open. It runs
 	// real projects: see docs/adr/0002-windows-execution-profiles.md.
@@ -44,6 +51,28 @@ const (
 // SandboxdConfig configures the sidecar backend used when ClientConfig.SandboxKind is
 // SandboxKindSandboxed. See sandbox.SandboxdConfig for field-by-field documentation.
 type SandboxdConfig = sandbox.SandboxdConfig
+
+// MicroVMConfig configures the backend used when ClientConfig.SandboxKind is
+// SandboxKindMicroVM. See sandbox.MicroVMConfig for field-by-field documentation.
+type MicroVMConfig = sandbox.MicroVMConfig
+
+// PrepareMicroVM checks that this host can run a sandbox and pulls the image. A pull takes
+// minutes, so call it when the user turns the mode on. onOutput receives msb's progress.
+func PrepareMicroVM(ctx context.Context, cfg MicroVMConfig, onOutput func(string)) error {
+	return sandbox.PrepareMicroVM(ctx, cfg, onOutput)
+}
+
+// StopMicroVMEnvironments stops every sandbox of this backend. A sandbox outlives the process
+// that started it, so call it at startup in case the last run did not close.
+func StopMicroVMEnvironments(ctx context.Context, cfg MicroVMConfig) error {
+	return sandbox.StopMicroVMEnvironments(ctx, cfg)
+}
+
+// RemoveMicroVMEnvironments deletes every sandbox and volume of this backend. Projects' folders
+// are not touched.
+func RemoveMicroVMEnvironments(ctx context.Context, cfg MicroVMConfig) error {
+	return sandbox.RemoveMicroVMEnvironments(ctx, cfg)
+}
 
 // ApplySandboxdProtection writes the project profile's read refusals on paths ahead of a
 // session. A session's handshake is bounded and a first protection walks every file below
@@ -376,6 +405,8 @@ type ClientConfig struct {
 	// Sandboxd configures the sidecar backend when SandboxKind is
 	// SandboxKindSandboxed.
 	Sandboxd SandboxdConfig `json:"-"`
+	// MicroVM configures the microVM backend when SandboxKind is SandboxKindMicroVM.
+	MicroVM MicroVMConfig `json:"-"`
 
 	// EnableToolSearch keeps deferred tools (MCP tools, and any built-in
 	// tool registering with ShouldDefer, e.g. skill) out of the model's

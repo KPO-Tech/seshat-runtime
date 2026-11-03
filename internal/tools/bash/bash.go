@@ -89,6 +89,9 @@ type ToolConfig struct {
 	// sandbox.EnvironmentSandboxed. BinaryPath is required; an unavailable
 	// sidecar refuses every command rather than running unconfined.
 	Sandboxd sandbox.SandboxdConfig
+	// MicroVM configures the microVM backend when SandboxKind is
+	// sandbox.EnvironmentMicroVM. An unavailable msb refuses every command.
+	MicroVM sandbox.MicroVMConfig
 	// OutputChunkCallback, when set, receives each output chunk as it is produced
 	// (streaming mode). If nil, output is buffered and returned at completion.
 	OutputChunkCallback func(chunk string, stream string)
@@ -145,6 +148,23 @@ func NewTool(config *ToolConfig) *Tool {
 					Sandboxd: sandboxdCfg,
 				})
 			}
+		}
+
+	case sandbox.EnvironmentMicroVM:
+		// Fails closed, like the sidecar. Only the host check runs here: a sandbox starts
+		// with the first command, because it depends on the folder that command runs in.
+		executor, err := sandbox.NewMicroVMExecutor(config.MicroVM)
+		if err == nil {
+			healthCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			err = executor.Healthy(healthCtx)
+			cancel()
+		}
+		if err != nil {
+			slog.Error("bash tool: microVM requested but unavailable — refusing to run commands unconfined", "error", err)
+			sandboxExecutor = sandbox.NewUnavailableExecutor(sandbox.EnvironmentMicroVM, err)
+		} else {
+			sandboxExecutor = executor
+			newBackgroundExecutor = func() (sandbox.Executor, error) { return executor.BackgroundExecutor(), nil }
 		}
 
 	case sandbox.EnvironmentDocker:
@@ -204,6 +224,15 @@ func NewTool(config *ToolConfig) *Tool {
 	}
 }
 
+// environmentNote says where commands run. In a microVM that is not this host, and a model
+// that assumes it is would use paths and tools that are not there.
+func (t *Tool) environmentNote() string {
+	if t.sandboxExecutor != nil && t.sandboxExecutor.Kind() == sandbox.EnvironmentMicroVM {
+		return microVMNote
+	}
+	return shellNote(runtime.GOOS, t.shell)
+}
+
 // Close stops the background tasks this tool started and its sandbox. A task must not
 // outlive the client that started it: the process it runs in may not be the next thing
 // to exit, and nothing would be left to stop it.
@@ -223,7 +252,7 @@ func (t *Tool) Definition() tool.Definition {
 		Name:        ToolName,
 		DisplayName: "Bash",
 		SearchHint:  SearchHint,
-		Description: Description + shellNote(runtime.GOOS, t.shell),
+		Description: Description + t.environmentNote(),
 		Category:    "filesystem",
 		InputSchema: schema.FromMap(map[string]any{
 			"type": "object",
@@ -1097,6 +1126,16 @@ func (b *cappedBuffer) String() string {
 const ToolName = "bash"
 
 // Description is the tool description.
+const microVMNote = `
+
+## Where commands run
+
+Commands run in a Linux virtual machine with its own disk, in bash, and not on the user's computer. The project folder is mounted at /workspace and is the working directory, so use paths relative to it. Paths from the user's computer do not exist here, and neither do the programs installed there. You can install what you need with apt-get, npm or pip; it stays until the environment is recreated. Installs are slower here than on the user's computer: give them a timeout of a few minutes, since the default is 30 seconds.
+
+The virtual machine has internet access but cannot reach the user's computer or local network. Inside it, localhost is the virtual machine itself.
+
+A dev server is reachable from the user's computer only if it listens on 0.0.0.0, on one of these ports: 3000-3003, 4200, 4321, 5000, 5173-5175, 8000, 8080. Listening on localhost, the default of many tools, is not enough: run Vite with ` + "`--host 0.0.0.0`" + `, for example. Tell the user the address as http://localhost:PORT.`
+
 const Description = `Execute shell commands in the current directory. Supports background execution and returns stdout/stderr with exit code.
 
 The working directory persists between commands but shell state does not. The environment is initialized from the user's profile (bash or zsh).
