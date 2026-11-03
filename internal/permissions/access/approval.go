@@ -1,7 +1,8 @@
-package sandbox
+package access
 
 import (
 	"fmt"
+	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"strings"
 )
 
@@ -24,7 +25,7 @@ const (
 type PermissionRequest struct {
 	ToolName       string
 	Description    string
-	Environment    EnvironmentKind
+	Environment    sandbox.EnvironmentKind
 	Access         AccessKind
 	Command        string
 	Paths          []string

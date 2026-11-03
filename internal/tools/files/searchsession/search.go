@@ -26,6 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	bashTool "github.com/KPO-Tech/seshat-runtime/internal/tools/bash"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/grep"
@@ -61,14 +62,14 @@ const (
 // Tool implements search_start.
 type Tool struct {
 	workingDir       string
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 // NewTool creates the search_start tool.
 func NewTool(workingDir string) *Tool {
 	return &Tool{
 		workingDir:       workingDir,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -146,7 +147,7 @@ func (t *Tool) Call(
 		return tool.NewErrorResult(shared.FormatNotFoundError(searchPath, t.workingDir)), nil
 	}
 
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -154,24 +155,24 @@ func (t *Tool) Call(
 	if ws := toolCtx.Workspace; ws != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(ws.Root)
 	}
-	policyDecision, policyErr := t.filesystemPolicy.EvaluatePath(sandboxCtx, searchPath, sandbox.AccessSearch)
+	policyDecision, policyErr := t.filesystemPolicy.EvaluatePath(sandboxCtx, searchPath, access.AccessSearch)
 	if policyErr != nil {
 		return tool.NewErrorResult(policyErr), nil
 	}
-	if err := sandbox.ErrorForDecision(policyDecision.DecisionResult); err != nil {
+	if err := access.ErrorForDecision(policyDecision.DecisionResult); err != nil {
 		return tool.NewErrorResult(err), nil
 	}
 
 	if permissionCheck != nil {
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      ToolName,
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessSearch,
+			Access:        access.AccessSearch,
 			Paths:         []string{searchPath},
 			Justification: "Search file contents in the background",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 		}
-		permResult, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		permResult, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput:              map[string]any{"pattern": pattern, "path": searchPath},
 			ToolUseID:              toolCtx.ToolUseID,
 			SessionID:              toolCtx.SessionID,
@@ -183,7 +184,7 @@ func (t *Tool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(permResult, "background search requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(permResult, "background search requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}

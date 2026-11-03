@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -29,14 +30,14 @@ const (
 // Tool implements the glob tool for finding files by pattern
 type Tool struct {
 	workingDir       string
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 // NewGlobTool creates a new glob tool
 func NewGlobTool(workingDir string) *Tool {
 	return &Tool{
 		workingDir:       workingDir,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -115,7 +116,7 @@ func (g *Tool) Call(
 	}
 
 	// Policy + permission check
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -123,11 +124,11 @@ func (g *Tool) Call(
 	if ws := toolCtx.Workspace; ws != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(ws.Root)
 	}
-	policyDecision, policyErr := g.filesystemPolicy.EvaluatePath(sandboxCtx, searchDir, sandbox.AccessSearch)
+	policyDecision, policyErr := g.filesystemPolicy.EvaluatePath(sandboxCtx, searchDir, access.AccessSearch)
 	if policyErr != nil {
 		return tool.NewErrorResult(policyErr), nil
 	}
-	if err := sandbox.ErrorForDecision(policyDecision.DecisionResult); err != nil {
+	if err := access.ErrorForDecision(policyDecision.DecisionResult); err != nil {
 		return tool.NewErrorResult(err), nil
 	}
 
@@ -136,14 +137,14 @@ func (g *Tool) Call(
 		if effectiveDir == "" {
 			effectiveDir = strings.TrimSpace(g.workingDir)
 		}
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:    ToolName,
 			Environment: sandbox.EnvironmentLocal,
-			Access:      sandbox.AccessSearch,
+			Access:      access.AccessSearch,
 			Paths:       []string{searchDir},
-			Scope:       sandbox.ApprovalScopeToolCall,
+			Scope:       access.ApprovalScopeToolCall,
 		}
-		res, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		res, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput:              map[string]any{"pattern": pattern, "path": searchDir},
 			ToolUseID:              toolCtx.ToolUseID,
 			SessionID:              toolCtx.SessionID,
@@ -155,7 +156,7 @@ func (g *Tool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(res, "glob search requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(res, "glob search requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}

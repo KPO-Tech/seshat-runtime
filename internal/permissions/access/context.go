@@ -1,10 +1,13 @@
-package sandbox
+// Package access decides whether a tool may do something: the policies on commands and paths,
+// and the permission requests that go with them. It runs nothing: internal/sandbox does that.
+package access
 
 import (
 	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/workspace"
 )
 
@@ -13,7 +16,7 @@ type Context struct {
 	WorkingDirectory string
 	WorkspaceRoot    string
 	AdditionalRoots  []string
-	Environment      EnvironmentKind
+	Environment      sandbox.EnvironmentKind
 	SandboxEnabled   bool
 }
 

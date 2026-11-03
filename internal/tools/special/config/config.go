@@ -11,7 +11,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	bashTool "github.com/KPO-Tech/seshat-runtime/internal/tools/bash"
 	fileReadTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/read"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -71,8 +71,8 @@ func (t *Tool) Call(
 ) (tool.CallResult, error) {
 	toolCtx := input.ToolContextValue()
 
-	cmdPolicy := sandbox.NewDefaultCommandPolicy()
-	fsPolicy := sandbox.NewDefaultFilesystemPolicy()
+	cmdPolicy := access.NewDefaultCommandPolicy()
+	fsPolicy := access.NewDefaultFilesystemPolicy()
 
 	workingDirectory := toolCtx.WorkingDirectory
 	if workingDirectory == "" {
