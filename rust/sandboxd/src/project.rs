@@ -1172,6 +1172,7 @@ mod tests {
                 .unwrap_or("no result");
             println!("ZZMATRIX {label}: {line}");
         }
+        panic!("show the matrix");
     }
 
     #[test]
