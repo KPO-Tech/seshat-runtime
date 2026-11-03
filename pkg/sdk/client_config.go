@@ -21,15 +21,8 @@ const (
 	// SandboxKindLocal is the zero value — Landlock on Linux, unconfined
 	// elsewhere unless RequireSandbox is also set. Today's existing behavior.
 	SandboxKindLocal = sandbox.EnvironmentLocal
-	// SandboxKindDocker routes bash execution through a persistent Docker
-	// container (internal/sandbox.DockerExecutor) — real filesystem/process
-	// isolation plus enforced CPU/memory caps and optional network isolation.
-	// Falls back to SandboxKindLocal with a logged warning if Docker isn't
-	// reachable when the client is constructed.
-	SandboxKindDocker = sandbox.EnvironmentDocker
 	// SandboxKindSandboxed routes bash execution through the seshat-sandboxd sidecar,
-	// see Sandboxd. Unlike Docker it never falls back: a sidecar that cannot start
-	// refuses every command.
+	// see Sandboxd. It never falls back: a sidecar that cannot start refuses every command.
 	SandboxKindSandboxed = sandbox.EnvironmentSandboxed
 
 	// SandboxKindMicroVM runs bash execution in a Linux microVM per project, see MicroVM.
@@ -86,11 +79,6 @@ func ApplySandboxdProtection(ctx context.Context, binaryPath, capabilitySID stri
 func RemoveSandboxdProtection(ctx context.Context, binaryPath, capabilitySID string, paths []string) error {
 	return sandbox.RemoveSandboxdProtection(ctx, binaryPath, capabilitySID, paths)
 }
-
-// SandboxDockerConfig configures the Docker sandbox backend used when
-// ClientConfig.SandboxKind is SandboxKindDocker. See
-// sandbox.DockerExecutorConfig for field-by-field documentation.
-type SandboxDockerConfig = sandbox.DockerExecutorConfig
 
 // CredentialResolver resolves the API key for an LLM provider at client
 // creation time. The provider argument matches types.APIProvider values
@@ -395,13 +383,7 @@ type ClientConfig struct {
 
 	// SandboxKind selects the OS-level sandbox backend for bash tool
 	// execution. Empty (SandboxKindLocal) preserves existing behavior.
-	// SandboxKindDocker routes execution through a persistent Docker
-	// container — see SandboxDocker.
 	SandboxKind SandboxKind `json:"sandbox_kind,omitempty"`
-	// SandboxDocker configures the Docker sandbox backend when SandboxKind
-	// is SandboxKindDocker. Zero value uses sane, security-conscious
-	// defaults (see sandbox.DefaultDockerConfig).
-	SandboxDocker SandboxDockerConfig `json:"-"`
 	// Sandboxd configures the sidecar backend when SandboxKind is
 	// SandboxKindSandboxed.
 	Sandboxd SandboxdConfig `json:"-"`
@@ -455,7 +437,7 @@ func SandboxAvailable() bool {
 	return bashTool.SandboxAvailable()
 }
 
-// SandboxBackend names the confinement local bash commands get on this host: "landlock", "srt" or "none". "none"
+// SandboxBackend names the confinement local bash commands get on this host: "landlock" or "none". "none"
 // means commands run with the user's full rights; a host application should say so rather than show a lock.
 func SandboxBackend() string {
 	return bashTool.SandboxBackend()

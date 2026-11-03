@@ -242,11 +242,9 @@ func checkSandbox(add func(string, string, Status, string, string)) {
 	switch backend := sdk.SandboxBackend(); backend {
 	case "landlock":
 		add("tools", "sandbox", StatusOK, "commands are confined by Landlock (write only in the working folder)", "")
-	case "srt":
-		add("tools", "sandbox", StatusOK, "commands are confined by srt (write only in the working folder and the temp folder, limited network)", "")
 	default:
 		add("tools", "sandbox", StatusWarn, "commands are NOT confined: they run with your full rights",
-			"Install srt (npm i -g @anthropic-ai/sandbox-runtime; Windows support is alpha) or use Docker. Linux with Landlock is confined automatically.")
+			"Linux with Landlock is confined automatically. Elsewhere, run the agent in a project you can afford to lose, or use the app's sandbox.")
 	}
 }
 

@@ -51,9 +51,8 @@ type Tool struct {
 	shell             string // cached at construction time
 	mu                sync.Mutex
 	// sandboxExecutor, when non-nil, routes executeLocalCommand through an
-	// OS-level sandbox backend (currently: sandbox.DockerExecutor) instead
-	// of the raw exec.CommandContext + Landlock path. nil means "Landlock/
-	// local" — today's behavior, unchanged.
+	// OS-level sandbox backend instead of the raw exec.CommandContext + Landlock
+	// path. nil means Landlock where the host has it, and unconfined elsewhere.
 	sandboxExecutor sandbox.Executor
 	// newBackgroundExecutor makes the executor of one background task. A task needs
 	// its own: the sidecar runs one command at a time, so a dev server on the shared
@@ -74,17 +73,10 @@ type ToolConfig struct {
 	// set but Landlock is unavailable. Leave false for desktop use; set true for
 	// multi-tenant server deployments.
 	RequireSandbox bool
-	// SandboxKind selects the OS-level sandbox backend to attempt before
-	// falling back to Landlock/local. Empty (sandbox.EnvironmentLocal, the
-	// zero value) preserves today's behavior. sandbox.EnvironmentDocker
-	// routes execution through a persistent Docker container — see
-	// SandboxDocker. If Docker isn't reachable at construction time, NewTool
-	// logs a warning and falls back to Landlock/local exactly as if
-	// SandboxKind had been left empty.
+	// SandboxKind selects the OS-level sandbox backend. Empty (sandbox.EnvironmentLocal)
+	// means Landlock where the host has it. The others never fall back: a backend that
+	// cannot start refuses every command.
 	SandboxKind sandbox.EnvironmentKind
-	// SandboxDocker configures the Docker sandbox backend when SandboxKind
-	// is sandbox.EnvironmentDocker. Zero value uses sandbox.DefaultDockerConfig().
-	SandboxDocker sandbox.DockerExecutorConfig
 	// Sandboxd configures the sidecar backend when SandboxKind is
 	// sandbox.EnvironmentSandboxed. BinaryPath is required; an unavailable
 	// sidecar refuses every command rather than running unconfined.
@@ -167,45 +159,20 @@ func NewTool(config *ToolConfig) *Tool {
 			newBackgroundExecutor = func() (sandbox.Executor, error) { return executor.BackgroundExecutor(), nil }
 		}
 
-	case sandbox.EnvironmentDocker:
-		executor, err := sandbox.NewExecutor(sandbox.ExecutorConfig{
-			Kind:   sandbox.EnvironmentDocker,
-			Docker: config.SandboxDocker,
-		})
-		if err != nil {
-			slog.Warn("bash tool: failed to initialize docker sandbox — falling back to Landlock/local", "error", err)
-		} else {
-			// Bounded, not context.Background() - Healthy shells out to
-			// `docker version` (see sandbox.DockerExecutor.Healthy), and a
-			// Docker daemon that's installed but unresponsive (stuck WSL2
-			// integration, a hung engine, ...) must never be able to block
-			// this constructor - and therefore every embedder's own startup,
-			// e.g. a server binding its HTTP port - forever. A healthy
-			// daemon answers in well under a second; 5s is generous slack,
-			// not a tuned budget.
-			healthCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			healthErr := executor.Healthy(healthCtx)
-			cancel()
-			if healthErr != nil {
-				slog.Warn("bash tool: docker sandbox requested but unavailable — falling back to Landlock/local", "error", healthErr)
-			} else {
-				sandboxExecutor = executor
-			}
-		}
 	}
 
 	// Landlock (the only OS-level confinement executeLocalCommand falls back to)
 	// is Linux-only — see landlock_stub.go. On every other platform (which today
 	// means every desktop install: Windows, macOS) commands run directly on the
 	// host with no isolation, unless the operator opts into RequireSandbox and
-	// accepts that bash then refuses to run at all, or into SandboxKind=Docker
+	// accepts that bash then refuses to run at all, or chooses a SandboxKind
 	// above. That tradeoff needs to be visible, not silent, for an agent
 	// platform that executes model-issued shell commands.
 	if sandboxExecutor == nil && !SandboxAvailable() && !config.RequireSandbox {
 		slog.Warn(
 			"bash tool: no OS-level sandbox available on this platform — shell commands will run unconfined on the host",
 			"platform", runtime.GOOS,
-			"hint", "Landlock (the current confinement backend) is Linux-only and no Docker sandbox is configured; install srt (npm i -g @anthropic-ai/sandbox-runtime) or set ToolConfig.SandboxKind=sandbox.EnvironmentDocker for real isolation, or RequireSandbox=true to refuse unconfined execution instead of allowing it silently",
+			"hint", "Landlock is Linux-only: set ToolConfig.SandboxKind for real isolation, or RequireSandbox=true to refuse unconfined execution instead of allowing it silently",
 		)
 	}
 
@@ -743,11 +710,6 @@ func (t *Tool) executeLocalCommand(ctx context.Context, execCtx *ExecutionContex
 	}
 
 	cmdPath, cmdArgs, sandboxEnv, sandboxed := commandWithLandlock(t.shell, shellArgs(t.shell, actualCommand), execCtx.WorkingDirectory)
-	if !sandboxed {
-		// Landlock is Linux-only; where srt is installed it confines the command on macOS and Windows.
-		cmdPath, cmdArgs, sandboxed = srtCommand(t.shell, shellArgs(t.shell, actualCommand), execCtx.WorkingDirectory)
-	}
-
 	if execCtx.WorkingDirectory != "" && !sandboxed && t.config != nil && t.config.RequireSandbox {
 		return nil, fmt.Errorf("sandbox required but unavailable on this host: refusing to run the command unconfined")
 	}
@@ -793,10 +755,8 @@ func (t *Tool) executeLocalCommand(ctx context.Context, execCtx *ExecutionContex
 }
 
 // executeViaSandbox runs the command through t.sandboxExecutor (currently:
-// sandbox.DockerExecutor or the sidecar) instead of the raw exec.CommandContext +
-// Landlock path. The sidecar streams output to execCtx.OutputChunkCallback; Docker
-// hands it over when the command ends, so callers relying on streaming won't see
-// incremental chunks there. Output capping and formatting otherwise match
+// the sidecar or a microVM) instead of the raw exec.CommandContext + Landlock path. Both
+// stream output to execCtx.OutputChunkCallback. Output capping and formatting otherwise match
 // executeLocalCommand exactly.
 func (t *Tool) executeViaSandbox(ctx context.Context, execCtx *ExecutionContext, actualCommand string, startTime time.Time) (*CommandResult, error) {
 	var stdin io.Reader
@@ -1003,33 +963,28 @@ func applyPatchCommandName(s string) bool {
 // end user instead of leaving it as a backend-log-only warning — see
 // ToolConfig.RequireSandbox and NewTool's startup log.
 func SandboxAvailable() bool {
-	return landlockAvailable() || srtAvailable()
+	return landlockAvailable()
 }
 
 // Sandbox backends reported by SandboxBackend.
 const (
 	BackendLandlock = "landlock"
-	BackendSrt      = "srt"
 	BackendNone     = "none"
 )
 
-// SandboxBackend names the confinement that local bash commands get on this host: Landlock (Linux), srt (macOS,
-// Windows, or Linux without Landlock) or none. "none" means commands run with the user's full rights, and a host
-// application should say so rather than show a lock.
+// SandboxBackend names the confinement that local bash commands get on this host: Landlock on
+// Linux, or none. "none" means commands run with the user's full rights, and the application
+// should say so rather than show a lock.
 func SandboxBackend() string {
-	switch {
-	case landlockAvailable():
+	if landlockAvailable() {
 		return BackendLandlock
-	case srtAvailable():
-		return BackendSrt
 	}
 	return BackendNone
 }
 
 // SandboxKind reports which sandbox backend this specific Tool instance
-// actually resolved to at construction — EnvironmentDocker only if Docker
-// was requested via ToolConfig.SandboxKind AND passed its health check;
-// EnvironmentLocal otherwise (Landlock on Linux, unconfined elsewhere — see
+// actually resolved to at construction: the one requested via ToolConfig.SandboxKind,
+// or EnvironmentLocal otherwise (Landlock on Linux, unconfined elsewhere — see
 // SandboxAvailable for that distinction, which this method doesn't make).
 func (t *Tool) SandboxKind() sandbox.EnvironmentKind {
 	if t.sandboxExecutor != nil {

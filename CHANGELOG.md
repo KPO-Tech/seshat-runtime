@@ -9,6 +9,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: the Docker sandbox is gone.** `SandboxKindDocker`, `SandboxDockerConfig` and `ClientConfig.SandboxDocker` are removed. `SandboxKindMicroVM` gives a whole environment with no Docker to install, and microsandbox does not cover Windows 10 or Intel Macs, which are left with no isolated mode. See ADR 0003.
+- **BREAKING: the `srt` backend is gone.** `SESHAT_SRT` is no longer read and `SandboxBackend` no longer returns `srt`. Its Windows backend failed on real machines, and on other hosts commands now run unconfined unless Landlock or a `SandboxKind` applies. `doctor` and the terminal say so.
+
 ### Security
 
 - **A confined command no longer inherits the sidecar's protocol pipes.** Every inheritable handle went to the command, so it could write forged frames to the runtime.
