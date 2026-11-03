@@ -176,6 +176,12 @@ impl Confinement {
                     "secrets of this user remain reachable through DPAPI and the Credential Manager"
                         .to_string(),
                 ];
+                if !identity.has_private_desktop() {
+                    reasons.push(
+                        "commands share the user's desktop, so they can capture the screen"
+                            .to_string(),
+                    );
+                }
                 if identity.elevated() {
                     reasons.push(
                         "Git Bash cannot start while the app runs as an administrator".to_string(),

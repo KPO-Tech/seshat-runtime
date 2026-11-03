@@ -12,7 +12,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Security
 
 - **A confined command no longer inherits the sidecar's protocol pipes.** Every inheritable handle went to the command, so it could write forged frames to the runtime.
-- **A confined command can no longer read the clipboard, capture the screen or see the user's windows.** Commands now run on a private desktop, in a job with all its UI restrictions.
+- **A confined command can no longer read the clipboard, capture the screen or see the user's windows.** Commands now run on a private desktop, in a job with all its UI restrictions. Where a private desktop cannot start a process, commands still run and the sidecar reports that the screen is reachable.
 - **Protecting a junction also protects what it leads to.** The target stayed readable by its real name.
 - **The sidecar reports `none` outside Windows.** It has no backend there and reported `degraded`, so the runtime ran commands with no confinement.
 
