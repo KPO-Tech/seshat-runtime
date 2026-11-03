@@ -48,7 +48,7 @@ pub const CREATE_SUSPENDED: u32 = 0x0000_0004;
 const EXTENDED_STARTUPINFO_PRESENT: u32 = 0x0008_0000;
 /// A console program started from an app with no console opens a window of its own without
 /// this: one flashing on the user's screen per command.
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// How every confined command is created: `launch_in_job` passes a `STARTUPINFOEX`, and the
 /// child starts suspended so it joins its job before it can start anything.
 pub const LAUNCH_FLAGS: u32 =

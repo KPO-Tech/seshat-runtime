@@ -23,7 +23,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
-- **No console window opens for each confined command** when the app has no console.
+- **No console window opens for each confined command** when the app has no console. Under an elevated app one can still open: the flag stops commands from starting there.
 
 ### Added
 

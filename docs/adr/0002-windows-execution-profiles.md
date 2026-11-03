@@ -98,10 +98,12 @@ Measured from inside the `project` profile on 2026-11-03, compared with Codex's
 - **The clipboard and the user's windows.** A command opened the clipboard and saw the titles of
   11 windows. The job now carries all of its UI restrictions.
 - **The screen.** A command captured it. A job does not refuse that, so commands run on a private
-  desktop with a low label, without which a low-integrity process dies at startup.
+  desktop with a low label and a DACL naming the user.
 - **The target of a protected junction** stayed readable by its real name. Both are protected now.
 
-A console window no longer opens for each command when the app has no console.
+A console window no longer opens for each command when the app has no console. That flag is left
+out under an elevated app, where a command dies at startup with 0xC0000142 with it: a matrix on a
+CI runner found this one flag responsible, with and without the private desktop and UI restrictions.
 
 ## Not decided here
 
