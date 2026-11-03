@@ -3,8 +3,10 @@
 - **Status:** accepted
 - **Date:** 2026-11-03
 - **Deciders:** maintainer
-- **Supersedes:** nothing. **Amends:** [ADR-0001](0001-go-rust-boundary.md), on one point: Rust
-  confinement for Linux and macOS is no longer planned in `seshat-sandboxd`.
+- **Supersedes:** nothing. **Amends:** [ADR-0001](0001-go-rust-boundary.md), on two points: Rust
+  confinement for Linux and macOS is no longer planned in `seshat-sandboxd`, and command-policy
+  evaluation stays in Go, in `internal/permissions/access`. That policy is a list of commands to
+  refuse or to confirm, and confinement is what holds, so porting a shell parser would add little.
 
 ## Context
 

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	fileReadTool "github.com/KPO-Tech/seshat-runtime/internal/tools/files/read"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
@@ -95,7 +96,7 @@ type Tool struct {
 	readHistory *FileReadHistory
 
 	// filesystemPolicy centralizes common path access checks.
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 // NewWriteTool creates a new write file tool
@@ -103,7 +104,7 @@ func NewWriteTool(workingDir string) *Tool {
 	return &Tool{
 		workingDir:       workingDir,
 		readHistory:      NewFileReadHistory(),
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -205,19 +206,19 @@ func (w *Tool) Call(
 	// Permission check comes BEFORE reading the full file content so we never
 	// do unnecessary I/O (large file reads) for a denied operation.
 	if permissionCheck != nil {
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      ToolName,
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessWrite,
+			Access:        access.AccessWrite,
 			Paths:         []string{absolutePath},
 			Justification: "Write file contents",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 			Metadata: map[string]any{
 				"content_bytes": len(content),
 			},
 		}
 		toolCtx := input.ToolContextValue()
-		permResult, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		permResult, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput: map[string]any{
 				"file_path": absolutePath,
 				"content":   content,
@@ -232,7 +233,7 @@ func (w *Tool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(permResult, "file write requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(permResult, "file write requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}
@@ -619,7 +620,7 @@ func (w *Tool) GetWorkingDir() string {
 }
 
 func (w *Tool) validateWritePath(toolCtx tool.ToolUseContext, path string) error {
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -628,11 +629,11 @@ func (w *Tool) validateWritePath(toolCtx tool.ToolUseContext, path string) error
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(toolCtx.Workspace.Root)
 	}
 
-	decision, err := w.filesystemPolicy.EvaluatePath(sandboxCtx, path, sandbox.AccessWrite)
+	decision, err := w.filesystemPolicy.EvaluatePath(sandboxCtx, path, access.AccessWrite)
 	if err != nil {
 		return err
 	}
-	return sandbox.ErrorForDecision(decision.DecisionResult)
+	return access.ErrorForDecision(decision.DecisionResult)
 }
 
 func (w *Tool) resolvePath(path string, toolCtx tool.ToolUseContext) (string, error) {

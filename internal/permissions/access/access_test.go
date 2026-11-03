@@ -1,4 +1,4 @@
-package sandbox
+package access
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
@@ -121,7 +122,7 @@ func TestPermissionRequestValidateAcceptsCommand(t *testing.T) {
 func TestBuildPreviewCopiesRequestFields(t *testing.T) {
 	req := PermissionRequest{
 		ToolName:       "read_file",
-		Environment:    EnvironmentLocal,
+		Environment:    sandbox.EnvironmentLocal,
 		Access:         AccessRead,
 		Paths:          []string{"/tmp/a.txt"},
 		Justification:  "Need to inspect config",
@@ -162,7 +163,7 @@ func TestPermissionRequestMetadataMapIncludesPreview(t *testing.T) {
 func TestBuildToolPermissionRequestPreservesSandboxMetadata(t *testing.T) {
 	req := PermissionRequest{
 		ToolName:      "bash",
-		Environment:   EnvironmentLocal,
+		Environment:   sandbox.EnvironmentLocal,
 		Access:        AccessExecute,
 		Command:       "git status",
 		Justification: "Inspect repository state",

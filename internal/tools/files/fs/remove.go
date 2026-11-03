@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -17,13 +18,13 @@ import (
 // RemoveTool deletes a file or directory with safety checks.
 type RemoveTool struct {
 	workingDir       string
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 func NewRemoveTool(workingDir string) *RemoveTool {
 	return &RemoveTool{
 		workingDir:       workingDir,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -114,7 +115,7 @@ func (t *RemoveTool) Call(
 
 	// ── Permission ─────────────────────────────────────────────────────────
 	toolCtx := input.ToolContextValue()
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -122,11 +123,11 @@ func (t *RemoveTool) Call(
 	if ws := toolCtx.Workspace; ws != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(ws.Root)
 	}
-	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, absPath, sandbox.AccessDelete)
+	decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, absPath, access.AccessDelete)
 	if err != nil {
 		return tool.NewErrorResult(err), nil
 	}
-	if err := sandbox.ErrorForDecision(decision.DecisionResult); err != nil {
+	if err := access.ErrorForDecision(decision.DecisionResult); err != nil {
 		return tool.NewErrorResult(err), nil
 	}
 
@@ -135,16 +136,16 @@ func (t *RemoveTool) Call(
 		if effectiveDir == "" {
 			effectiveDir = strings.TrimSpace(t.workingDir)
 		}
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      "remove_file",
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessDelete,
+			Access:        access.AccessDelete,
 			Paths:         []string{absPath},
 			Justification: "Remove file or directory",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 			Metadata:      map[string]any{"recursive": recursive},
 		}
-		res, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		res, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput:              map[string]any{"path": absPath, "recursive": recursive},
 			ToolUseID:              toolCtx.ToolUseID,
 			SessionID:              toolCtx.SessionID,
@@ -156,7 +157,7 @@ func (t *RemoveTool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(res, "file removal requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(res, "file removal requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}

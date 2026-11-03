@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -40,14 +41,14 @@ const (
 // Tool implements the grep tool for searching file contents
 type Tool struct {
 	workingDir       string
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 // NewGrepTool creates a new grep tool
 func NewGrepTool(workingDir string) *Tool {
 	return &Tool{
 		workingDir:       workingDir,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -172,7 +173,7 @@ func (g *Tool) Call(
 	}
 
 	// Policy + permission check
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -180,11 +181,11 @@ func (g *Tool) Call(
 	if ws := toolCtx.Workspace; ws != nil {
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(ws.Root)
 	}
-	policyDecision, policyErr := g.filesystemPolicy.EvaluatePath(sandboxCtx, searchPath, sandbox.AccessSearch)
+	policyDecision, policyErr := g.filesystemPolicy.EvaluatePath(sandboxCtx, searchPath, access.AccessSearch)
 	if policyErr != nil {
 		return tool.NewErrorResult(policyErr), nil
 	}
-	if err := sandbox.ErrorForDecision(policyDecision.DecisionResult); err != nil {
+	if err := access.ErrorForDecision(policyDecision.DecisionResult); err != nil {
 		return tool.NewErrorResult(err), nil
 	}
 
@@ -193,14 +194,14 @@ func (g *Tool) Call(
 		if effectiveDir == "" {
 			effectiveDir = strings.TrimSpace(g.workingDir)
 		}
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:    ToolName,
 			Environment: sandbox.EnvironmentLocal,
-			Access:      sandbox.AccessSearch,
+			Access:      access.AccessSearch,
 			Paths:       []string{searchPath},
-			Scope:       sandbox.ApprovalScopeToolCall,
+			Scope:       access.ApprovalScopeToolCall,
 		}
-		res, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		res, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput:              map[string]any{"pattern": pattern, "path": searchPath},
 			ToolUseID:              toolCtx.ToolUseID,
 			SessionID:              toolCtx.SessionID,
@@ -212,7 +213,7 @@ func (g *Tool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(res, "grep search requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(res, "grep search requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}

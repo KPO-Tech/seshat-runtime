@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/KPO-Tech/seshat-runtime/internal/envfilter"
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/shellparse"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -46,7 +47,7 @@ const (
 type Tool struct {
 	config            *ToolConfig
 	securityValidator *SecurityValidator
-	commandPolicy     *sandbox.CommandPolicy
+	commandPolicy     *access.CommandPolicy
 	backgroundManager *BackgroundTaskManager
 	shell             string // cached at construction time
 	mu                sync.Mutex
@@ -182,7 +183,7 @@ func NewTool(config *ToolConfig) *Tool {
 	return &Tool{
 		config:            config,
 		securityValidator: NewSecurityValidator(),
-		commandPolicy:     sandbox.NewDefaultCommandPolicy(),
+		commandPolicy:     access.NewDefaultCommandPolicy(),
 		backgroundManager: bm,
 		shell:             DetectShell(),
 		sandboxExecutor:   sandboxExecutor,
@@ -314,7 +315,7 @@ func (t *Tool) Call(
 
 	// ── Layer 2: Policy hard-deny (catastrophic commands, deny fragments) ──
 	policyResult := t.commandPolicy.Evaluate(command)
-	if policyResult.Decision == sandbox.DecisionDeny {
+	if policyResult.Decision == access.DecisionDeny {
 		return tool.NewErrorResult(fmt.Errorf("permission denied: %s", policyResult.Reason)), nil
 	}
 
@@ -340,7 +341,7 @@ func (t *Tool) Call(
 		// The policy reads the line as a whole: "ls\nrm -rf x" and "cat x | bash"
 		// are classified as plain reads. Only a single simple command skips the
 		// approval, never a chain, a substitution or a redirection.
-		skipApproval := policyResult.Decision == sandbox.DecisionAllow && isSingleSimpleCommand(command)
+		skipApproval := policyResult.Decision == access.DecisionAllow && isSingleSimpleCommand(command)
 
 		// Mode-specific fast-path (e.g. AcceptEdits allows certain writes).
 		if !skipApproval {
@@ -361,20 +362,20 @@ func (t *Tool) Call(
 				}
 				return tool.NewErrorResult(fmt.Errorf("permission denied: %s", reason)), nil
 			}
-			req := sandbox.PermissionRequest{
+			req := access.PermissionRequest{
 				ToolName:      "bash",
 				Description:   description,
 				Environment:   sandbox.EnvironmentLocal,
-				Access:        sandbox.AccessExecute,
+				Access:        access.AccessExecute,
 				Command:       command,
 				Justification: description,
-				Scope:         sandbox.ApprovalScopeToolCall,
+				Scope:         access.ApprovalScopeToolCall,
 				Metadata: map[string]any{
 					"timeout_seconds":   timeout.Seconds(),
 					"run_in_background": runInBackground,
 				},
 			}
-			permissionResult, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+			permissionResult, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 				ToolInput: map[string]any{
 					"command":           command,
 					"timeout":           timeout.Seconds(),
@@ -391,7 +392,7 @@ func (t *Tool) Call(
 			if err != nil {
 				return tool.NewErrorResult(err), nil
 			}
-			if err := sandbox.ErrorForPermissionResult(permissionResult, "command requires approval"); err != nil {
+			if err := access.ErrorForPermissionResult(permissionResult, "command requires approval"); err != nil {
 				return tool.NewErrorResult(err), nil
 			}
 		}
@@ -479,7 +480,7 @@ func (t *Tool) CheckPermissions(_ context.Context, input map[string]any, toolCtx
 
 	// Policy hard-deny.
 	policyResult := t.commandPolicy.Evaluate(command)
-	if policyResult.Decision == sandbox.DecisionDeny {
+	if policyResult.Decision == access.DecisionDeny {
 		return types.Deny(policyResult.Reason)
 	}
 
@@ -493,9 +494,9 @@ func (t *Tool) CheckPermissions(_ context.Context, input map[string]any, toolCtx
 	// DecisionAsk: needs human decision from the global pipeline.
 	// (Evaluate already bakes in IsKnownSafe, so no redundant call needed here.)
 	switch policyResult.Decision {
-	case sandbox.DecisionAllow:
+	case access.DecisionAllow:
 		return types.Passthrough(input)
-	case sandbox.DecisionAsk:
+	case access.DecisionAsk:
 		return types.Ask(policyResult.Reason)
 	}
 	return types.Passthrough(input)
