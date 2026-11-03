@@ -209,6 +209,14 @@ extern "system" {
         attributes: *const DesktopAttributes,
     ) -> *mut c_void;
     fn CloseDesktop(desktop: *mut c_void) -> i32;
+    fn GetProcessWindowStation() -> *mut c_void;
+    fn GetUserObjectInformationW(
+        object: *mut c_void,
+        index: i32,
+        info: *mut c_void,
+        length: u32,
+        needed: *mut u32,
+    ) -> i32;
 }
 
 #[repr(C)]
@@ -219,6 +227,34 @@ struct DesktopAttributes {
 }
 
 const DESKTOP_ALL_ACCESS: u32 = 0x000F_01FF;
+const UOI_NAME: i32 = 2;
+
+/// Whether this process runs in the user's interactive session. Only `WinSta0` has a screen
+/// to protect. A service or a CI runner has none, and a low-integrity process given a
+/// private desktop there dies at startup with `STATUS_DLL_INIT_FAILED`.
+fn in_interactive_session() -> bool {
+    let mut name = [0u16; 64];
+    let mut needed = 0u32;
+    // SAFETY: the handle is a pseudo-handle that needs no closing, and the buffer's size in
+    // bytes is passed along with it.
+    let ok = unsafe {
+        GetUserObjectInformationW(
+            GetProcessWindowStation(),
+            UOI_NAME,
+            name.as_mut_ptr() as *mut c_void,
+            std::mem::size_of_val(&name) as u32,
+            &mut needed,
+        )
+    };
+    if ok == 0 {
+        // Unknown: keep the protection.
+        return true;
+    }
+    let end = name.iter().position(|&c| c == 0).unwrap_or(name.len());
+    let station = String::from_utf16_lossy(&name[..end]);
+    eprintln!("sandboxd-diagnostic: window station {station}");
+    station.eq_ignore_ascii_case("WinSta0")
+}
 
 /// A desktop of the session's own, which is what keeps a command from the user's screen: a job
 /// refuses the clipboard and window handles, but a capture of the screen is not one of those.
@@ -310,7 +346,7 @@ pub struct ProjectIdentity {
     token: OwnedHandle,
     scratch: PathBuf,
     elevated: bool,
-    desktop: PrivateDesktop,
+    desktop: Option<PrivateDesktop>,
 }
 
 impl ProjectIdentity {
@@ -325,7 +361,11 @@ impl ProjectIdentity {
             token,
             scratch,
             elevated: is_elevated()?,
-            desktop: PrivateDesktop::create(&token_user_sid_string()?)?,
+            desktop: if in_interactive_session() {
+                Some(PrivateDesktop::create(&token_user_sid_string()?)?)
+            } else {
+                None
+            },
         })
     }
 
@@ -399,7 +439,7 @@ impl ProjectIdentity {
             &env,
             work_dir,
             None,
-            Some(&self.desktop.name),
+            self.desktop.as_ref().map(|desktop| desktop.name.as_slice()),
             "CreateProcessAsUserW",
             |parts| {
                 // SAFETY: the token is owned by `self`; every pointer in `parts` is kept
