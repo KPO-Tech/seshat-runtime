@@ -111,9 +111,9 @@ type ClientConfig struct {
     PermissionMode PermissionMode // bypass | auto | acceptEdits | onRequest | never | granular
 
     // ── Sandbox ───────────────────────────────────────────────────────────
-    SandboxKind   SandboxKind         // backend for the bash tool: SandboxKindDocker or SandboxKindSandboxed
-    SandboxDocker SandboxDockerConfig // used with SandboxKindDocker
+    SandboxKind   SandboxKind         // backend for the bash tool: SandboxKindSandboxed or SandboxKindMicroVM
     Sandboxd      SandboxdConfig      // used with SandboxKindSandboxed, see "Sandboxing the bash tool"
+    MicroVM       MicroVMConfig       // used with SandboxKindMicroVM, see "Sandboxing the bash tool"
 
     // ── Persistence ───────────────────────────────────────────────────────
     PersistSessions   bool             // enable default filesystem persistence
@@ -182,10 +182,12 @@ On Windows, `SandboxdProfileProject` refuses writes outside the working director
 
 `sdk.ApplySandboxdProtection(ctx, sidecarPath, installSID, paths)` writes the read refusals ahead of a session. Use it for large folders: a session's handshake also writes them, but it is bounded, and a first protection walks every file below the path. `sdk.RemoveSandboxdProtection(ctx, sidecarPath, installSID, paths)` takes them back. It needs no session, so it also works after a crash.
 
+`SandboxKindMicroVM` gives the agent a whole Linux environment in a microVM per project, through the [microsandbox](https://github.com/superradcompany/microsandbox) `msb` command line. The embedder provides the binary, and `sdk.PrepareMicroVM` checks the host and pulls the image, which takes minutes, so call it when the user turns the mode on. The project is mounted at `/workspace`, `node_modules`, `.venv` and `target` go on volumes, and the host's environment is not passed in. A sandbox outlives its process: call `sdk.StopMicroVMEnvironments` at startup, and `sdk.RemoveMicroVMEnvironments` to give the disk back. See [ADR 0003](adr/0003-microvm-environment.md).
+
 With any sandbox configured:
 
 - A session's terminal does not run commands: the sandbox does.
-- `run_in_background` and a command ending in `&` run through a sidecar of their own, so a dev server does not hold the next command. Docker cannot run them and refuses them.
+- `run_in_background` and a command ending in `&` run through a sidecar of their own, so a dev server does not hold the next command. In a microVM they share the sandbox, which runs commands side by side.
 - Only bash is covered. `write_file` and `edit_file` write directly to the host and depend on the permission mode.
 
 ---

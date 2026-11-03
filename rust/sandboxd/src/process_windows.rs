@@ -37,6 +37,10 @@ const PROCESS_SET_QUOTA: u32 = 0x0100;
 /// impossible rather than unlikely.
 const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
 const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+const JOB_OBJECT_BASIC_UI_RESTRICTIONS: i32 = 4;
+/// Everything a job can refuse of the user's session. Measured before this: a command in the
+/// `project` profile read the clipboard and the titles of the user's windows.
+const JOB_OBJECT_UILIMIT_ALL: u32 = 0x0000_00FF;
 
 #[link(name = "kernel32")]
 extern "system" {
@@ -131,6 +135,20 @@ impl Job {
                 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
                 &limits as *const ExtendedLimitInformation as *const c_void,
                 std::mem::size_of::<ExtendedLimitInformation>() as u32,
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let restrictions = JOB_OBJECT_UILIMIT_ALL;
+        // SAFETY: the job handle is owned above; this information class is one DWORD of flags.
+        let ok = unsafe {
+            SetInformationJobObject(
+                job.handle.as_raw_handle(),
+                JOB_OBJECT_BASIC_UI_RESTRICTIONS,
+                &restrictions as *const u32 as *const c_void,
+                std::mem::size_of::<u32>() as u32,
             )
         };
         if ok == 0 {

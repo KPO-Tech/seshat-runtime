@@ -11,7 +11,6 @@ import (
 func TestSandboxLabelNeverShowsAnUnconfinedHostAsConfined(t *testing.T) {
 	for backend, wantConfined := range map[string]bool{
 		bash.BackendLandlock: true,
-		bash.BackendSrt:      true,
 		bash.BackendNone:     false,
 		"":                   false,
 		"something-new":      false,
@@ -28,7 +27,7 @@ func TestSandboxChipSaysNotConfinedAndNamesTheBackend(t *testing.T) {
 	if got := sandboxChipFor(sty, bash.BackendNone); !strings.Contains(got, "not confined") {
 		t.Errorf("no backend must say so, got %q", got)
 	}
-	for _, backend := range []string{bash.BackendLandlock, bash.BackendSrt} {
+	for _, backend := range []string{bash.BackendLandlock} {
 		got := sandboxChipFor(sty, backend)
 		if !strings.Contains(got, backend) || strings.Contains(got, "not confined") {
 			t.Errorf("%s: got %q", backend, got)

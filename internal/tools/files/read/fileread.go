@@ -12,6 +12,7 @@ import (
 
 	"github.com/KPO-Tech/seshat-runtime/internal/documentreader"
 	"github.com/KPO-Tech/seshat-runtime/internal/officetext"
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/schema"
@@ -24,7 +25,7 @@ type Tool struct {
 	config *ToolConfig
 
 	// filesystemPolicy centralizes common path access checks.
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 
 	// documentReader converts PDFs to structured markdown when set.
 	// When nil the tool falls back to base64 pass-through.
@@ -81,7 +82,7 @@ func NewTool(config *ToolConfig) *Tool {
 
 	t := &Tool{
 		config:           config,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 	switch {
 	case config.DocumentConverter != nil:
@@ -161,19 +162,19 @@ func (t *Tool) Call(
 		return tool.NewErrorResult(fmt.Errorf("path validation failed: %w", err)), nil
 	}
 	if directCall && permissionCheck != nil {
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      ToolName,
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessRead,
+			Access:        access.AccessRead,
 			Paths:         []string{filePath},
 			Justification: "Read file contents",
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 			Metadata: map[string]any{
 				"pages": input.Parsed["pages"],
 			},
 		}
 		toolCtx := input.ToolContextValue()
-		permissionResult, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		permissionResult, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput: map[string]any{
 				"file_path": filePath,
 				"offset":    input.Parsed["offset"],
@@ -190,7 +191,7 @@ func (t *Tool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(permissionResult, "file read requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(permissionResult, "file read requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}
@@ -995,7 +996,7 @@ func (t *Tool) CheckPermissions(ctx context.Context, input map[string]any, toolC
 }
 
 func (t *Tool) validateReadPath(toolCtx tool.ToolUseContext, path string) error {
-	ctx := sandbox.Context{
+	ctx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -1009,11 +1010,11 @@ func (t *Tool) validateReadPath(toolCtx tool.ToolUseContext, path string) error 
 		}
 	}
 
-	decision, err := t.filesystemPolicy.EvaluatePath(ctx, path, sandbox.AccessRead)
+	decision, err := t.filesystemPolicy.EvaluatePath(ctx, path, access.AccessRead)
 	if err != nil {
 		return err
 	}
-	if decision.Decision == sandbox.DecisionDeny {
+	if decision.Decision == access.DecisionDeny {
 		return errors.New(decision.Reason)
 	}
 	return nil

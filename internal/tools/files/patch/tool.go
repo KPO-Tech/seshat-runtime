@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/KPO-Tech/seshat-runtime/internal/permissions/access"
 	"github.com/KPO-Tech/seshat-runtime/internal/sandbox"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/files/shared"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
@@ -16,13 +17,13 @@ import (
 // ApplyPatchTool applies a structured multi-file patch in one atomic call.
 type ApplyPatchTool struct {
 	workingDir       string
-	filesystemPolicy *sandbox.FilesystemPolicy
+	filesystemPolicy *access.FilesystemPolicy
 }
 
 func NewApplyPatchTool(workingDir string) *ApplyPatchTool {
 	return &ApplyPatchTool{
 		workingDir:       workingDir,
-		filesystemPolicy: sandbox.NewDefaultFilesystemPolicy(),
+		filesystemPolicy: access.NewDefaultFilesystemPolicy(),
 	}
 }
 
@@ -87,7 +88,7 @@ func (t *ApplyPatchTool) Call(
 	}
 
 	toolCtx := input.ToolContextValue()
-	sandboxCtx := sandbox.Context{
+	sandboxCtx := access.Context{
 		WorkingDirectory: strings.TrimSpace(toolCtx.WorkingDirectory),
 		Environment:      sandbox.EnvironmentLocal,
 		SandboxEnabled:   toolCtx.EnableSandbox,
@@ -96,30 +97,30 @@ func (t *ApplyPatchTool) Call(
 		sandboxCtx.WorkspaceRoot = strings.TrimSpace(ws.Root)
 	}
 	for _, path := range touchedPaths {
-		decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, path, sandbox.AccessWrite)
+		decision, err := t.filesystemPolicy.EvaluatePath(sandboxCtx, path, access.AccessWrite)
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForDecision(decision.DecisionResult); err != nil {
+		if err := access.ErrorForDecision(decision.DecisionResult); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}
 
 	if permissionCheck != nil {
-		req := sandbox.PermissionRequest{
+		req := access.PermissionRequest{
 			ToolName:      "apply_patch",
 			Description:   buildApprovalDescription(changes),
 			Environment:   sandbox.EnvironmentLocal,
-			Access:        sandbox.AccessWrite,
+			Access:        access.AccessWrite,
 			Paths:         touchedPaths,
 			Justification: preview,
-			Scope:         sandbox.ApprovalScopeToolCall,
+			Scope:         access.ApprovalScopeToolCall,
 			Metadata: map[string]any{
 				"preview": preview,
 				"changes": changes, // structured []PatchChange for UI rendering
 			},
 		}
-		res, err := sandbox.ResolveToolPermission(ctx, permissionCheck, req, sandbox.ToolPermissionOptions{
+		res, err := access.ResolveToolPermission(ctx, permissionCheck, req, access.ToolPermissionOptions{
 			ToolInput:              map[string]any{"patch": patchText, "preview": preview},
 			ToolUseID:              toolCtx.ToolUseID,
 			SessionID:              toolCtx.SessionID,
@@ -131,7 +132,7 @@ func (t *ApplyPatchTool) Call(
 		if err != nil {
 			return tool.NewErrorResult(err), nil
 		}
-		if err := sandbox.ErrorForPermissionResult(res, "patch application requires approval"); err != nil {
+		if err := access.ErrorForPermissionResult(res, "patch application requires approval"); err != nil {
 			return tool.NewErrorResult(err), nil
 		}
 	}

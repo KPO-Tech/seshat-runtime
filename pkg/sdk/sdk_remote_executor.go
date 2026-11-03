@@ -19,8 +19,8 @@ type RemoteExecResult = sandbox.RunResult
 type RemoteExecKind = sandbox.EnvironmentKind
 
 // RemoteExecKindRemote is the Kind a RemoteExecutor implementation should
-// report — it isn't the local host (EnvironmentLocal) or a Dagger container
-// (EnvironmentDocker), it's an external channel back to the host app.
+// report: it isn't the local host (EnvironmentLocal),
+// it's an external channel back to the host app.
 const RemoteExecKindRemote = sandbox.EnvironmentRemote
 
 // SetRemoteExecutor registers executor as this session's remote execution

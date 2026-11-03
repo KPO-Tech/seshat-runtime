@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -223,7 +224,7 @@ func TestEveryToolSharesOneTaskManager(t *testing.T) {
 }
 
 func TestBackgroundCommandIsRefusedWhenTheSandboxCannotRunIt(t *testing.T) {
-	tool := toolWithSandbox(t, &fakeExecutor{kind: sandbox.EnvironmentDocker})
+	tool := toolWithSandbox(t, &fakeExecutor{kind: sandbox.EnvironmentRemote})
 	command, marker := hostMarker(t)
 
 	result, err := tool.executeBackground(context.Background(), &ExecutionContext{Command: command, WorkingDirectory: t.TempDir()})
@@ -287,5 +288,37 @@ func TestTheSidecarOutputReachesTheChunkCallback(t *testing.T) {
 	}
 	if got.String() != "stdout:from the sandbox\n" {
 		t.Fatalf("callback got %q", got.String())
+	}
+}
+
+// A microVM that cannot run must refuse, not fall through to the host.
+func TestAnUnavailableMicroVMRefusesAndTheModelIsToldWhereCommandsRun(t *testing.T) {
+	command, marker := hostMarker(t)
+	cfg := DefaultToolConfig()
+	cfg.WorkingDirectory = t.TempDir()
+	cfg.SandboxKind = sandbox.EnvironmentMicroVM
+	cfg.MicroVM = sandbox.MicroVMConfig{BinaryPath: filepath.Join(t.TempDir(), "no-msb"), Home: t.TempDir()}
+	bash := NewTool(cfg)
+
+	note := bash.Definition().Description
+	for _, want := range []string{"/workspace", "0.0.0.0", "Linux"} {
+		if !strings.Contains(note, want) {
+			t.Errorf("the model is not told %q", want)
+		}
+	}
+
+	if _, err := bash.executeCommand(context.Background(), &ExecutionContext{Command: command, WorkingDirectory: cfg.WorkingDirectory, Timeout: time.Minute}); err == nil {
+		t.Fatal("expected a refusal")
+	}
+	result, err := bash.executeBackground(context.Background(), &ExecutionContext{Command: command, WorkingDirectory: cfg.WorkingDirectory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Error == nil {
+		t.Fatal("a background command must be refused too")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("the command ran on the host")
 	}
 }
