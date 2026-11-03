@@ -88,6 +88,21 @@ its own sandbox.
 - Tools that use a temporary folder or a home directory must be pointed into the workdir,
   as the spike did. Some caches are rebuilt for each workdir, which costs time.
 
+## Hardening, measured against the first version
+
+Measured from inside the `project` profile on 2026-11-03, compared with Codex's
+`windows-sandbox-rs`. Each was open before and is refused now:
+
+- **The sidecar's protocol pipes.** Every inheritable handle went to the command, including the
+  pipes from the runtime, so a command could forge frames. A handle list limits it to three.
+- **The clipboard and the user's windows.** A command opened the clipboard and saw the titles of
+  11 windows. The job now carries all of its UI restrictions.
+- **The screen.** A command captured it. A job does not refuse that, so commands run on a private
+  desktop with a low label, without which a low-integrity process dies at startup.
+- **The target of a protected junction** stayed readable by its real name. Both are protected now.
+
+A console window no longer opens for each command when the app has no console.
+
 ## Not decided here
 
 - macOS: no backend yet. It reports `none`, as ADR-0001 requires.

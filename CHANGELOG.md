@@ -9,6 +9,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **A confined command no longer inherits the sidecar's protocol pipes.** Every inheritable handle went to the command, so it could write forged frames to the runtime.
+- **A confined command can no longer read the clipboard, capture the screen or see the user's windows.** Commands now run on a private desktop, in a job with all its UI restrictions.
+- **Protecting a junction also protects what it leads to.** The target stayed readable by its real name.
+- **The sidecar reports `none` outside Windows.** It has no backend there and reported `degraded`, so the runtime ran commands with no confinement.
+
+### Fixed
+
+- **No console window opens for each confined command** when the app has no console.
+
 ### Added
 
 - **The agent can get a whole Linux environment.** `SandboxKindMicroVM` and `ClientConfig.MicroVM` run the bash tool in a microVM per project through microsandbox's `msb` command line, with no Docker. The project is mounted, what a package manager installs goes on a volume, and a dev server is reached on `localhost`. `PrepareMicroVM`, `StopMicroVMEnvironments` and `RemoveMicroVMEnvironments` manage it. Windows support depends on microsandbox's, which is in preview.

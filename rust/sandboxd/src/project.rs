@@ -28,10 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::ptr;
 
-use crate::appcontainer::{
-    launch_in_job, wide, ProcessInformation, StartupInfo, CREATE_SUSPENDED,
-    CREATE_UNICODE_ENVIRONMENT,
-};
+use crate::appcontainer::{launch_in_job, wide, ProcessInformation, StartupInfo, LAUNCH_FLAGS};
 use crate::process::Process;
 
 const TOKEN_ALL_ACCESS: u32 = 0x000F_01FF;
@@ -97,6 +94,12 @@ extern "system" {
         new_token: *mut *mut c_void,
     ) -> i32;
     fn ConvertStringSidToSidW(string_sid: *const u16, sid: *mut *mut c_void) -> i32;
+    fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
+        descriptor: *const u16,
+        revision: u32,
+        security_descriptor: *mut *mut c_void,
+        size: *mut u32,
+    ) -> i32;
     fn GetLengthSid(sid: *mut c_void) -> u32;
     fn EqualSid(a: *mut c_void, b: *mut c_void) -> i32;
     fn CreateProcessAsUserW(
@@ -195,11 +198,117 @@ impl Drop for Sid {
     }
 }
 
+#[link(name = "user32")]
+extern "system" {
+    fn CreateDesktopW(
+        desktop: *const u16,
+        device: *const u16,
+        mode: *const c_void,
+        flags: u32,
+        access: u32,
+        attributes: *const DesktopAttributes,
+    ) -> *mut c_void;
+    fn CloseDesktop(desktop: *mut c_void) -> i32;
+}
+
+#[repr(C)]
+struct DesktopAttributes {
+    length: u32,
+    descriptor: *mut c_void,
+    inherit: i32,
+}
+
+const DESKTOP_ALL_ACCESS: u32 = 0x000F_01FF;
+
+/// A desktop of the session's own, which is what keeps a command from the user's screen: a job
+/// refuses the clipboard and window handles, but a capture of the screen is not one of those.
+struct PrivateDesktop {
+    handle: *mut c_void,
+    // What a process is told to start on, as a nul-terminated wide string.
+    name: Vec<u16>,
+}
+
+// SAFETY: the handle is opaque, this struct owns it, and it is only used to close it.
+unsafe impl Send for PrivateDesktop {}
+// SAFETY: as above: nothing reads through the handle.
+unsafe impl Sync for PrivateDesktop {}
+
+impl PrivateDesktop {
+    /// The descriptor matters. A desktop takes its DACL and label from the token that creates
+    /// it, and a low-integrity process that cannot use its desktop dies at startup with
+    /// `STATUS_DLL_INIT_FAILED` (0xC0000142). So it names the user, whom the restricted token
+    /// carries in both lists, and a low label.
+    fn create(user_sid: &str) -> io::Result<Self> {
+        static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let name = format!(
+            "seshat-sandboxd-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        let sddl = wide(&format!("D:P(A;;GA;;;{user_sid})S:(ML;;NW;;;LW)"));
+        let mut descriptor = ptr::null_mut();
+        // SAFETY: `sddl` is nul-terminated, and the call writes one pointer; the size is optional.
+        let ok = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                sddl.as_ptr(),
+                1,
+                &mut descriptor,
+                ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let attributes = DesktopAttributes {
+            length: std::mem::size_of::<DesktopAttributes>() as u32,
+            descriptor,
+            inherit: 0,
+        };
+        let wide_name = wide(&name);
+        // SAFETY: the name and attributes outlive the call; device and mode must be null.
+        let handle = unsafe {
+            CreateDesktopW(
+                wide_name.as_ptr(),
+                ptr::null(),
+                ptr::null(),
+                0,
+                DESKTOP_ALL_ACCESS,
+                &attributes,
+            )
+        };
+        let created = if handle.is_null() {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(())
+        };
+        // SAFETY: allocated by the conversion above and read by no one after the call.
+        unsafe {
+            LocalFree(descriptor);
+        }
+        created?;
+        Ok(Self {
+            handle,
+            name: wide(&format!("WinSta0\\{name}")),
+        })
+    }
+}
+
+impl Drop for PrivateDesktop {
+    fn drop(&mut self) {
+        // SAFETY: the handle is this struct's, closed once. A failure cannot be reported from
+        // a destructor, and the desktop goes away with the process anyway.
+        unsafe {
+            CloseDesktop(self.handle);
+        }
+    }
+}
+
 /// The restricted, low-integrity token a session's commands start with.
 pub struct ProjectIdentity {
     token: OwnedHandle,
     scratch: PathBuf,
     elevated: bool,
+    desktop: PrivateDesktop,
 }
 
 impl ProjectIdentity {
@@ -214,6 +323,7 @@ impl ProjectIdentity {
             token,
             scratch,
             elevated: is_elevated()?,
+            desktop: PrivateDesktop::create(&token_user_sid_string()?)?,
         })
     }
 
@@ -287,6 +397,7 @@ impl ProjectIdentity {
             &env,
             work_dir,
             None,
+            Some(&self.desktop.name),
             "CreateProcessAsUserW",
             |parts| {
                 // SAFETY: the token is owned by `self`; every pointer in `parts` is kept
@@ -299,7 +410,7 @@ impl ProjectIdentity {
                         ptr::null(),
                         ptr::null(),
                         1,
-                        CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED,
+                        LAUNCH_FLAGS,
                         parts.environment,
                         parts.directory,
                         parts.startup,
@@ -720,6 +831,32 @@ pub fn protect(capability_sid: &str, path: &Path) -> io::Result<()> {
     if !path.exists() {
         return Ok(());
     }
+    for target in protection_targets(path) {
+        protect_object(capability_sid, &target)?;
+    }
+    Ok(())
+}
+
+/// What a named path stands for: itself and, if it is a link, what it leads to. A refusal on a
+/// junction alone leaves its target readable by its real name, measured.
+fn protection_targets(path: &Path) -> Vec<PathBuf> {
+    let mut targets = vec![path.to_path_buf()];
+    if let Ok(real) = path.canonicalize() {
+        // Both sides resolved, so a path that is no link is not named twice.
+        if path.is_symlink() || std::fs::symlink_metadata(path).is_ok_and(|m| is_reparse(&m)) {
+            targets.push(real);
+        }
+    }
+    targets
+}
+
+fn is_reparse(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+fn protect_object(capability_sid: &str, path: &Path) -> io::Result<()> {
     let sid = Sid::parse(capability_sid)?;
     let mut name = wide(&path.display().to_string());
     let old = Dacl::read(&name)?;
@@ -774,6 +911,13 @@ pub fn unprotect(capability_sid: &str, path: &Path) -> io::Result<()> {
     if !path.exists() {
         return Ok(());
     }
+    for target in protection_targets(path) {
+        unprotect_object(capability_sid, &target)?;
+    }
+    Ok(())
+}
+
+fn unprotect_object(capability_sid: &str, path: &Path) -> io::Result<()> {
     let sid = Sid::parse(capability_sid)?;
     let mut name = wide(&path.display().to_string());
     let dacl = Dacl::read(&name)?;
@@ -914,6 +1058,152 @@ mod tests {
             .grant(home.ancestors().last().expect("the drive"))
             .expect_err("a drive must be refused");
         assert!(err.to_string().contains("project folder"), "{err}");
+    }
+
+    /// The runtime's pipes to the sidecar are inheritable handles the sidecar received. A
+    /// command holding them could forge protocol frames.
+    #[test]
+    fn a_command_inherits_only_its_own_pipes() {
+        use crate::appcontainer::{create_pipe, SecurityAttributes};
+        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
+        let work = Dir::new("handles");
+        identity.grant(&work.0).expect("grant");
+
+        // An inheritable handle in this process, standing for the protocol pipe.
+        let inheritable = SecurityAttributes {
+            length: std::mem::size_of::<SecurityAttributes>() as u32,
+            descriptor: ptr::null_mut(),
+            inherit: 1,
+        };
+        let (read, write) = create_pipe(&inheritable).expect("pipe");
+        let comspec = std::env::var("ComSpec").expect("ComSpec");
+        let command =
+            format!("\"{comspec}\" /d /c \"powershell -NoProfile -Command Start-Sleep 3\"");
+        let mut child = identity
+            .launch(&command, &env(), &work.0.display().to_string())
+            .expect("launch");
+        drop(write);
+
+        // End-of-file comes at once unless the command holds a copy of the write end.
+        let started = std::time::Instant::now();
+        let mut sink = Vec::new();
+        std::io::Read::read_to_end(&mut std::fs::File::from(read), &mut sink).ok();
+        let held = started.elapsed();
+        let finished = std::time::Instant::now();
+        assert_eq!(child.wait().expect("wait"), 0, "the command must have run");
+        assert!(
+            held < std::time::Duration::from_secs(1)
+                && finished.elapsed() > std::time::Duration::from_secs(1),
+            "the command held an inherited handle for {held:?}, then ran {:?} more",
+            finished.elapsed()
+        );
+    }
+
+    /// Measured before this: a command read the clipboard, captured the screen, and saw the
+    /// titles of the user's windows. Nothing from those is read or printed here.
+    #[test]
+    fn a_command_cannot_reach_the_users_session() {
+        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
+        let work = Dir::new("session");
+        identity.grant(&work.0).expect("grant");
+        let script = r#"
+Add-Type -AssemblyName System.Drawing
+Add-Type @'
+using System; using System.Runtime.InteropServices;
+public static class P {
+ [DllImport("user32.dll")] public static extern bool OpenClipboard(IntPtr h);
+ [DllImport("user32.dll")] public static extern bool CloseClipboard();
+ [DllImport("user32.dll")] public static extern IntPtr GetClipboardData(uint f);
+ public delegate bool E(IntPtr h, IntPtr l);
+ [DllImport("user32.dll")] public static extern bool EnumWindows(E e, IntPtr l);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+ [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr h);
+ public static int Titled(){int n=0; EnumWindows((h,l)=>{ if(IsWindowVisible(h)&&GetWindowTextLength(h)>0)n++; return true;},IntPtr.Zero); return n;}
+}
+'@
+$d=$false; if([P]::OpenClipboard([IntPtr]::Zero)){ $d=([P]::GetClipboardData(13) -ne [IntPtr]::Zero); [void][P]::CloseClipboard() }
+"clipboard=$d"
+"windows=" + [P]::Titled()
+$colours=0
+try { $b=New-Object Drawing.Bitmap 100,100; $g=[Drawing.Graphics]::FromImage($b); $g.CopyFromScreen(0,0,0,0,$b.Size); $c=@{}; for($x=0;$x -lt 100;$x+=5){for($y=0;$y -lt 100;$y+=5){$c[$b.GetPixel($x,$y).ToArgb()]=1}}; $colours=$c.Count } catch { $colours=0 }
+"colours=$colours"
+"#;
+        fs::write(work.0.join("session.ps1"), script).unwrap();
+        let (code, text) = run(
+            &identity,
+            "powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -STA -File session.ps1",
+            &work.0,
+        );
+        assert_eq!(code, 0, "{text}");
+        assert!(text.contains("clipboard=False"), "{text}");
+        assert!(text.contains("windows=0"), "{text}");
+        // A blank private desktop captures as one colour at most.
+        let colours: u32 = text
+            .split("colours=")
+            .nth(1)
+            .and_then(|rest| rest.trim().parse().ok())
+            .unwrap_or(u32::MAX);
+        assert!(colours <= 1, "{text}");
+    }
+
+    #[test]
+    fn protecting_a_junction_also_protects_what_it_leads_to() {
+        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
+        let work = Dir::new("junction-work");
+        identity.grant(&work.0).expect("grant");
+        let secret = Dir::new("junction-secret");
+        fs::write(secret.0.join("key.txt"), "HIDDEN").unwrap();
+        let parent = Dir::new("junction-parent");
+        let junction = parent.0.join("linked");
+        let made = Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&secret.0)
+            .stdout(Stdio::null())
+            .status()
+            .expect("mklink");
+        assert!(made.success());
+
+        protect(CAPABILITY, &junction).expect("protect");
+        for read in [junction.join("key.txt"), secret.0.join("key.txt")] {
+            let (code, text) = run(&identity, &format!("type \"{}\"", read.display()), &work.0);
+            assert_ne!(code, 0, "{} was read: {text}", read.display());
+        }
+        assert_eq!(
+            fs::read_to_string(secret.0.join("key.txt")).unwrap(),
+            "HIDDEN",
+            "the user is not affected"
+        );
+
+        unprotect(CAPABILITY, &junction).expect("unprotect");
+        let (code, text) = run(
+            &identity,
+            &format!("type \"{}\"", secret.0.join("key.txt").display()),
+            &work.0,
+        );
+        assert_eq!(code, 0, "{text}");
+        assert!(text.contains("HIDDEN"), "{text}");
+        let _ = fs::remove_dir(&junction);
+    }
+
+    #[test]
+    fn a_junction_planted_by_a_command_does_not_reach_a_protected_folder() {
+        let identity = ProjectIdentity::create(CAPABILITY).expect("identity");
+        let work = Dir::new("planted-work");
+        identity.grant(&work.0).expect("grant");
+        let secret = Dir::new("planted-secret");
+        fs::write(secret.0.join("key.txt"), "HIDDEN").unwrap();
+        protect(CAPABILITY, &secret.0).expect("protect");
+
+        let _ = run(
+            &identity,
+            &format!("mklink /J planted \"{}\"", secret.0.display()),
+            &work.0,
+        );
+        let (code, text) = run(&identity, "type planted\\key.txt", &work.0);
+        assert_ne!(code, 0, "{text}");
+        assert!(!text.contains("HIDDEN"), "{text}");
+        let _ = fs::remove_dir(work.0.join("planted"));
     }
 
     #[test]
