@@ -288,7 +288,9 @@ impl PrivateDesktop {
         created?;
         Ok(Self {
             handle,
-            name: wide(&format!("WinSta0\\{name}")),
+            // No window station in the name: Windows then takes this process's, and a service or
+            // a CI runner is not in `WinSta0`.
+            name: wide_name,
         })
     }
 }
