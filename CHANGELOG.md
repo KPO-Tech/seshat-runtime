@@ -9,6 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.14.2] - 2026-11-05
+
+### Changed
+
+- **Ten Go dependencies are updated.** `google.golang.org/api` 0.298.0 to 0.310.0, `opensearch-go/v5` 5.0.0 to 5.1.3, `go-redis/v9` 9.22.0 to 9.23.0, `aws-sdk-go-v2` `config` 1.33.13 and `credentials` 1.20.13, `otlptracegrpc` 1.47.0, `azblob` 1.8.2, and in the terminal interface `posthog-go` 1.39.0, `gojq` 0.12.20 and `jsonrpc2` 0.2.3. No public API changes.
+
+### Fixed
+
+- **Two tool search tests no longer depend on the skills installed on the machine.** They failed on any computer that had skills in its home folder. Only the tests change.
+
 ## [1.14.1] - 2026-11-03
 
 ### Fixed
