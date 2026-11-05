@@ -239,7 +239,7 @@ func TestCreateAgentTask_AppliesSystemPromptToTheModelRequest(t *testing.T) {
 	m := NewManager(eng, &ManagerConfig{MaxConcurrentTasks: 5, TaskTimeout: 10 * time.Second, OutputDir: tmpDir})
 
 	const marker = "YOU ARE THE SPECIAL MARKER AGENT"
-	task, err := m.CreateAgentTask(context.Background(), "do the thing", nil, types.PermissionModeBypass, marker, nil)
+	task, err := m.CreateAgentTask(context.Background(), "do the thing", nil, types.PermissionModeBypass, marker, registry.ToolPolicy{})
 	if err != nil {
 		t.Fatalf("CreateAgentTask: %v", err)
 	}

@@ -40,6 +40,7 @@ type Client struct {
 	queryEngine     *engine.Engine
 	orchestrator    *execution.Orchestrator
 	registry        *registry.Registry
+	agentRegistry   *coreagent.AgentRegistry
 	store           SessionStore
 	config          *ClientConfig
 	memoryInitErr   error
@@ -214,6 +215,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 	// spawn_agent and resume_agent need the live engine instance — registered here, not in builtin.go.
 	// nil tools → sub-agent inherits all tools from the engine registry at call time.
 	agentRegistry := coreagent.NewAgentRegistry()
+	agentToolInstance.SetRegistry(agentRegistry)
 	spawnAgentTool := agentTool.NewSpawnAgentTool(queryEngine, nil, agentRegistry)
 	if err := reg.Register(spawnAgentTool); err != nil {
 		return nil, fmt.Errorf("failed to register spawn_agent tool: %w", err)
@@ -227,6 +229,7 @@ func NewClient(config *ClientConfig) (*Client, error) {
 		queryEngine:     queryEngine,
 		orchestrator:    orchestrator,
 		registry:        reg,
+		agentRegistry:   agentRegistry,
 		store:           store,
 		config:          config,
 		memoryInitErr:   memInitErr,
@@ -467,6 +470,7 @@ func (c *Client) RunAgentTask(ctx context.Context, agentType, task string, maxTu
 		Engine:         c.queryEngine,
 		Context:        ctx,
 		MaxTurns:       maxTurns,
+		Registry:       c.agentRegistry,
 		PermissionMode: types.PermissionModeBypass,
 	})
 	if err != nil {

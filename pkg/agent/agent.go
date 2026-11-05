@@ -30,3 +30,10 @@ func NewAgentRegistry() *AgentRegistry {
 func DefaultAsyncManager() *AsyncAgentManager {
 	return internalagent.GetDefaultAsyncManager()
 }
+
+// HostDefinitionError is why one host-supplied agent definition was refused.
+type HostDefinitionError = internalagent.HostDefinitionError
+
+// ErrShadowsExistingAgent is wrapped by the HostDefinitionError of a definition
+// whose type is already used by a built-in or skill-defined agent.
+var ErrShadowsExistingAgent = internalagent.ErrShadowsExistingAgent

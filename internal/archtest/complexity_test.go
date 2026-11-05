@@ -23,7 +23,7 @@ const maxComplexity = 30
 // until the number is lowered, so the list only shrinks. Most of them are the message switches of the terminal UI (a case per message
 // or key), which are long but flat; the others are the next candidates for being split into steps, as Integrator.ResolverWithContext was.
 var knownComplex = map[string]int{
-	"internal/agent/runner.go RunAgent":                                                   51,
+	"internal/agent/runner.go RunAgent":                                                   50,
 	"internal/pdfsmart/pdfsmart.go ReadPages":                                             54,
 	"internal/pdftext/layout.go plainLine":                                                37,
 	"internal/pdftext/rulings.go collectRulings":                                          41,

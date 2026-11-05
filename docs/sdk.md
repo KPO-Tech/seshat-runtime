@@ -162,6 +162,29 @@ type ClientConfig struct {
 
 ---
 
+## Agent types registered by the host
+
+```go
+err := client.SetAgentDefinitions([]*agent.AgentDefinition{{
+    AgentType:       "org-reviewer", // 1-64 lowercase letters, digits, dashes
+    WhenToUse:       "Reviews a change against the organisation's rules.",
+    Tools:           []string{"read_file", "grep", "web_*"}, // allow list; empty = all
+    DisallowedTools: []string{"web_fetch"},                  // deny list, wins over Tools
+    PermissionMode:  types.PermissionModeOnRequest,          // clamped to the parent's
+    MaxTurns:        20,
+    GetSystemPrompt: func() string { return "You review code." },
+}})
+```
+
+`SetAgentDefinitions` replaces the whole host-registered set (nil clears it), atomically and
+safely from any goroutine, at any time after `NewClient`. The `agent` tool, `spawn_agent` and
+`resume_agent` then accept those types. A bad definition (invalid or repeated name, nil, or a name
+already used by a built-in or skill-defined agent) is refused with a `*HostDefinitionError` in the
+returned error while the others are installed: a host adds types, it never shadows one. Tool patterns
+(`Tools`, `DisallowedTools`) use `*`, `prefix*`, `*suffix` or an exact name; a tool matching a
+disallowed pattern is never available, also through an alias, `tool_search`, or a sub-agent of the
+agent. `Model`, `Isolation` and `McpServers` are not applied yet.
+
 ## Sandboxing the bash tool
 
 `SandboxKindSandboxed` runs every bash command through the `seshat-sandboxd` sidecar. It never falls back: a sidecar that cannot start refuses every command.

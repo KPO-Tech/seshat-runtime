@@ -178,6 +178,8 @@ type RunRequest struct {
 	ToolRegistry *tool.Registry `json:"-"`
 	// DeferredScope are tools the main agent can find with tool_search besides the registry's deferred ones (see
 	// toolsearch.WithScope). Empty for sub-agents.
+	// ToolPolicy is the session's tool policy: a tool it forbids is never loaded, whichever way it would arrive.
+	ToolPolicy          tool.ToolPolicy                                                                                                                     `json:"-"`
 	DeferredScope       []string                                                                                                                            `json:"-"`
 	RefreshSystemPrompt func(ctx context.Context, tools map[string]tool.Tool, pendingDeferred []string, stage prompt.ExecutionStage) (PromptRefresh, error) `json:"-"`
 	// AutoDetectStage enables per-iteration stage detection. The engine sets this
@@ -769,7 +771,7 @@ func (l *Loop) resolveToolsets(ctx context.Context, req *RunRequest) {
 	}
 	for _, ts := range req.Toolsets {
 		for _, t := range ts.Tools(ctx) {
-			if t == nil || !t.IsEnabled() {
+			if t == nil || !t.IsEnabled() || !req.ToolPolicy.PermitsTool(t.Definition().Name, t) {
 				continue
 			}
 			req.Tools[t.Definition().Name] = t
@@ -1214,7 +1216,7 @@ func (l *Loop) integrateDiscoveredDeferredTools(ctx context.Context, state *Muta
 			continue
 		}
 		resolved, ok := req.ToolRegistry.Resolve(name)
-		if !ok {
+		if !ok || !req.ToolPolicy.PermitsTool(name, resolved) {
 			update.Unresolved = append(update.Unresolved, name)
 			continue
 		}

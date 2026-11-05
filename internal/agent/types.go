@@ -10,6 +10,10 @@ type AgentSource string
 const (
 	AgentSourceBuiltIn AgentSource = "built-in"
 	AgentSourceUser    AgentSource = "user"
+	// AgentSourceHost marks a definition handed in by the embedding host
+	// (AgentRegistry.ReplaceHostDefinitions). Whatever Source the host declared,
+	// the registry stores this one.
+	AgentSourceHost AgentSource = "host"
 )
 
 // AgentDefinition defines an agent
@@ -33,7 +37,10 @@ type AgentDefinition struct {
 	// nil or ["*"] means all tools
 	Tools []string `json:"tools,omitempty"`
 
-	// DisallowedTools is the list of disallowed tool patterns
+	// DisallowedTools is the list of disallowed tool patterns, same syntax as
+	// Tools. A tool matching one is never available to the agent, whatever Tools
+	// or the caller's tool list say (deny wins), and neither are the sub-agents
+	// it spawns.
 	DisallowedTools []string `json:"disallowedTools,omitempty"`
 
 	// Skills is the list of skill names to preload
@@ -67,9 +74,10 @@ type AgentDefinition struct {
 	GetSystemPrompt func() string `json:"-"`
 }
 
-// GetToolPatterns returns the tool patterns (nil = all tools)
+// GetToolPatterns returns the allowed tool patterns; nil or empty Tools means
+// all tools. DisallowedTools is applied on top of it, see EffectiveToolPolicy.
 func (a *AgentDefinition) GetToolPatterns() []string {
-	if a.Tools == nil {
+	if len(a.Tools) == 0 {
 		return []string{"*"}
 	}
 	return a.Tools
