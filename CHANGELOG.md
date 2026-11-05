@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A sub-agent now runs under the permission mode its definition declares, never a looser one than the agent that spawned it.** `AgentDefinition.PermissionMode` was read nowhere: every sub-agent started through the `agent` tool (normal, fork, background, worktree) ran in `bypass`, so a stricter mode set on an agent preset gave no protection. The mode is now the stricter of the definition's mode and the spawning session's mode (order, strictest first: `never`, `granular`, `onRequest`, `acceptEdits`, `auto`, `bypass`; see `types.PermissionModeStrictness`). An empty mode keeps the previous behaviour, an unknown value falls back to the stricter of the parent mode and `onRequest` and is logged, and a parent in `never` still yields `never`. `spawn_agent` and `resume_agent` used a fixed `bypass`, even under a `never` parent; they now follow the same rule.
+
 ## [1.14.2] - 2026-11-05
 
 ### Changed

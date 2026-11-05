@@ -177,8 +177,10 @@ func (t *SpawnAgentTool) Call(
 		ParentSessionID: toolCtx.SessionID,
 		// Background agents run in a goroutine that outlives the parent turn;
 		// bypass permissions so tools are not stuck waiting for an interactive
-		// prompt after the parent's turn context has been canceled.
-		PermissionMode: types.PermissionModeBypass,
+		// prompt after the parent's turn context has been canceled. The
+		// definition's own mode (clamped to the parent's) and a never parent
+		// still win over that default, see resolveSubAgentPermissionMode.
+		PermissionMode: resolveSubAgentPermissionMode(toolCtx.PermissionMode, agentDef),
 		EventFn:        agentEventFn,
 		// Without this, AsyncAgentManager.runAgent's default continuation
 		// nudge is a bare "Continue with the task." — no structural push to
