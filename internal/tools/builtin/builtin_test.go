@@ -70,7 +70,18 @@ func TestNewBuiltinRegistryWithConfig_EmptyConfig(t *testing.T) {
 	}
 }
 
+// withoutUserSkills points the home folder at an empty one. The skill tool is only deferred when there is no skill to offer
+// (skillTool.go), and the loader reads the person's own skill folders, so a machine with skills installed would change what
+// these tests see.
+func withoutUserSkills(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+}
+
 func TestNewBuiltinRegistryWithConfig_EnableToolSearchReachesRegistry(t *testing.T) {
+	withoutUserSkills(t)
 	reg, err := NewBuiltinRegistryWithConfig(&Config{EnableToolSearch: true})
 	if err != nil {
 		t.Fatalf("NewBuiltinRegistryWithConfig: %v", err)
@@ -97,6 +108,7 @@ func TestNewBuiltinRegistryWithConfig_EnableToolSearchReachesRegistry(t *testing
 // tool_search to find them. It used to follow only the ENABLE_TOOL_SEARCH variable, which left a host that set the option
 // with hidden tools and no way to reach them.
 func TestToolSearchToolIsOfferedWhenTheClientDefersTools(t *testing.T) {
+	withoutUserSkills(t)
 	t.Setenv("ENABLE_TOOL_SEARCH", "")
 	surfaceNames := func(enable bool) map[string]bool {
 		t.Helper()
