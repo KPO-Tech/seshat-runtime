@@ -57,7 +57,7 @@ func (t *SpawnAgentTool) Definition() tool.Definition {
 		Name:        spawnAgentName,
 		DisplayName: "SpawnAgent",
 		SearchHint:  spawnAgentSearchHint,
-		Description: spawnAgentDescription,
+		Description: spawnAgentDescription + hostAgentTypesSection(t.reg),
 		Category:    "agents",
 		InputSchema: schema.FromMap(map[string]any{
 			"type": "object",
@@ -69,7 +69,7 @@ func (t *SpawnAgentTool) Definition() tool.Definition {
 				"agent_type": map[string]any{
 					"type":        "string",
 					"description": "Agent type: 'general-purpose' (default), 'explore', 'plan', 'browse' (deep read-only web/multi-source research), or 'verify'.",
-					"enum":        []string{"general-purpose", "explore", "plan", "browse", "verify"},
+					"enum":        agentTypeEnum(t.reg),
 				},
 				"role": map[string]any{
 					"type":        "string",
@@ -166,15 +166,18 @@ func (t *SpawnAgentTool) Call(
 	}
 
 	config := &coreagent.RunConfig{
-		AgentType:       agentType,
-		Task:            prompt,
-		Engine:          t.eng,
-		MaxTurns:        maxTurns,
-		Context:         ctx,
-		Registry:        t.reg,
-		Nickname:        nickname,
-		Role:            role,
-		ParentSessionID: toolCtx.SessionID,
+		AgentType: agentType,
+		Task:      prompt,
+		Engine:    t.eng,
+		MaxTurns:  maxTurns,
+		Context:   ctx,
+		Registry:  t.reg,
+		// The async manager runs the agent under its own context, so what the
+		// calling agent was restricted by has to travel in the config.
+		InheritedToolPolicy: coreagent.ToolPolicyFromContext(ctx),
+		Nickname:            nickname,
+		Role:                role,
+		ParentSessionID:     toolCtx.SessionID,
 		// Background agents run in a goroutine that outlives the parent turn;
 		// bypass permissions so tools are not stuck waiting for an interactive
 		// prompt after the parent's turn context has been canceled. The

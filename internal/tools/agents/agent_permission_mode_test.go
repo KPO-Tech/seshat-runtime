@@ -9,6 +9,7 @@ import (
 	coreagent "github.com/KPO-Tech/seshat-runtime/internal/agent"
 	"github.com/KPO-Tech/seshat-runtime/internal/runtime/tasks"
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/contract"
+	coretool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
 )
 
@@ -188,7 +189,7 @@ func TestAgentTool_Call_Background_AppliesDefinitionPermissionMode(t *testing.T)
 			var got types.PermissionMode
 			at := newPermissionTestTool(t, c.def, nil)
 			at.SetEngine(eng)
-			at.createTaskFn = func(m types.PermissionMode) (*tasks.Task, error) {
+			at.createTaskFn = func(m types.PermissionMode, _ coretool.ToolPolicy) (*tasks.Task, error) {
 				got = m
 				return &tasks.Task{ID: "agent_test", Status: tasks.TaskStatusPending}, nil
 			}

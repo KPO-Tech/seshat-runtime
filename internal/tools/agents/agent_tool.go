@@ -136,7 +136,7 @@ type AgentTool struct {
 
 	// createTaskFn replaces the background task creation when set (tests only),
 	// so the permission mode handed to the task manager can be observed.
-	createTaskFn func(permMode types.PermissionMode) (*tasks.Task, error)
+	createTaskFn func(permMode types.PermissionMode, policy tool.ToolPolicy) (*tasks.Task, error)
 }
 
 // NewAgentTool creates a new agent tool
@@ -173,7 +173,7 @@ func (t *AgentTool) Definition() tool.Definition {
 		Name:               coreagent.ToolNameAgent,
 		DisplayName:        "agent",
 		SearchHint:         coreagent.SearchHintAgent,
-		Description:        coreagent.DescriptionAgent + "\n\n" + coreagent.AgentPrompt,
+		Description:        coreagent.DescriptionAgent + "\n\n" + coreagent.AgentPrompt + hostAgentTypesSection(t.registry),
 		Category:           "agent",
 		IsReadOnly:         false,
 		IsDestructive:      false,
@@ -188,8 +188,8 @@ func (t *AgentTool) Definition() tool.Definition {
 			"properties": map[string]any{
 				"type": map[string]any{
 					"type":        "string",
-					"description": "Agent type to run. Must be one of the built-in types.",
-					"enum":        []string{"general-purpose", "explore", "browse", "plan", "verify"},
+					"description": "Agent type to run. Must be one of the listed types.",
+					"enum":        agentTypeEnum(t.registry),
 				},
 				"task": map[string]any{
 					"type":        "string",
@@ -649,24 +649,7 @@ func filterToolPatterns(mainAgentTools []string, agentPatterns []string) []strin
 
 // matchesPattern checks if a tool name matches any of the patterns.
 func matchesPattern(name string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if pattern == "*" || pattern == name {
-			return true
-		}
-		if len(pattern) > 1 && pattern[len(pattern)-1] == '*' {
-			prefix := pattern[:len(pattern)-1]
-			if len(name) >= len(prefix) && name[:len(prefix)] == prefix {
-				return true
-			}
-		}
-		if len(pattern) > 1 && pattern[0] == '*' {
-			suffix := pattern[1:]
-			if len(name) >= len(suffix) && name[len(name)-len(suffix):] == suffix {
-				return true
-			}
-		}
-	}
-	return false
+	return tool.MatchesToolPattern(name, patterns)
 }
 
 // runAgentBackground runs an agent in the background using the task manager.
@@ -714,20 +697,22 @@ func (t *AgentTool) runAgentBackground(ctx context.Context, agentType, prompt st
 	// used for display in the result below, never to pick what the
 	// sub-agent's identity or visible tools actually are.
 	var systemPrompt string
-	var toolPatterns []string
+	var policy tool.ToolPolicy
 	if agentDef := t.resolveAgentDef(agentType); agentDef != nil {
 		if agentDef.GetSystemPrompt != nil {
 			systemPrompt = agentDef.GetSystemPrompt()
 		}
-		toolPatterns = filterToolPatterns(allowedTools, agentDef.GetToolPatterns())
+		policy = coreagent.EffectiveToolPolicy(coreagent.ToolPolicyFromContext(ctx), agentDef, filterToolPatterns(allowedTools, agentDef.GetToolPatterns()))
+	} else {
+		policy = coreagent.ToolPolicyFromContext(ctx)
 	}
 
 	var task *tasks.Task
 	var err error
 	if t.createTaskFn != nil {
-		task, err = t.createTaskFn(permMode)
+		task, err = t.createTaskFn(permMode, policy)
 	} else {
-		task, err = manager.CreateAgentTask(ctx, prompt, nil, permMode, systemPrompt, toolPatterns)
+		task, err = manager.CreateAgentTask(ctx, prompt, nil, permMode, systemPrompt, policy)
 	}
 	if err != nil {
 		return tool.CallResult{

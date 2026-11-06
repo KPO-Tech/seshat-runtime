@@ -122,7 +122,10 @@ type SessionState struct {
 	Tools              map[string]tool.Tool
 	DiscoveredDeferred []string
 	// DeferredScope are the tools the main agent can find with tool_search besides the registry's deferred ones.
-	DeferredScope       []string
+	DeferredScope []string
+	// ToolPolicy restricts which tools the session may use, whichever way a tool arrives (registered up front,
+	// registered later, or discovered through tool_search). It only ever narrows, see SetToolPolicy.
+	ToolPolicy          tool.ToolPolicy
 	PermissionContext   *types.PermissionContext
 	DenialTracking      *types.DenialTrackingState
 	TurnNumber          int
@@ -364,6 +367,9 @@ func (s *SessionState) EffectiveToolSurface(reg *tool.Registry) map[string]tool.
 		if checker, ok := resolved.(dynamicAvailability); ok && !checker.IsAvailableNow() {
 			continue
 		}
+		if !s.ToolPolicy.PermitsTool(name, resolved) {
+			continue
+		}
 		surface[name] = resolved
 	}
 	if reg == nil {
@@ -371,7 +377,7 @@ func (s *SessionState) EffectiveToolSurface(reg *tool.Registry) map[string]tool.
 	}
 	for _, name := range s.DiscoveredDeferred {
 		resolved, ok := reg.Resolve(name)
-		if !ok {
+		if !ok || !s.ToolPolicy.PermitsTool(name, resolved) {
 			continue
 		}
 		surface[name] = resolved
@@ -401,7 +407,7 @@ func (s *SessionState) PendingDeferredToolNames(reg *tool.Registry) []string {
 			continue
 		}
 		name := deferredTool.Definition().Name
-		if seen[name] || discovered[name] {
+		if seen[name] || discovered[name] || !s.ToolPolicy.PermitsTool(name, deferredTool) {
 			continue
 		}
 		if !tool.VisibleInSurfaceProfile(tool.ToolDefinition{

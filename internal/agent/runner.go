@@ -63,9 +63,11 @@ type RunConfig struct {
 	Task string
 
 	// ToolFilter is a list of tool name patterns to restrict the sub-agent's
-	// session to (wildcard-aware - see matchesPattern). Empty/nil falls back
-	// to the resolved agent type's own GetToolPatterns(); a bare "*" (or an
-	// empty pattern list on both) means no restriction at all.
+	// session to (wildcard-aware - see tool.MatchesToolPattern). nil falls back
+	// to the resolved agent type's own GetToolPatterns(); a bare "*" means no
+	// restriction; a non-nil EMPTY list means no tool at all. The type's
+	// DisallowedTools and the parent's restrictions are applied on top
+	// whatever this holds (see EffectiveToolPolicy).
 	ToolFilter []string
 
 	// Engine is an optional pre-created engine
@@ -156,24 +158,41 @@ type RunConfig struct {
 	// that already builds SkillForkRunner for the top-level skill tool.
 	ForkRunner skilltool.ForkRunner
 
+	// InheritedToolPolicy is the policy of the agent that spawned this one, for
+	// spawn paths whose context does not carry it (spawn_agent hands the run to
+	// a goroutine with its own context). RunAgent also reads the policy from
+	// Context, and merges both: a sub-agent never regains a tool its parent lost.
+	InheritedToolPolicy tool.ToolPolicy
+
 	// ResumeFromSessionID, when set, opens an existing persisted session instead
 	// of creating a new one. The first message sent to the resumed session is
 	// config.Task, continuing where the previous run left off.
 	ResumeFromSessionID types.SessionID
 }
 
+// metaKeyAgentType is the session metadata key under which a sub-agent session
+// records the agent type it was started as, so that resuming it restores that
+// type's restrictions instead of whatever type the resumer names.
+const metaKeyAgentType = "agent_type"
+
+// resolveRunAgentDef finds a definition: registry first, then built-ins.
+func resolveRunAgentDef(registry *AgentRegistry, agentType string) *AgentDefinition {
+	if registry != nil {
+		if def, ok := registry.Get(agentType); ok && def != nil {
+			return def
+		}
+	}
+	if builtIn := GetBuiltInAgentByType(agentType); builtIn != nil {
+		return ToAgentDefinition(*builtIn)
+	}
+	return nil
+}
+
 // RunAgent runs an agent and returns the result
 func RunAgent(config *RunConfig) (*RunResult, error) {
 	// Resolve agent definition: registry first, then built-in fallback.
-	var agentDef *AgentDefinition
-	if config.Registry != nil {
-		agentDef, _ = config.Registry.Get(config.AgentType)
-	}
-	if agentDef == nil {
-		if builtIn := GetBuiltInAgentByType(config.AgentType); builtIn != nil {
-			agentDef = ToAgentDefinition(*builtIn)
-		}
-	}
+	agentType := config.AgentType
+	agentDef := resolveRunAgentDef(config.Registry, agentType)
 	if agentDef == nil {
 		return &RunResult{
 			AgentType: config.AgentType,
@@ -192,15 +211,6 @@ func RunAgent(config *RunConfig) (*RunResult, error) {
 		}, nil
 	}
 
-	// Tool restriction patterns: ToolFilter is the caller's already-combined
-	// list (the model's own tools:[...] intersected with the agent type's
-	// own patterns - see agent_tool.go's filterToolPatterns) when given,
-	// otherwise fall back to the agent type's own declared patterns alone.
-	restrictPatterns := config.ToolFilter
-	if len(restrictPatterns) == 0 {
-		restrictPatterns = agentDef.GetToolPatterns()
-	}
-
 	// Get context
 	ctx := config.Context
 	if ctx == nil {
@@ -210,6 +220,7 @@ func RunAgent(config *RunConfig) (*RunResult, error) {
 	// Create or restore session.
 	var session *engine.Session
 	var err error
+	permissionMode := config.PermissionMode
 	if config.ResumeFromSessionID != "" {
 		session, err = runtimeEngine.OpenSession(ctx, config.ResumeFromSessionID)
 		if err != nil {
@@ -219,10 +230,26 @@ func RunAgent(config *RunConfig) (*RunResult, error) {
 				Error:     fmt.Sprintf("failed to restore session %s: %v", config.ResumeFromSessionID, err),
 			}, nil
 		}
+		// A resumed run gets the restrictions of the type it was started as,
+		// not those of the type the resumer names (resume_agent always says
+		// general-purpose). A type that can no longer be resolved fails closed.
+		if recorded, _ := session.GetMetadata().Additional[metaKeyAgentType].(string); recorded != "" && recorded != agentType {
+			recordedDef := resolveRunAgentDef(config.Registry, recorded)
+			if recordedDef == nil {
+				return &RunResult{
+					AgentType: config.AgentType,
+					Success:   false,
+					Error:     fmt.Sprintf("cannot resume session %s: its agent type %q is no longer registered", config.ResumeFromSessionID, recorded),
+				}, nil
+			}
+			agentDef = recordedDef
+			permissionMode = clampResumedPermissionMode(permissionMode, recordedDef)
+		}
 	} else {
 		// Record which session launched this one, so the session list shows the
 		// conversation and not the sub-agents it started.
 		subagentMetadata := types.NewSubagentSessionMetadata(tool.ToolSurfaceProfileSubagent, launchingSession(config, ctx), time.Now())
+		subagentMetadata.Additional[metaKeyAgentType] = agentType
 		if len(config.ForkFromMessages) > 0 {
 			inheritedMessages := append([]types.Message(nil), config.ForkFromMessages...)
 			session, err = runtimeEngine.NewSessionFromState(ctx, "", subagentMetadata, inheritedMessages)
@@ -238,12 +265,22 @@ func RunAgent(config *RunConfig) (*RunResult, error) {
 		}
 	}
 
-	RestrictSessionTools(session, restrictPatterns)
+	// Tool restriction: what the parent was already restricted by, the allow
+	// list (ToolFilter is the caller's already-combined list - the model's own
+	// tools:[...] intersected with the type's patterns, see agent_tool.go's
+	// filterToolPatterns; nil falls back to the type's own Tools), and the
+	// type's DisallowedTools, which wins over every allow list. The session
+	// enforces it for tools registered up front, registered later and found
+	// through tool_search, and the sub-agents this one spawns inherit it
+	// through ctx.
+	policy := EffectiveToolPolicy(config.InheritedToolPolicy.Merge(ToolPolicyFromContext(ctx)), agentDef, config.ToolFilter)
+	session.SetToolPolicy(policy)
+	ctx = WithToolPolicy(ctx, policy)
 	restrictSessionSkillsIfDeclared(session, agentDef, ctx, config.ForkRunner)
 
 	// Apply permission mode override (e.g. bypass for headless background agents).
-	if config.PermissionMode != "" {
-		session.SetPermissionMode(config.PermissionMode)
+	if permissionMode != "" {
+		session.SetPermissionMode(permissionMode)
 	}
 
 	// Give the agent its own system prompt identity so it does not inherit the
@@ -466,26 +503,25 @@ func extractSources(tu types.ToolUseContent) []SourceRef {
 	return nil
 }
 
-// matchesPattern checks if a tool name matches any of the patterns
+// matchesPattern checks if a tool name matches any of the patterns.
 func matchesPattern(name string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if pattern == "*" || pattern == name {
-			return true
-		}
-		if len(pattern) > 1 && pattern[len(pattern)-1] == '*' {
-			prefix := pattern[:len(pattern)-1]
-			if len(name) >= len(prefix) && name[:len(prefix)] == prefix {
-				return true
-			}
-		}
-		if len(pattern) > 1 && pattern[0] == '*' {
-			suffix := pattern[1:]
-			if len(name) >= len(suffix) && name[len(name)-len(suffix):] == suffix {
-				return true
-			}
-		}
+	return tool.MatchesToolPattern(name, patterns)
+}
+
+// clampResumedPermissionMode makes a resumed run no looser than the mode its
+// original type declares.
+func clampResumedPermissionMode(current types.PermissionMode, def *AgentDefinition) types.PermissionMode {
+	if def == nil || def.PermissionMode == "" {
+		return current
 	}
-	return false
+	declared, ok := types.NormalizePermissionMode(string(def.PermissionMode))
+	if !ok {
+		declared = types.PermissionModeOnRequest
+	}
+	if current == "" {
+		return declared
+	}
+	return types.StricterPermissionMode(declared, current)
 }
 
 // RestrictSessionTools unregisters every tool on session whose name does not

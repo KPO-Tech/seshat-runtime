@@ -52,6 +52,9 @@ func (s *Session) GetRuntimeEventQueue() *execution.RuntimeEventQueue {
 
 func (s *Session) RegisterTool(t tool.Tool) error {
 	def := t.Definition()
+	if !s.state.ToolPolicy.PermitsTool(def.Name, t) {
+		return fmt.Errorf("tool '%s' is not allowed by the session's tool policy", def.Name)
+	}
 	if promptAware, ok := t.(promptAwareTool); ok {
 		promptAware.SetPromptFn(s.engine.promptFn)
 	}
@@ -77,6 +80,27 @@ func (s *Session) RegisterTools(tools []tool.Tool) error {
 		}
 	}
 	return nil
+}
+
+// SetToolPolicy narrows the tools this session may use and prunes the ones it
+// already holds that the policy forbids. The policy is merged into whatever the
+// session already carries, so calling it again can only remove more tools, never
+// restore one. A tool is matched on its key, its canonical name and its aliases,
+// so denying a tool also removes it under its alias. Deferred tools are covered
+// too: a tool the policy forbids is neither offered nor loaded by tool_search.
+func (s *Session) SetToolPolicy(policy tool.ToolPolicy) {
+	if s == nil || s.state == nil {
+		return
+	}
+	s.state.ToolPolicy = s.state.ToolPolicy.Merge(policy)
+	if s.state.ToolPolicy.IsZero() {
+		return
+	}
+	for key, t := range s.state.Tools {
+		if !s.state.ToolPolicy.PermitsTool(key, t) {
+			delete(s.state.Tools, key)
+		}
+	}
 }
 
 // UnregisterTool removes a tool from the session by name.
