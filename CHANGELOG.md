@@ -9,6 +9,18 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-11-06
+
+### Added
+
+- **A host can register agent types: `Client.SetAgentDefinitions` and `Client.AgentDefinitions`.** The registry the `agent` tool, `spawn_agent` and `resume_agent` use was private to the SDK, so an agent preset (for example an organisation's) could never become a sub-agent. `SetAgentDefinitions(defs []*agent.AgentDefinition) error` replaces the whole set live and atomically, is safe for concurrent use and can be called after `NewClient`; the tools then list the registered types in their schema and describe them to the model. A definition whose type is not 1-64 lowercase letters, digits and dashes, is listed twice, or is the name of a built-in or skill-defined agent is refused (no shadowing, no namespacing) and the others are still installed. Definitions only narrow: permission mode is clamped to the spawning session's, `Tools` and `DisallowedTools` apply. `Model`, `Isolation` and `McpServers` are not applied yet. See `docs/sdk.md`.
+
+### Fixed
+
+- **`AgentDefinition.DisallowedTools` is now enforced, deny wins over allow, and a sub-agent never regains a tool its parent lost.** It was read nowhere: a preset that forbade a tool got no protection, and a preset with only `DisallowedTools` got every tool. The patterns use the same syntax as `Tools` (`*`, `prefix*`, `*suffix`, exact name). The restriction now holds on every spawn path (`agent` normal, fork, background and worktree, `spawn_agent`, `resume_agent`, skill forks), also under a tool's alias, for tools registered after the session started and for tools found through `tool_search` (previously a tool pruned by `Tools` could be loaded back by discovery). Sub-agents of a sub-agent inherit the parent's allow and deny lists. Related: an empty `Tools` list now means all tools, a `tools` request that matches nothing now gives the sub-agent no tool instead of the definition's full set, and `resume_agent` resumes a session as the agent type it was started as (it always used `general-purpose`'s tools and mode); a session whose type is no longer registered is refused. `tasks.Manager.CreateAgentTask` now takes a `ToolPolicy` instead of a pattern list.
+
+- **A sub-agent now runs under the permission mode its definition declares, never a looser one than the agent that spawned it.** `AgentDefinition.PermissionMode` was read nowhere: every sub-agent started through the `agent` tool (normal, fork, background, worktree) ran in `bypass`, so a stricter mode set on an agent preset gave no protection. The mode is now the stricter of the definition's mode and the spawning session's mode (order, strictest first: `never`, `granular`, `onRequest`, `acceptEdits`, `auto`, `bypass`; see `types.PermissionModeStrictness`). An empty mode keeps the previous behaviour, an unknown value falls back to the stricter of the parent mode and `onRequest` and is logged, and a parent in `never` still yields `never`. `spawn_agent` and `resume_agent` used a fixed `bypass`, even under a `never` parent; they now follow the same rule.
+
 ## [1.14.2] - 2026-11-05
 
 ### Changed

@@ -74,6 +74,45 @@ func subAgentPermissionMode(parentMode types.PermissionMode) types.PermissionMod
 	return types.PermissionModeBypass
 }
 
+// resolveSubAgentPermissionMode returns the permission mode a sub-agent of
+// type def runs under, given the spawning session's mode.
+//
+// Rules, in order:
+//
+//  1. def is nil or declares no PermissionMode: unchanged behaviour, see
+//     subAgentPermissionMode (bypass, or never under a never parent).
+//  2. def declares a mode: the child gets the STRICTER of that mode and the
+//     parent's own mode (order: types.PermissionModeStrictness). A definition
+//     can tighten a sub-agent but never loosen it past the agent that spawned
+//     it. A parent whose mode is empty or unknown counts as onRequest.
+//  3. def declares a value that is not one of the known modes: it is not
+//     trusted and not silently widened. The child gets the stricter of the
+//     parent's mode and onRequest, and the mismatch is logged.
+//
+// Since never is the strictest mode, a never parent always yields never
+// (the contract of subAgentPermissionMode holds in every branch).
+func resolveSubAgentPermissionMode(parentMode types.PermissionMode, def *coreagent.AgentDefinition) types.PermissionMode {
+	if def == nil || def.PermissionMode == "" {
+		return subAgentPermissionMode(parentMode)
+	}
+
+	ceiling := types.NormalizePermissionModeOrDefault(parentMode, types.PermissionModeOnRequest)
+
+	requested, ok := types.NormalizePermissionMode(string(def.PermissionMode))
+	if !ok {
+		slog.Warn("agent definition declares an unknown permission mode; using the stricter of the parent mode and onRequest",
+			"agent_type", def.AgentType, "declared_mode", string(def.PermissionMode), "parent_mode", string(ceiling))
+		return types.StricterPermissionMode(ceiling, types.PermissionModeOnRequest)
+	}
+
+	effective := types.StricterPermissionMode(requested, ceiling)
+	if effective != requested {
+		slog.Info("agent definition permission mode clamped to the spawning session's mode",
+			"agent_type", def.AgentType, "declared_mode", string(requested), "parent_mode", string(ceiling), "effective_mode", string(effective))
+	}
+	return effective
+}
+
 // Config for Agent tool
 type AgentToolConfig struct {
 	Enabled bool
@@ -90,6 +129,14 @@ type AgentTool struct {
 	runner   *coreagent.Runner
 	engine   *engine.Engine
 	registry *coreagent.AgentRegistry
+
+	// runFn replaces the agent run when set. Tests use it to observe the
+	// RunConfig a spawn path builds; production code leaves it nil.
+	runFn func(context.Context, *coreagent.RunConfig) (*coreagent.RunResult, error)
+
+	// createTaskFn replaces the background task creation when set (tests only),
+	// so the permission mode handed to the task manager can be observed.
+	createTaskFn func(permMode types.PermissionMode, policy tool.ToolPolicy) (*tasks.Task, error)
 }
 
 // NewAgentTool creates a new agent tool
@@ -126,7 +173,7 @@ func (t *AgentTool) Definition() tool.Definition {
 		Name:               coreagent.ToolNameAgent,
 		DisplayName:        "agent",
 		SearchHint:         coreagent.SearchHintAgent,
-		Description:        coreagent.DescriptionAgent + "\n\n" + coreagent.AgentPrompt,
+		Description:        coreagent.DescriptionAgent + "\n\n" + coreagent.AgentPrompt + hostAgentTypesSection(t.registry),
 		Category:           "agent",
 		IsReadOnly:         false,
 		IsDestructive:      false,
@@ -141,8 +188,8 @@ func (t *AgentTool) Definition() tool.Definition {
 			"properties": map[string]any{
 				"type": map[string]any{
 					"type":        "string",
-					"description": "Agent type to run. Must be one of the built-in types.",
-					"enum":        []string{"general-purpose", "explore", "browse", "plan", "verify"},
+					"description": "Agent type to run. Must be one of the listed types.",
+					"enum":        agentTypeEnum(t.registry),
 				},
 				"task": map[string]any{
 					"type":        "string",
@@ -289,7 +336,7 @@ func (t *AgentTool) Call(
 	}
 
 	fullPrompt := buildAgentTaskPrompt(agentDef, task)
-	permMode := subAgentPermissionMode(input.ToolContextValue().PermissionMode)
+	permMode := resolveSubAgentPermissionMode(input.ToolContextValue().PermissionMode, agentDef)
 
 	// Build a sub-agent event emitter that tags every forwarded event with this tool use ID,
 	// so the frontend can route streaming events to the correct sub-agent card.
@@ -602,24 +649,7 @@ func filterToolPatterns(mainAgentTools []string, agentPatterns []string) []strin
 
 // matchesPattern checks if a tool name matches any of the patterns.
 func matchesPattern(name string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if pattern == "*" || pattern == name {
-			return true
-		}
-		if len(pattern) > 1 && pattern[len(pattern)-1] == '*' {
-			prefix := pattern[:len(pattern)-1]
-			if len(name) >= len(prefix) && name[:len(prefix)] == prefix {
-				return true
-			}
-		}
-		if len(pattern) > 1 && pattern[0] == '*' {
-			suffix := pattern[1:]
-			if len(name) >= len(suffix) && name[len(name)-len(suffix):] == suffix {
-				return true
-			}
-		}
-	}
-	return false
+	return tool.MatchesToolPattern(name, patterns)
 }
 
 // runAgentBackground runs an agent in the background using the task manager.
@@ -667,15 +697,23 @@ func (t *AgentTool) runAgentBackground(ctx context.Context, agentType, prompt st
 	// used for display in the result below, never to pick what the
 	// sub-agent's identity or visible tools actually are.
 	var systemPrompt string
-	var toolPatterns []string
+	var policy tool.ToolPolicy
 	if agentDef := t.resolveAgentDef(agentType); agentDef != nil {
 		if agentDef.GetSystemPrompt != nil {
 			systemPrompt = agentDef.GetSystemPrompt()
 		}
-		toolPatterns = filterToolPatterns(allowedTools, agentDef.GetToolPatterns())
+		policy = coreagent.EffectiveToolPolicy(coreagent.ToolPolicyFromContext(ctx), agentDef, filterToolPatterns(allowedTools, agentDef.GetToolPatterns()))
+	} else {
+		policy = coreagent.ToolPolicyFromContext(ctx)
 	}
 
-	task, err := manager.CreateAgentTask(ctx, prompt, nil, permMode, systemPrompt, toolPatterns)
+	var task *tasks.Task
+	var err error
+	if t.createTaskFn != nil {
+		task, err = t.createTaskFn(permMode, policy)
+	} else {
+		task, err = manager.CreateAgentTask(ctx, prompt, nil, permMode, systemPrompt, policy)
+	}
 	if err != nil {
 		return tool.CallResult{
 			Data:    map[string]any{"error": fmt.Sprintf("failed to create background agent: %v", err)},
@@ -898,6 +936,9 @@ func transcriptMessagesFromRawInput(input map[string]any) []types.Message {
 }
 
 func (t *AgentTool) executeRunConfig(ctx context.Context, config *coreagent.RunConfig) (*coreagent.RunResult, error) {
+	if t.runFn != nil {
+		return t.runFn(ctx, config)
+	}
 	if t.runner != nil {
 		return t.runner.RunAgentAdvanced(ctx, config)
 	}
@@ -970,7 +1011,11 @@ func (t *AgentTool) runAgentInWorktree(ctx context.Context, agentType, task stri
 		Registry:       t.registry,
 	}
 
-	result, err := coreagent.RunAgent(config)
+	runWorktree := coreagent.RunAgent
+	if t.runFn != nil {
+		runWorktree = func(c *coreagent.RunConfig) (*coreagent.RunResult, error) { return t.runFn(ctx, c) }
+	}
+	result, err := runWorktree(config)
 	if err != nil {
 		if result == nil {
 			_ = worktreeManager.RemoveWorktree(context.WithoutCancel(ctx), session, false)

@@ -55,6 +55,72 @@ func NormalizePermissionMode(raw string) (PermissionMode, bool) {
 	}
 }
 
+// PermissionModeStrictness orders the permission modes from the most
+// restrictive (0) to the most permissive. It answers one question: "may a
+// session in mode X hand work to a session in mode Y without widening what can
+// run unapproved?". The order is, strictest first:
+//
+//		never < granular < onRequest < acceptEdits < auto < bypass
+//
+//	  - never fails closed: nothing that needs approval ever runs and nothing is
+//	    escalated to a person. It is the strictest.
+//	  - granular can only narrow the approval flows (each category of prompt may
+//	    be auto-denied) and never approves anything by itself, so it sits below
+//	    onRequest. It is kept strictly below onRequest on purpose: a session
+//	    whose prompts are partly denied must never be clamped up to onRequest,
+//	    which would give those prompts back.
+//	  - onRequest asks a person for everything that is not already allowed.
+//	  - acceptEdits additionally auto-allows safe edits in the working directory.
+//	  - auto lets the classifier approve actions, a wider net than acceptEdits.
+//	  - bypass skips the approval checks (bypass-immune denials still hold).
+//
+// ok is false for a value that is not one of the six modes (including the
+// empty string and the legacy "plan"): callers must decide what an unknown
+// mode means, it is never silently given a rank.
+func PermissionModeStrictness(mode PermissionMode) (rank int, ok bool) {
+	switch mode {
+	case PermissionModeNever:
+		return 0, true
+	case PermissionModeGranular:
+		return 1, true
+	case PermissionModeOnRequest:
+		return 2, true
+	case PermissionModeAcceptEdits:
+		return 3, true
+	case PermissionModeAuto:
+		return 4, true
+	case PermissionModeBypass:
+		return 5, true
+	default:
+		return 0, false
+	}
+}
+
+// StricterPermissionMode returns whichever of a and b is the more restrictive
+// (see PermissionModeStrictness). An unknown mode is never trusted: when one
+// side is unknown the result is the other side if that one is known and at
+// most as permissive as onRequest, and onRequest otherwise; when both are
+// unknown the result is onRequest. So an unknown value can never produce a
+// mode more permissive than onRequest.
+func StricterPermissionMode(a, b PermissionMode) PermissionMode {
+	ra, okA := PermissionModeStrictness(a)
+	rb, okB := PermissionModeStrictness(b)
+	onRequest, _ := PermissionModeStrictness(PermissionModeOnRequest)
+	switch {
+	case okA && okB:
+		if ra <= rb {
+			return a
+		}
+		return b
+	case okA && ra <= onRequest:
+		return a
+	case okB && rb <= onRequest:
+		return b
+	default:
+		return PermissionModeOnRequest
+	}
+}
+
 func NormalizePermissionModeOrDefault(mode PermissionMode, fallback PermissionMode) PermissionMode {
 	if normalized, ok := NormalizePermissionMode(string(mode)); ok {
 		return normalized

@@ -148,11 +148,12 @@ func (m *Manager) CreateBashTask(ctx context.Context, command string) (*Task, er
 // surface profile every other sub-agent spawn path uses (coreagent.RunAgent),
 // instead of the top-level default a plain NewSession would give it.
 //
-// toolPatterns, when non-empty and not a bare "*", prunes the session down
-// to tools matching one of them (see coreagent.RestrictSessionTools) -
-// the caller's combined agentType-pattern/allowedTools list, mirroring
-// what every synchronous sub-agent spawn path already applies via RunAgent.
-func (m *Manager) CreateAgentTask(ctx context.Context, prompt string, tools []tool.Tool, permissionMode types.PermissionMode, systemPrompt string, toolPatterns []string) (*Task, error) {
+// policy restricts the tools the session may use (allow lists and deny
+// patterns, deny winning; see coreagent.EffectiveToolPolicy) - the same policy
+// every synchronous sub-agent spawn path applies via RunAgent. It is enforced
+// for tools registered up front, registered later and found through
+// tool_search, and handed to the sub-agents this task spawns.
+func (m *Manager) CreateAgentTask(ctx context.Context, prompt string, tools []tool.Tool, permissionMode types.PermissionMode, systemPrompt string, policy tool.ToolPolicy) (*Task, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.activeTaskCountLocked() >= m.config.MaxConcurrentTasks {
@@ -181,7 +182,8 @@ func (m *Manager) CreateAgentTask(ctx context.Context, prompt string, tools []to
 	if systemPrompt != "" {
 		session.SetSystemPromptTemplate(systemPrompt)
 	}
-	coreagent.RestrictSessionTools(session, toolPatterns)
+	session.SetToolPolicy(policy)
+	ctx = coreagent.WithToolPolicy(ctx, policy)
 	if err := session.RegisterTools(tools); err != nil {
 		return nil, fmt.Errorf("failed to register tools: %w", err)
 	}

@@ -166,8 +166,11 @@ func (t *ResumeAgentTool) Call(
 		MaxTurns:            maxTurns,
 		Context:             ctx,
 		Registry:            t.reg,
+		InheritedToolPolicy: coreagent.ToolPolicyFromContext(ctx),
 		ResumeFromSessionID: types.SessionID(sessionID),
-		PermissionMode:      types.PermissionModeBypass,
+		// The resumed run is always typed general-purpose (the original type is
+		// not persisted), but a never parent must still not be escalated.
+		PermissionMode: resolveSubAgentPermissionMode(input.ToolContextValue().PermissionMode, resolveSpawnAgentDef(t.reg, "general-purpose")),
 	}
 
 	if runAsync {
