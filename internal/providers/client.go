@@ -263,9 +263,16 @@ func (c *Client) resolveRequestModel(req types.APIRequest) types.APIRequest {
 	return req
 }
 
-// CreateMessage sends a non-streaming message creation request
+// CreateMessage sends a non-streaming message creation request. A model that always reasons and refuses the switch to turn it off is asked
+// again without the switch (see thinking_lock.go).
 func (c *Client) CreateMessage(ctx context.Context, req types.APIRequest) (*types.APIResponse, error) {
 	req = c.resolveRequestModel(req)
+	return c.createMessageWithoutThinkingSwitch(req, func(attempt types.APIRequest) (*types.APIResponse, error) {
+		return c.createMessageOnce(ctx, attempt)
+	})
+}
+
+func (c *Client) createMessageOnce(ctx context.Context, req types.APIRequest) (*types.APIResponse, error) {
 	start := time.Now()
 
 	// Record API request in monitoring
