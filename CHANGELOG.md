@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.15.0] - 2026-11-06
+
 ### Added
 
 - **A host can register agent types: `Client.SetAgentDefinitions` and `Client.AgentDefinitions`.** The registry the `agent` tool, `spawn_agent` and `resume_agent` use was private to the SDK, so an agent preset (for example an organisation's) could never become a sub-agent. `SetAgentDefinitions(defs []*agent.AgentDefinition) error` replaces the whole set live and atomically, is safe for concurrent use and can be called after `NewClient`; the tools then list the registered types in their schema and describe them to the model. A definition whose type is not 1-64 lowercase letters, digits and dashes, is listed twice, or is the name of a built-in or skill-defined agent is refused (no shadowing, no namespacing) and the others are still installed. Definitions only narrow: permission mode is clamped to the spawning session's, `Tools` and `DisallowedTools` apply. `Model`, `Isolation` and `McpServers` are not applied yet. See `docs/sdk.md`.
