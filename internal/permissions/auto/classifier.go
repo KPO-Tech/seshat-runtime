@@ -288,16 +288,16 @@ func (c *TwoStageClassifier) runTwoStage(ctx context.Context, systemPrompt strin
 
 	stage2Start := time.Now()
 	stage2Content := append(wrappedContent, Stage2Suffix)
-	stage2Text := c.callStage2(ctx, systemBlock, strings.Join(stage2Content, ""), prefixMessages)
+	stage2Text, stage2Block := c.stage2Verdict(ctx, systemBlock, strings.Join(stage2Content, ""), prefixMessages)
 
 	stage2DurationMs := time.Since(stage2Start).Milliseconds()
-	stage2Block := c.xmlParser.ParseBlock(stage2Text)
 
 	if stage2Block == nil {
 		LogParseFailure(c.model, "stage2_unparseable")
 		return &ClassifierResult{
 			ShouldBlock: true,
-			Reason:      "Classifier stage 2 unparseable - blocking for safety",
+			Unavailable: true,
+			Reason:      "the safety check could not read the model's answer (stage 2)",
 			Model:       c.model,
 			DurationMs:  stage1DurationMs + stage2DurationMs,
 			Stage:       "thinking",
@@ -322,16 +322,16 @@ func (c *TwoStageClassifier) runFastOnly(ctx context.Context, systemPrompt strin
 	xmlSystemPrompt := ReplaceOutputFormatWithXml(systemPrompt)
 	stage1Start := time.Now()
 	wrappedContent := WrapWithTranscriptTags(userContentBlocks)
-	stage1Text := c.callStage1(ctx, xmlSystemPrompt, strings.Join(wrappedContent, ""), prefixMessages)
+	stage1Text, stage1Block := c.stage1Verdict(ctx, xmlSystemPrompt, strings.Join(wrappedContent, ""), prefixMessages)
 
 	stage1DurationMs := time.Since(stage1Start).Milliseconds()
-	stage1Block := c.xmlParser.ParseBlock(stage1Text)
 
 	if stage1Block == nil {
 		LogParseFailure(c.model, "stage1_unparseable")
 		return &ClassifierResult{
 			ShouldBlock: true,
-			Reason:      "Classifier stage 1 unparseable - blocking for safety",
+			Unavailable: true,
+			Reason:      "the safety check could not read the model's answer (stage 1)",
 			Model:       c.model,
 			DurationMs:  stage1DurationMs,
 			Stage:       "fast",
@@ -362,16 +362,16 @@ func (c *TwoStageClassifier) runThinkingOnly(ctx context.Context, systemPrompt s
 	stage2Start := time.Now()
 	wrappedContent := WrapWithTranscriptTags(userContentBlocks)
 	stage2Content := append(wrappedContent, Stage2Suffix)
-	stage2Text := c.callStage2(ctx, xmlSystemPrompt, strings.Join(stage2Content, ""), prefixMessages)
+	stage2Text, stage2Block := c.stage2Verdict(ctx, xmlSystemPrompt, strings.Join(stage2Content, ""), prefixMessages)
 
 	stage2DurationMs := time.Since(stage2Start).Milliseconds()
-	stage2Block := c.xmlParser.ParseBlock(stage2Text)
 
 	if stage2Block == nil {
 		LogParseFailure(c.model, "stage2_unparseable")
 		return &ClassifierResult{
 			ShouldBlock: true,
-			Reason:      "Classifier stage 2 unparseable - blocking for safety",
+			Unavailable: true,
+			Reason:      "the safety check could not read the model's answer (stage 2)",
 			Model:       c.model,
 			DurationMs:  stage2DurationMs,
 			Stage:       "thinking",
@@ -390,6 +390,29 @@ func (c *TwoStageClassifier) runThinkingOnly(ctx context.Context, systemPrompt s
 		DurationMs: stage2DurationMs,
 		Stage:      "thinking",
 	}, nil
+}
+
+// stage1Verdict asks the fast stage and, when its answer cannot be read (an empty answer after a failed call, text with no <block>), asks once
+// more: one failed call is often a network blip, and a second one is not worth more than a second.
+func (c *TwoStageClassifier) stage1Verdict(ctx context.Context, systemPrompt, userContent string, prefixMessages []types.Message) (string, *bool) {
+	text := c.callStage1(ctx, systemPrompt, userContent, prefixMessages)
+	block := c.xmlParser.ParseBlock(text)
+	if block == nil && ctx.Err() == nil {
+		text = c.callStage1(ctx, systemPrompt, userContent, prefixMessages)
+		block = c.xmlParser.ParseBlock(text)
+	}
+	return text, block
+}
+
+// stage2Verdict is stage1Verdict for the thinking stage.
+func (c *TwoStageClassifier) stage2Verdict(ctx context.Context, systemPrompt, userContent string, prefixMessages []types.Message) (string, *bool) {
+	text := c.callStage2(ctx, systemPrompt, userContent, prefixMessages)
+	block := c.xmlParser.ParseBlock(text)
+	if block == nil && ctx.Err() == nil {
+		text = c.callStage2(ctx, systemPrompt, userContent, prefixMessages)
+		block = c.xmlParser.ParseBlock(text)
+	}
+	return text, block
 }
 
 func (c *TwoStageClassifier) callStage1(ctx context.Context, systemPrompt, userContent string, prefixMessages []types.Message) string {

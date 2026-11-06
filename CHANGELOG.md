@@ -9,6 +9,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Writes blocked for good with glm-5.3 in the smart permission mode.** The safety check and the summary of a long conversation ask z.ai to switch the model's reasoning off; glm-5.3 always reasons and answers HTTP 400 ("cannot be disabled"), so the check failed on every call, its empty answer was counted as unreadable, and every write was refused without a question. A provider that refuses the switch is now asked again without it, and the refusal is remembered for that model (nothing is listed). And a check that cannot decide (a failed call, an answer with no verdict) is asked once more, then asks the person, or refuses only where nobody can answer (a background agent), instead of refusing in all cases.
+
 ## [1.15.0] - 2026-11-06
 
 ### Added

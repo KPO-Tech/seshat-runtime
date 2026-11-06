@@ -50,8 +50,8 @@ func (c *Client) buildOpenAIRequestBody(req types.APIRequest) (io.Reader, error)
 		// then drops a turn that was working. The glm-4.5, 4.6, 4.7 and 5.1 models all accept it.
 		body["tool_stream"] = true
 	}
-	if req.DisableThinking && req.Model.Provider == types.APIProviderZAi {
-		// z.ai: the GLM-4.5 and later models think unless told not to.
+	if req.DisableThinking && req.Model.Provider == types.APIProviderZAi && !thinkingIsLocked(req.Model) {
+		// z.ai: the GLM-4.5 and later models think unless told not to; glm-5.3 always thinks and answers HTTP 400 to the switch.
 		body["thinking"] = map[string]any{"type": "disabled"}
 	}
 	data, err := json.Marshal(body)
