@@ -1,19 +1,19 @@
-# CODEOWNERS — Nexus Engine
+# CODEOWNERS — seshat-runtime
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
 # Default owner for everything
-* @EngineerProjects/nexus-core
+* @EngineerProjects
 
 # Security-sensitive paths — require explicit maintainer review
-internal/permissions/         @EngineerProjects/nexus-core
-internal/tools/bash/          @EngineerProjects/nexus-core
-internal/sandbox/             @EngineerProjects/nexus-core
-SECURITY.md                   @EngineerProjects/nexus-core
+internal/permissions/         @EngineerProjects
+internal/tools/bash/          @EngineerProjects
+internal/sandbox/             @EngineerProjects
+SECURITY.md                   @EngineerProjects
 
 # Public API — changes affect downstream consumers
-pkg/sdk/                      @EngineerProjects/nexus-core
-pkg/grpc/proto/               @EngineerProjects/nexus-core
+pkg/sdk/                      @EngineerProjects
+pkg/grpc/proto/               @EngineerProjects
 
 # CI / release pipelines
-.github/workflows/            @EngineerProjects/nexus-core
-Makefile                      @EngineerProjects/nexus-core
+.github/workflows/            @EngineerProjects
+Makefile                      @EngineerProjects
