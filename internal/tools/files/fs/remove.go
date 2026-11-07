@@ -87,13 +87,12 @@ func (t *RemoveTool) Call(
 	if d := input.ToolContextValue().WorkingDirectory; d != "" {
 		base = d
 	}
-	realBase, _ := filepath.EvalSymlinks(base)
-	realTarget, _ := filepath.EvalSymlinks(filepath.Dir(absPath))
-	if realBase != "" && realTarget != "" {
-		rel, relErr := filepath.Rel(realBase, realTarget)
-		if relErr != nil || strings.HasPrefix(rel, "..") {
-			return tool.NewErrorResult(fmt.Errorf("path is outside working directory: %s", absPath)), nil
-		}
+	parentMissing, err := confineToBase(base, absPath)
+	if err != nil {
+		return tool.NewErrorResult(err), nil
+	}
+	if parentMissing {
+		return tool.NewTextResult(fmt.Sprintf("path does not exist (nothing to remove): %s", absPath)), nil
 	}
 
 	// Check that path exists.
@@ -201,4 +200,27 @@ func (t *RemoveTool) PreparePermissionMatcher(_ context.Context, _ map[string]an
 
 func (t *RemoveTool) Description(_ context.Context) (string, error) {
 	return "Delete a file or directory with safety checks.", nil
+}
+
+// confineToBase checks that the folder holding absPath is inside base, with the symbolic links of both resolved. It fails closed: a
+// base or a folder that cannot be resolved is a refusal, not a check that is skipped. parentMissing reports a folder that does not exist,
+// in which case there is nothing to remove.
+func confineToBase(base, absPath string) (parentMissing bool, err error) {
+	realBase, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return false, fmt.Errorf("cannot resolve the working directory %q: %w", base, err)
+	}
+	realTarget, err := filepath.EvalSymlinks(filepath.Dir(absPath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true, nil
+		}
+		return false, fmt.Errorf("cannot resolve the folder of %s: %w", absPath, err)
+	}
+	rel, err := filepath.Rel(realBase, realTarget)
+	// A path that goes up starts with ".." as a whole element: a folder named "..notes" is inside.
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false, fmt.Errorf("path is outside working directory: %s", absPath)
+	}
+	return false, nil
 }
