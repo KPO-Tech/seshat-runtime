@@ -310,6 +310,23 @@ func (m *Mode) Classify(ctx context.Context, pctx *ClassifierContext) (types.Per
 				Reason: err.Error(),
 			}), nil
 		}
+		if result.Unavailable {
+			// The check could not decide (its model did not answer in a form that can be read, the call failed twice). That is no verdict
+			// on the action: with a person there, they decide; without one, nothing is done.
+			reason := fmt.Sprintf("the safety check could not decide on %s: %s", pctx.ToolName, result.Reason)
+			if pctx.ShouldAvoidPermissionPrompts {
+				return types.DenyWithDecisionReason(reason, &types.PermissionDecisionReason{
+					Type:   types.PermissionDecisionReasonAsyncAgent,
+					Source: "classifier",
+					Reason: reason,
+				}), nil
+			}
+			return types.AskWithDecisionReason(reason, &types.PermissionDecisionReason{
+				Type:   types.PermissionDecisionReasonOther,
+				Source: "classifier",
+				Reason: reason,
+			}), nil
+		}
 		allowed = !result.ShouldBlock
 		confidence = 1.0
 		reason = result.Reason
