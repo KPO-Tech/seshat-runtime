@@ -9,6 +9,15 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **`read_document_url` no longer reaches the local network, and no longer writes where it likes.** The address is chosen by the model and it is the document reader that fetches it, from the machine it runs on, yet only the scheme was checked: `http://169.254.169.254/` or an address on the local network went through. It now follows the same policy as `web_fetch` (literal name when the input is validated, name and what it resolves to when the tool runs). `save_path` wrote the page with no check at all, and an absolute path was accepted as it was, although the tool is marked read only; now the file must be inside the workspace (or the working directory), not a protected file, and new (a page cannot replace a source file), the check happens before the download, and a failed save is told in the answer instead of being dropped. The tool is read only only when nothing is saved.
+- **`remove_file` refuses when it cannot check where it is.** The check that the file is inside the working directory was skipped when a path could not be resolved, and a folder called `..notes` was refused as if it went up. A path that cannot be resolved is now a refusal, and only a whole `..` element goes up.
+
+### Removed
+
+- **`searxng.URLReader`**, a page reader with no caller and no network policy, that anyone wiring it later would have used to fetch local addresses.
+
 ## [1.15.1] - 2026-11-07
 
 ### Fixed
