@@ -9,9 +9,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
 ### Added
 
 - **The gRPC server now exposes the whole runtime, and there is a Python client for it.** The surface was `Query`, `QueryStream` and five catalogs: everything a real client needs — a conversation that lives across calls, its events, its approvals, memory, workflows — had no RPC, so a network client could only ask one question at a time and guess the rest. It is now four services: `SeshatService` (server info, models and providers, skills, MCP servers, sessions), `SessionService` (open a conversation, submit a turn unary or streamed, subscribe to its events, its messages, state, tools, plans, interrupt and compact), `MemoryService` (the entity graph and the context block) and `WorkflowService` (validate, draft, run). `pkg/grpc/proto/seshat.proto` remains the single source and both Go and Python stubs are generated from it with `make proto`.
@@ -21,11 +18,6 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [1.15.2] - 2026-11-08
 
->>>>>>> e39092d9 (docs: document the gRPC surface, the Python client and make proto)
-=======
-## [1.15.2] - 2026-11-08
-
->>>>>>> origin/dev
 ### Security
 
 - **`read_document_url` no longer reaches the local network, and no longer writes where it likes.** The address is chosen by the model and it is the document reader that fetches it, from the machine it runs on, yet only the scheme was checked: `http://169.254.169.254/` or an address on the local network went through. It now follows the same policy as `web_fetch` (literal name when the input is validated, name and what it resolves to when the tool runs). `save_path` wrote the page with no check at all, and an absolute path was accepted as it was, although the tool is marked read only; now the file must be inside the workspace (or the working directory), not a protected file, and new (a page cannot replace a source file), the check happens before the download, and a failed save is told in the answer instead of being dropped. The tool is read only only when nothing is saved.
@@ -958,7 +950,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `read_file` reads a PDF page by page, with a `--- page N ---` marker before each page. With no `pages` it reads from the start; with `pages` ("3", "10-20", "5-") those pages. A read is bounded by cost, not page count: it stops at a page boundary after 120,000 characters, or after sending 20 pages with no text layer to the document reader, and says which page to continue from. The result names the pages that hold images or have no readable text.
 - Only the pages a read returns are read, in batches of ten, and each is remembered per file (path, size, modification time), so the first read of a long document is quick and a page an engine had to read is never paid for twice.
 - `internal/pdfsmart` gains `ReadPages` (`Convert` for chosen pages, with options to leave pages with an image but good text to the native reader and to bound engine calls) and `PageCount`. `Convert` behaves as before.
-- Native PDF pages are read as markdown, not flat text. Typesetting gives the structure: a line much bigger than the body is a heading (`#` to `###`), lines in a monospace font are a fenced code block with their indentation and spacing restored column by column, bullets and numbers are list items, wrapped lines are one paragraph (a hyphen added at a line end is undone), dot leaders become "…", and a table of contents keeps one entry per line. Formulas are recognised by their math font and position: inline ones become `$...$` with `^{}` and `_{}`, display ones become `$$...$$` with `rac{}{}`, `egin{cases}` and sums with their bounds, read in drawing order because the x the PDF library gives is unreliable for many fonts. Symbols stay as the PDF has them (Unicode math letters). Fraction bars, roots and matrices are not drawn as glyphs and are not recognised; a formula that needs them comes out as its parts in reading order. Tables are not detected.
+- Native PDF pages are read as markdown, not flat text. Typesetting gives the structure: a line much bigger than the body is a heading (`#` to `###`), lines in a monospace font are a fenced code block with their indentation and spacing restored column by column, bullets and numbers are list items, wrapped lines are one paragraph (a hyphen added at a line end is undone), dot leaders become "…", and a table of contents keeps one entry per line. Formulas are recognised by their math font and position: inline ones become `$...$` with `^{}` and `_{}`, display ones become `$$...$$` with `
+rac{}{}`, `egin{cases}` and sums with their bounds, read in drawing order because the x the PDF library gives is unreliable for many fonts. Symbols stay as the PDF has them (Unicode math letters). Fraction bars, roots and matrices are not drawn as glyphs and are not recognised; a formula that needs them comes out as its parts in reading order. Tables are not detected.
 
 ### Fixed
 - Native PDF text had no spaces between words on many PDFs (LaTeX output among them), which draw each word separately and leave the space as a gap: a paragraph came back as one unbroken word, and line breaks were lost. Text is now rebuilt from the position of each glyph, restoring word spaces and lines, and an accent drawn as its own glyph is joined to its letter. This affects every reader built on it (`read_file`, `pdfsmart`, `pkg/documentreading`, `pkg/pdftext`).
