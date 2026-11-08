@@ -44,3 +44,14 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py39"
+# protoc's output, not ours: `make proto` writes it and it is not written to be
+# linted.
+extend-exclude = ["seshat/_proto"]
+
+[tool.ruff.lint]
+# What catches a mistake rather than a taste: an undefined name, an unused
+# import, an import order that turns into a cycle, a mutable default, a
+# comparison that is always true. The modernization family (UP) is deliberately
+# off: the package supports Python 3.9, and those rules would rewrite the
+# annotations it keeps deliberately.
+select = ["E9", "F", "I", "B"]

@@ -25,7 +25,7 @@ import grpc
 from . import errors
 from ._proto import seshat_pb2 as pb
 from .events import PermissionRequest, PromptRequest, SessionEvent
-from .types import Image, Message, SessionInfo, SessionSnapshot, SessionState, ToolInfo, TurnResult
+from .types import Image, Message, SessionSnapshot, SessionState, ToolInfo, TurnResult
 
 PermissionHandler = Callable[[PermissionRequest], Union[str, bool, None]]
 PromptHandler = Callable[[PromptRequest], Any]

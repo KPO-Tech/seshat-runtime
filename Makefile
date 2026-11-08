@@ -27,7 +27,7 @@ export PATH := $(CURDIR)/bin$(SEP)$(PATH)
 ARGS           ?=
 
 .PHONY: help all setup build build-cli build-grpc build_linux run run-fresh doctor where \
-        proto test test-short test-tui test-pkg test-race test-python fmt fmt-check vet lint check tidy hooks \
+        proto test test-short test-tui test-pkg test-race test-python lint-python fmt fmt-check vet lint check tidy hooks \
         rust-build rust-test rust-check \
         clean clean-runtime clean-all install-deepdoc-models
 
@@ -125,6 +125,11 @@ test-race: ## Run all Go tests with the race detector
 
 test-python: ## Run the Python client tests (cd python && pip install -e . pytest first)
 	cd python && $(PYTHON) -m pytest -q
+
+lint-python: ## Lint the Python client with the rules python/pyproject.toml selects
+	@command -v ruff > /dev/null 2>&1 \
+		|| (echo "ruff not installed - run: $(PYTHON) -m pip install ruff" && exit 1)
+	cd python && ruff check .
 
 # Code quality
 

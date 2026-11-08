@@ -24,10 +24,10 @@ from ._proto import seshat_pb2 as pb
 from ._proto import seshat_pb2_grpc as pb_grpc
 from .session import Session
 from .types import (
+    Health,
     MCPServer,
     MemoryEntity,
     MemoryGraph,
-    Health,
     ModelInfo,
     ObservationResult,
     ProviderInfo,
