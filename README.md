@@ -277,7 +277,7 @@ Sessions are persisted locally in SQLite. Skills are loaded from `.seshat/skills
 
 ### 2. 🌐 gRPC Server
 
-Run seshat as a gRPC service and generate clients for any language. Reference: [gRPC API](https://seshat-ai.com/en/docs/sdk/grpc-api).
+Run seshat as a gRPC service and drive the same runtime from any language. Reference: [gRPC API](https://seshat-ai.com/en/docs/sdk/grpc-api).
 
 ```bash
 # Development
@@ -287,12 +287,47 @@ ANTHROPIC_API_KEY=sk-ant-... go run ./cmd/grpc
 ANTHROPIC_API_KEY=sk-ant-... ./bin/seshat-grpc
 ```
 
-Server starts on `:50051`. The contract lives in `pkg/grpc/proto/seshat.proto`. Generate a client for Python, TypeScript, Java, Rust, or any gRPC-supported language:
+The server starts on `127.0.0.1:50051` and exposes the whole runtime through four services in `pkg/grpc/proto/seshat.proto`:
+
+| Service | What it covers |
+|---|---|
+| `SeshatService` | server info, models and providers, skills, MCP servers, and sessions: create, list, search, delete |
+| `SessionService` | a conversation: submit a turn (unary or streamed), its events, messages, state, tools, plans, interrupt, compact |
+| `MemoryService` | the long-term memory graph: entities, observations, search, the context block |
+| `WorkflowService` | validate, draft and run workflows |
+
+A turn streams its events, and a tool that needs a decision asks the client over the same open stream (`permission_request` → `RespondPermission`, `allow` / `allow_session` / `deny`). An agent opened from another language is therefore supervised as closely as one in the terminal, and a session is described completely at creation: model, system prompt, tool set, working directory, permission mode and the limits of the agent.
+
+#### Python
 
 ```bash
-# Python
-python -m grpc_tools.protoc -I pkg/grpc/proto --python_out=. --grpc_python_out=. seshat.proto
+pip install ./python
+```
 
+```python
+import seshat
+
+with seshat.connect() as client:
+    with client.create_session(
+        system_prompt_template="You review Go pull requests.",
+        tools=["read_file", "bash"],
+        working_dir="/srv/repo",
+        permission_mode="onRequest",
+        max_turns=12,
+    ) as session:
+        for event in session.stream("review the staged diff",
+                                    on_permission=lambda request: "allow"):
+            if event.kind == "chunk":
+                print(event.text, end="")
+```
+
+Full guide: [`python/README.md`](python/README.md). `seshat.aio` is the same API on an asyncio channel.
+
+#### Other languages
+
+The contract is one `.proto`: `make proto` regenerates the Go stubs and the Python ones together, and the same file generates a client for TypeScript, Java, Rust, or anything else with a gRPC implementation.
+
+```bash
 # TypeScript
 npx grpc-tools --js_out=. --grpc_out=. pkg/grpc/proto/seshat.proto
 ```
