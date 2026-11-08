@@ -218,11 +218,36 @@ func (c *converter) link(sb *strings.Builder, n *html.Node, depth int) {
 		return
 	}
 	href := strings.TrimSpace(attr(n, "href"))
-	if href == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(strings.ToLower(href), "javascript:") || strings.Contains(text, "\n") {
+	if href == "" || strings.HasPrefix(href, "#") || !safeLinkTarget(href) || strings.Contains(text, "\n") {
 		sb.WriteString(text)
 		return
 	}
 	sb.WriteString("[" + text + "](" + strings.ReplaceAll(href, " ", "%20") + ")")
+}
+
+// safeLinkTarget is true for an address a reader can follow without running anything: a web address, a mail or phone link, or a
+// place on the same site. Any other scheme (javascript:, data:, vbscript:, file:) is dropped and only the words of the link stay. A
+// browser ignores tabs and line breaks inside a scheme, so "jav&#x09;ascript:" is read as "javascript:"; they are taken out before
+// the scheme is read.
+func safeLinkTarget(href string) bool {
+	cleaned := strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(href))
+	colon := strings.IndexByte(cleaned, ':')
+	if colon < 0 {
+		return true // a relative address: no scheme
+	}
+	if slash := strings.IndexAny(cleaned, "/?#"); slash >= 0 && slash < colon {
+		return true // the colon comes after a path, not after a scheme
+	}
+	switch strings.ToLower(cleaned[:colon]) {
+	case "http", "https", "mailto", "tel":
+		return true
+	}
+	return false
 }
 
 func isMarker(text string) bool {

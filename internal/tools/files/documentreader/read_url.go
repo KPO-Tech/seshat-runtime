@@ -12,6 +12,7 @@ import (
 	tool "github.com/KPO-Tech/seshat-runtime/internal/tools/registry"
 	"github.com/KPO-Tech/seshat-runtime/internal/tools/schema"
 	"github.com/KPO-Tech/seshat-runtime/internal/types"
+	webcore "github.com/KPO-Tech/seshat-runtime/internal/web"
 )
 
 const (
@@ -35,6 +36,8 @@ const (
 // document-conversion backend.
 type ReadURLTool struct {
 	documentReader reader.Converter
+	// resolver answers the host lookups of the network policy; nil means the system resolver.
+	resolver webcore.HostResolver
 }
 
 // NewReadURLTool creates a new read_document_url tool.
@@ -95,6 +98,27 @@ func (t *ReadURLTool) Call(
 		)), nil
 	}
 
+	// The address is chosen by the model, and it is the document reader that fetches it, from wherever the reader runs: the same policy
+	// as web_fetch keeps it off the local network and the metadata services. The reader does the download itself, so this is a check
+	// of the name and of what it resolves to now, not of the connection.
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return tool.NewErrorResult(fmt.Errorf("invalid URL: %w", err)), nil
+	}
+	if err := webcore.ResolveAndRejectLocalNetworkTarget(ctx, parsedURL, t.resolver); err != nil {
+		return tool.NewErrorResult(fmt.Errorf("read_document_url: %w", err)), nil
+	}
+
+	// Refuse a save path that is not acceptable before the download, not after it.
+	saveTo := ""
+	if savePath != "" {
+		target, err := saveTarget(savePath, input.ToolContextValue())
+		if err != nil {
+			return tool.NewErrorResult(fmt.Errorf("save_path: %w", err)), nil
+		}
+		saveTo = target
+	}
+
 	conversion, err := t.documentReader.ConvertURL(ctx, rawURL)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -104,19 +128,18 @@ func (t *ReadURLTool) Call(
 	}
 
 	// Optionally write markdown to workspace path.
+	// A failure is told, not hidden: the answer says where the text went or why it did not.
 	savedAt := ""
-	if savePath != "" {
-		absPath := resolveWorkspacePath(savePath, input.ToolContextValue())
-		if absPath != "" {
-			if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err == nil {
-				if err := os.WriteFile(absPath, []byte(conversion.Markdown), 0o644); err == nil {
-					savedAt = absPath
-				}
-			}
+	saveNote := ""
+	if saveTo != "" {
+		if err := writeNewFile(saveTo, []byte(conversion.Markdown)); err != nil {
+			saveNote = fmt.Sprintf("\nNot saved: %v", err)
+		} else {
+			savedAt = saveTo
 		}
 	}
 
-	return tool.NewTextResult(formatURLResult(rawURL, conversion, savedAt)), nil
+	return tool.NewTextResult(formatURLResult(rawURL, conversion, savedAt) + saveNote), nil
 }
 
 func (t *ReadURLTool) ValidateInput(_ context.Context, input map[string]any) (map[string]any, error) {
@@ -127,6 +150,12 @@ func (t *ReadURLTool) ValidateInput(_ context.Context, input map[string]any) (ma
 	if err := validateURL(strings.TrimSpace(rawURL)); err != nil {
 		return nil, err
 	}
+	// The name alone, without a lookup; the lookup is made when the tool runs.
+	if parsed, err := url.Parse(strings.TrimSpace(rawURL)); err == nil {
+		if err := webcore.RejectLocalNetworkTarget(parsed); err != nil {
+			return nil, fmt.Errorf("read_document_url: %w", err)
+		}
+	}
 	return input, nil
 }
 
@@ -134,8 +163,13 @@ func (t *ReadURLTool) CheckPermissions(_ context.Context, input map[string]any, 
 	return types.Passthrough(input)
 }
 
-func (t *ReadURLTool) IsEnabled() bool                         { return true }
-func (t *ReadURLTool) IsReadOnly(_ map[string]any) bool        { return true }
+func (t *ReadURLTool) IsEnabled() bool { return true }
+
+// IsReadOnly is true only when nothing is saved: with a save_path the tool writes a file.
+func (t *ReadURLTool) IsReadOnly(input map[string]any) bool {
+	savePath, _ := input["save_path"].(string)
+	return strings.TrimSpace(savePath) == ""
+}
 func (t *ReadURLTool) IsConcurrencySafe(_ map[string]any) bool { return true }
 func (t *ReadURLTool) BackfillInput(_ context.Context, input map[string]any) map[string]any {
 	return input
@@ -165,22 +199,20 @@ func validateURL(raw string) error {
 	}
 }
 
-func resolveWorkspacePath(path string, toolCtx tool.ToolUseContext) string {
-	if toolCtx.Workspace != nil {
-		resolved, err := toolCtx.Workspace.Resolve(path)
-		if err != nil {
-			return ""
-		}
-		return resolved
+// writeNewFile creates the file and its folders; it never replaces a file that appeared since the check.
+func writeNewFile(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
 	}
-	if filepath.IsAbs(path) {
-		return path
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- the path was checked by saveTarget
+	if err != nil {
+		return err
 	}
-	workingDir := strings.TrimSpace(toolCtx.WorkingDirectory)
-	if workingDir == "" {
-		return ""
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return err
 	}
-	return filepath.Join(workingDir, path)
+	return f.Close()
 }
 
 func formatURLResult(sourceURL string, r *reader.ConversionResult, savedAt string) string {

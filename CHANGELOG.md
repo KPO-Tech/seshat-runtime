@@ -9,6 +9,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.15.2] - 2026-11-08
+
+### Security
+
+- **`read_document_url` no longer reaches the local network, and no longer writes where it likes.** The address is chosen by the model and it is the document reader that fetches it, from the machine it runs on, yet only the scheme was checked: `http://169.254.169.254/` or an address on the local network went through. It now follows the same policy as `web_fetch` (literal name when the input is validated, name and what it resolves to when the tool runs). `save_path` wrote the page with no check at all, and an absolute path was accepted as it was, although the tool is marked read only; now the file must be inside the workspace (or the working directory), not a protected file, and new (a page cannot replace a source file), the check happens before the download, and a failed save is told in the answer instead of being dropped. The tool is read only only when nothing is saved.
+- **The extraction of the title model archives follows links on disk, not as text.** A link to `.` and then a link to `s/..` is inside the folder as text and outside on disk, so a file written through it landed outside; the folder of each entry is now resolved with every link followed, a link is followed where it exists, and an entry is never written over a link. The size of a zip entry (a field of the archive) can no longer wrap around into a negative number, and what is written is counted against what is left. The archives were already checked against a fixed SHA-256, so this is a second line.
+- **Links in a converted web page keep only web, mail, phone and relative addresses.** `data:`, `vbscript:`, `file:` and a scheme written with a tab inside went through; only the words of such a link stay.
+- **`SESHAT_GRPC_MAX_CONCURRENT_RPCS` is capped at what the server takes.** 5000000000 wrapped around to 705032704. See `docs/codeql-triage.md`, which also lists the CodeQL alerts that were read and kept.
+- **`remove_file` refuses when it cannot check where it is.** The check that the file is inside the working directory was skipped when a path could not be resolved, and a folder called `..notes` was refused as if it went up. A path that cannot be resolved is now a refusal, and only a whole `..` element goes up.
+
+### Removed
+
+- **`searxng.URLReader`**, a page reader with no caller and no network policy, that anyone wiring it later would have used to fetch local addresses.
+
 ## [1.15.1] - 2026-11-07
 
 ### Fixed

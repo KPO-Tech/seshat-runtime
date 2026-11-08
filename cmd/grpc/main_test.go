@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math"
 	"strings"
 	"sync"
 	"testing"
@@ -536,5 +537,17 @@ func TestBuildSDKClientConfigUsesExplicitAPIKeyWithoutHostProviderSetup(t *testi
 	}
 	if cfg.Model.Provider != sdk.APIProviderCodex {
 		t.Fatalf("expected codex provider, got %q", cfg.Model.Provider)
+	}
+}
+
+func TestMaxConcurrentRPCsFromEnvCannotWrapAroundTheServerLimit(t *testing.T) {
+	// A number above what the server takes (an unsigned 32-bit one) wrapped around to a small value or to none.
+	t.Setenv("SESHAT_GRPC_MAX_CONCURRENT_RPCS", "5000000000")
+	cfg := loadGRPCConfigFromEnv()
+	if cfg.MaxConcurrentRPCs <= 0 || int64(cfg.MaxConcurrentRPCs) > math.MaxInt32 {
+		t.Fatalf("MaxConcurrentRPCs = %d, want a value in 1..%d", cfg.MaxConcurrentRPCs, math.MaxInt32)
+	}
+	if uint32(cfg.MaxConcurrentRPCs) != uint32(math.MaxInt32) {
+		t.Fatalf("the value does not survive the conversion the server makes: %d", cfg.MaxConcurrentRPCs)
 	}
 }

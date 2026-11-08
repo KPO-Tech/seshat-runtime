@@ -355,17 +355,56 @@ func inside(base, name string) (string, bool) {
 // maxExtractedBytes bounds what an archive may unpack to: the CPU builds are a few tens of megabytes.
 const maxExtractedBytes = 400 << 20
 
+// checkWritable refuses an entry that would be created outside dest through a link the archive made earlier. The name of an entry is
+// checked as text by inside(); that is not enough once the archive holds a link, because "link/file" is under dest as text and
+// wherever the link points on disk. The folder that holds the entry (or the closest one that exists) is resolved, with every link
+// followed, and must still be under dest; and an entry is never written over a link, which a write would follow.
+func checkWritable(dest, target string) error {
+	realDest, err := filepath.EvalSymlinks(dest)
+	if err != nil {
+		return err
+	}
+	existing := filepath.Dir(target)
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return fmt.Errorf("the archive holds a path outside its folder: %q", target)
+		}
+		existing = parent
+	}
+	realParent, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return err
+	}
+	if rel, err := filepath.Rel(realDest, realParent); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("the archive writes through a link that leaves its folder: %q", target)
+	}
+	if info, err := os.Lstat(target); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("the archive writes over a link: %q", target)
+	}
+	return nil
+}
+
 func extractZip(archivePath, dest string) error {
 	zr, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return err
 	}
 	defer zr.Close()
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
 	var total int64
 	for _, f := range zr.File {
 		target, ok := inside(dest, f.Name)
 		if !ok {
 			return fmt.Errorf("the archive holds a path outside its folder: %q", f.Name)
+		}
+		if err := checkWritable(dest, target); err != nil {
+			return err
 		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
@@ -376,35 +415,44 @@ func extractZip(archivePath, dest string) error {
 		if f.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
-		total += int64(f.UncompressedSize64)
-		if total > maxExtractedBytes {
+		// The size is a field of the archive, so it is not trusted: a huge value must not wrap around into a small one, and what is
+		// really written is counted against what is left, whatever the header said.
+		if f.UncompressedSize64 > uint64(maxExtractedBytes-total) {
 			return errors.New("the archive unpacks to more than expected")
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		if err := writeZipEntry(f, target); err != nil {
+		written, err := writeZipEntry(f, target, maxExtractedBytes-total)
+		if err != nil {
 			return err
 		}
+		total += written
 	}
 	return nil
 }
 
-func writeZipEntry(f *zip.File, target string) error {
+// writeZipEntry writes one entry and stops with an error when it holds more than budget bytes, whatever its header says.
+func writeZipEntry(f *zip.File, target string, budget int64) (int64, error) {
 	rc, err := f.Open()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer rc.Close()
-	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755) // #nosec G302 G304 -- target was checked by inside and checkWritable
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if _, err := io.Copy(out, io.LimitReader(rc, maxExtractedBytes)); err != nil {
+	written, err := io.Copy(out, io.LimitReader(rc, budget+1))
+	if err != nil {
 		_ = out.Close()
-		return err
+		return written, err
 	}
-	return out.Close()
+	if written > budget {
+		_ = out.Close()
+		return written, errors.New("the archive unpacks to more than expected")
+	}
+	return written, out.Close()
 }
 
 func extractTarGz(archivePath, dest string) error {
@@ -419,6 +467,9 @@ func extractTarGz(archivePath, dest string) error {
 	}
 	defer gz.Close()
 	tr := tar.NewReader(gz)
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return err
+	}
 	var total int64
 	for {
 		hdr, err := tr.Next()
@@ -432,16 +483,19 @@ func extractTarGz(archivePath, dest string) error {
 		if !ok {
 			return fmt.Errorf("the archive holds a path outside its folder: %q", hdr.Name)
 		}
+		if err := checkWritable(dest, target); err != nil {
+			return err
+		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
 			}
 		case tar.TypeReg:
-			total += hdr.Size
-			if total > maxExtractedBytes {
+			if hdr.Size < 0 || hdr.Size > maxExtractedBytes-total {
 				return errors.New("the archive unpacks to more than expected")
 			}
+			total += hdr.Size
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
@@ -468,11 +522,38 @@ func extractTarGz(archivePath, dest string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
+			// The check above reads the link as text. Where the link would lead on disk, links already made included, is what counts:
+			// "s" pointing at "." and then "t" pointing at "s/.." is inside as text and outside on disk.
+			if err := checkLinkTarget(dest, target, hdr.Linkname); err != nil {
+				return err
+			}
 			if err := os.Symlink(hdr.Linkname, target); err != nil {
 				return err
 			}
 		}
 	}
+}
+
+// checkLinkTarget refuses a link whose target, followed on disk through the links that exist now, leaves dest. A target that does not
+// exist yet cannot be followed; checkWritable stops anything from being written through it later.
+func checkLinkTarget(dest, link, linkname string) error {
+	realDest, err := filepath.EvalSymlinks(dest)
+	if err != nil {
+		return err
+	}
+	realParent, err := filepath.EvalSymlinks(filepath.Dir(link))
+	if err != nil {
+		return err
+	}
+	// Joined as text, not with filepath.Join, which would cancel a ".." against the name before it and hide the link in between.
+	resolved, err := filepath.EvalSymlinks(realParent + string(filepath.Separator) + filepath.FromSlash(linkname))
+	if err != nil {
+		return nil
+	}
+	if rel, err := filepath.Rel(realDest, resolved); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("the archive holds a link that leaves its folder: %q", link)
+	}
+	return nil
 }
 
 func mustRel(base, target string) string {
