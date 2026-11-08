@@ -190,6 +190,46 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
           govulncheck ./...
 
+  python:
+    name: Python (${{ matrix.python-version }})
+    # The client lives outside both Go modules, so nothing above compiles it and
+    # nothing above would notice a field name that no longer exists on the
+    # wire. Two versions: the package declares `requires-python >= 3.10`, and a
+    # floor nobody runs is a floor that is wrong. The 3.9 entry caught a real
+    # one on its first run (the stubs refuse an older protobuf at import).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: python/pyproject.toml
+
+      # Installing it is half the check: it is the first thing a user does.
+      - name: Install the client
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ./python pytest
+
+      # Pinned, like gosec and govulncheck above: a linter that moves under the
+      # build can turn a green branch red without a line of its own changing.
+      # The rules are chosen in python/pyproject.toml, so `make lint-python` and
+      # this step cannot disagree.
+      - name: Lint
+        run: |
+          python -m pip install "ruff==0.17.4"
+          make lint-python
+
+      - name: Test
+        run: make test-python
+
   branch-policy:
     name: Branch Policy
     runs-on: ubuntu-latest
@@ -238,7 +278,7 @@ jobs:
   gate:
     name: Gate
     runs-on: ubuntu-latest
-    needs: [build, test, lint, rust, security, branch-policy]
+    needs: [build, test, lint, rust, security, python, branch-policy]
     if: always()
     steps:
       - name: All checks passed
@@ -248,6 +288,7 @@ jobs:
                 "${{ needs.lint.result }}"  != "success" || \
                 "${{ needs.rust.result }}"  != "success" || \
                 "${{ needs.security.result }}" != "success" || \
+                "${{ needs.python.result }}" != "success" || \
                 "${{ needs.branch-policy.result }}" != "success" ]]; then
             echo "One or more required checks failed."
             echo "  build: ${{ needs.build.result }}"
@@ -255,6 +296,7 @@ jobs:
             echo "  lint:  ${{ needs.lint.result }}"
             echo "  rust:  ${{ needs.rust.result }}"
             echo "  security: ${{ needs.security.result }}"
+            echo "  python: ${{ needs.python.result }}"
             echo "  branch-policy: ${{ needs.branch-policy.result }}"
             exit 1
           fi
