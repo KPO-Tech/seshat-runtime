@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"os/signal"
@@ -628,7 +629,8 @@ func loadGRPCConfigFromEnv() GRPCConfig {
 	}
 	if raw := strings.TrimSpace(os.Getenv("SESHAT_GRPC_MAX_CONCURRENT_RPCS")); raw != "" {
 		if value, err := strconv.Atoi(raw); err == nil && value > 0 {
-			cfg.MaxConcurrentRPCs = value
+			// The server takes an unsigned 32-bit number: a larger value would wrap around to a small one, or to none.
+			cfg.MaxConcurrentRPCs = min(value, math.MaxInt32)
 		}
 	}
 	if raw := strings.TrimSpace(os.Getenv("SESHAT_GRPC_KEEPALIVE_TIME")); raw != "" {

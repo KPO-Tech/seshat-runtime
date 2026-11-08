@@ -172,3 +172,22 @@ func TestEmptyAndGarbageInputDoNotFail(t *testing.T) {
 	}
 	contains(t, convert(t, "plain text, no tags"), "plain text, no tags")
 }
+
+func TestLinksOnlyKeepAddressesAReaderCanFollow(t *testing.T) {
+	got := convert(t, page(`<p>
+<a href="https://example.com/a">web</a>
+<a href="/docs/page">relative</a>
+<a href="mailto:me@example.com">mail</a>
+<a href="javascript:alert(1)">script</a>
+<a href="JaVaScRiPt:alert(1)">mixed</a>
+<a href="jav&#x09;ascript:alert(1)">tab</a>
+<a href="data:text/html,<script>alert(1)</script>">data</a>
+<a href="vbscript:msgbox(1)">vb</a>
+<a href="file:///etc/passwd">file</a>
+<a href="/search?q=a:b">query with a colon</a>
+</p>`))
+	contains(t, got,
+		"[web](https://example.com/a)", "[relative](/docs/page)", "[mail](mailto:me@example.com)", "[query with a colon](/search?q=a:b)",
+		"script", "mixed", "tab", "data", "vb", "file")
+	lacks(t, got, "javascript", "JaVaScRiPt", "data:", "vbscript", "file:///", "](jav")
+}
