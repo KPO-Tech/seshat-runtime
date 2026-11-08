@@ -13,7 +13,7 @@ reimplemented or run as a subprocess.
 pip install ./python          # from a checkout of the runtime
 ```
 
-Requires Python 3.9+ and a running server (`go run ./cmd/grpc`, or `make
+Requires Python 3.10+ and a running server (`go run ./cmd/grpc`, or `make
 build-grpc && ./bin/seshat-grpc`, which listens on `127.0.0.1:50051`).
 
 ## First call
