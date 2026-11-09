@@ -25,6 +25,10 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A session that went on after a compaction can be restored again.** The check of the compaction boundary counted every message after the marker as "preserved", including what the session wrote since, so the first reload after a compaction answered `invalid compaction transcript` and the conversation could never be opened again. It now checks only the messages the compaction kept.
 - **A compacted conversation is no longer refused by z.ai ("The messages parameter is illegal").** After a compaction the conversation is the summary and the marker, both system messages, then the tail that was kept, which can begin with the agent's own call. An OpenAI-compatible API needs a user message before the first assistant one, so the system messages that open such a conversation are sent as one user message.
 
+### Security
+
+- **`excelize/v2` is updated in both Go modules (GHSA-mx22-3794-2vpv, high).** A crafted `.xlsx` whose pivot cache refers to a field index that does not exist made `extractPivotTableFields` panic, and the panic cannot be recovered: reading one hostile spreadsheet stopped the process. The engine and the terminal module move to `v2.11.1-0.20261003002531-6258dcebc4e2`, the first version with the check. `/tui` is also added to `.github/dependabot.yml`: it was not listed, so Dependabot opened its update against `main` instead of `dev`.
+
 ## [1.15.2] - 2026-11-08
 
 ### Security

@@ -7,6 +7,14 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
 
+  # The terminal command is its own module: without this entry its updates, security ones included, go to main.
+  - package-ecosystem: "gomod"
+    directory: "/tui"
+    target-branch: "dev"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "dev"
