@@ -201,3 +201,38 @@ func TestPlainGrowthAndAnEmptyHistoryHaveNoArchive(t *testing.T) {
 		})
 	}
 }
+
+func TestARewindAfterACompactionKeepsTheArchive(t *testing.T) {
+	for name, store := range archiveStores(t) {
+		t.Run(name, func(t *testing.T) {
+			id := types.SessionID("s-rewind")
+			meta := &types.SessionMetadata{ID: id, Status: types.SessionStatusActive}
+			original := plainMessages(0, 8)
+			_ = store.SaveSessionState(id, meta, nil, original)
+			compacted := compactedFrom(original, 6, "summary of messages 0 to 5")
+			_ = store.SaveSessionState(id, meta, original, compacted)
+			grown := append(append([]types.Message{}, compacted...), plainMessages(8, 10)...)
+			if err := store.SaveSessionState(id, meta, compacted, grown); err != nil {
+				t.Fatal(err)
+			}
+
+			// The last turn is taken back.
+			if err := store.SaveSessionState(id, meta, grown, compacted); err != nil {
+				t.Fatal(err)
+			}
+			archived, current, err := store.LoadHistory(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(archived) != 6 {
+				t.Errorf("archived %d messages, want the 6 the compaction dropped: a rewind must not lose them", len(archived))
+			}
+			if got := texts(current); strings.Join(got, "|") != "summary of messages 0 to 5|[Context compacted for token pressure]|message 06|message 07" {
+				t.Errorf("current = %v", got)
+			}
+			if _, _, err := store.RestoreSessionState(id); err != nil {
+				t.Errorf("the rewound session must restore: %v", err)
+			}
+		})
+	}
+}
