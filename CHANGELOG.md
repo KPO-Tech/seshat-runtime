@@ -9,6 +9,8 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-09
+
 ### Added
 
 - **`Session.RewindLastTurn()` takes the last turn out of the conversation.** The user's prompt and everything the agent did after it (calls, results, an error note) are removed and the session is saved, so the next prompt starts from the conversation as it was and an answer can be asked again without the first attempt staying in what the model sees. It refuses while a turn runs and returns `ErrNothingToRewind` when there is no turn, or when the turn starts inside what a compaction preserved. A rewind keeps what a compaction archived: the transcript is cut, not rewritten.
