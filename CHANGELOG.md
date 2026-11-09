@@ -16,6 +16,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`python/`, a client installable with `pip install ./python` and imported as `seshat`.** `client.info()`, `models()`, `skills()`, `mcp_servers()`, `create_session()`, `session.ask()` / `.stream()` / `.submit()`, `memory()`, `run_workflow()`, plus an asyncio client on `grpc.aio`. It is a client, not a port: the engine stays in Go and the Python side only speaks the wire protocol, so the tools, the providers and the permission rules are the same ones the terminal interface uses. `python -m pytest` (or `make test-python`) runs its tests against a scripted in-process server, including the approval round trip, with no key and no network.
 - **A session is described completely when it is opened over gRPC.** `CreateSession` took a model, a prompt, a tool list and a permission mode; it now also takes `max_iterations`, `max_turns`, `turn_token_budget` and `max_consecutive_denials`, plus `auto_compact` and `enable_tool_search` as `optional bool` so that "off" and "unset" stay different answers. A client no longer has to inherit the server's idea of how hard an agent works. What still cannot cross the wire is the host's own process environment and its Go callbacks (hooks, converters, sub-agent definitions): those are the server's, and a client adds capability through MCP.
 
+### Fixed
+
+- **A session that went on after a compaction can be restored again.** The check of the compaction boundary counted every message after the marker as "preserved", including what the session wrote since, so the first reload after a compaction answered `invalid compaction transcript` and the conversation could never be opened again. It now checks only the messages the compaction kept.
+- **A compacted conversation is no longer refused by z.ai ("The messages parameter is illegal").** After a compaction the conversation is the summary and the marker, both system messages, then the tail that was kept, which can begin with the agent's own call. An OpenAI-compatible API needs a user message before the first assistant one, so the system messages that open such a conversation are sent as one user message.
+
 ## [1.15.2] - 2026-11-08
 
 ### Security
