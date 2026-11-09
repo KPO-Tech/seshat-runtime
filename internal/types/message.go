@@ -885,6 +885,12 @@ func ValidateCompactionBoundary(messages []Message) error {
 	if !ok || !HasCompactionBoundaryDescriptor(metadata) {
 		return nil
 	}
+	// The messages after the boundary are the tail the compaction kept, then everything the session wrote since. The
+	// descriptor describes the first part only: counting the rest made every session that went on after a compaction fail
+	// to restore ("invalid compaction transcript").
+	if metadata.PreservedMessages >= 0 && metadata.PreservedMessages < len(preserved) {
+		preserved = preserved[:metadata.PreservedMessages]
+	}
 	if metadata.BoundaryVersion != CompactionBoundaryVersionV1 {
 		return fmt.Errorf("unsupported compaction boundary version %d", metadata.BoundaryVersion)
 	}

@@ -27,7 +27,7 @@ export PATH := $(CURDIR)/bin$(SEP)$(PATH)
 ARGS           ?=
 
 .PHONY: help all setup build build-cli build-grpc build_linux run run-fresh doctor where \
-        test test-short test-tui test-pkg test-race fmt fmt-check vet lint check tidy hooks \
+        proto test test-short test-tui test-pkg test-race test-python lint-python fmt fmt-check vet lint check tidy hooks \
         rust-build rust-test rust-check \
         clean clean-runtime clean-all install-deepdoc-models
 
@@ -78,6 +78,29 @@ run-fresh: build-cli ## Start the terminal UI with an empty throw-away configura
 doctor: build-cli ## Run seshat doctor: what this machine can and cannot do (sandbox, models, tools)
 	./$(BIN) doctor
 
+# Proto: the gRPC contract, shared by the Go server and the Python client.
+#
+# One .proto generates both sets of stubs, so the two cannot drift. protoc from grpcio-tools
+# is used when there is no system protoc (pip install grpcio-tools); the Go plugins are
+# installed with `go install google.golang.org/protobuf/cmd/protoc-gen-go@latest` and
+# `go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest`.
+
+PYTHON         ?= python
+GRPC_PY_OUT    := python/seshat/_proto
+
+proto: ## Regenerate the Go and Python stubs from pkg/grpc/proto/seshat.proto
+	@PROTO_INC="$$($(PYTHON) -c 'import grpc_tools, os; print(os.path.join(os.path.dirname(grpc_tools.__file__), "_proto"))')" || exit 1 ; \
+	if command -v protoc > /dev/null 2>&1 ; then PROTOC="protoc" ; else PROTOC="$(PYTHON) -m grpc_tools.protoc" ; fi ; \
+	test -d $(GRPC_PY_OUT) || mkdir -p $(GRPC_PY_OUT) ; \
+	$$PROTOC -I pkg/grpc/proto -I "$$PROTO_INC" \
+	  --go_out=. --go_opt=module=github.com/KPO-Tech/seshat-runtime \
+	  --go-grpc_out=. --go-grpc_opt=module=github.com/KPO-Tech/seshat-runtime \
+	  --python_out=$(GRPC_PY_OUT) --pyi_out=$(GRPC_PY_OUT) --grpc_python_out=$(GRPC_PY_OUT) \
+	  pkg/grpc/proto/seshat.proto || exit 1 ; \
+	sed -i.bak 's/^import seshat_pb2 as/from . import seshat_pb2 as/' $(GRPC_PY_OUT)/seshat_pb2_grpc.py && rm -f $(GRPC_PY_OUT)/seshat_pb2_grpc.py.bak ; \
+	: > $(GRPC_PY_OUT)/__init__.py ; \
+	echo "  regenerated pkg/grpc/seshat and $(GRPC_PY_OUT)"
+
 where: ## Show the binary this folder builds (inside make, bin/ comes first on PATH)
 	@printf "built here : %s\n" "$(CURDIR)/$(BIN)"
 	@printf "seshat found: "; command -v seshat || echo "(none)"
@@ -99,6 +122,14 @@ test-pkg: ## Run the tests of one package (PKG=./internal/tools/bash/...)
 
 test-race: ## Run all Go tests with the race detector
 	go test -race ./... ./tui/... -timeout 300s
+
+test-python: ## Run the Python client tests (cd python && pip install -e . pytest first)
+	cd python && $(PYTHON) -m pytest -q
+
+lint-python: ## Lint the Python client with the rules python/pyproject.toml selects
+	@command -v ruff > /dev/null 2>&1 \
+		|| (echo "ruff not installed - run: $(PYTHON) -m pip install ruff" && exit 1)
+	cd python && ruff check .
 
 # Code quality
 

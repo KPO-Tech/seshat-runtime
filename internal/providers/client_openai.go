@@ -75,11 +75,43 @@ func (c *Client) buildOpenAIMessages(req types.APIRequest) []map[string]any {
 	}
 	// Strip orphaned tool results before conversion to avoid invalid_request_message_order
 	// from OpenAI-compat APIs (z-ai/GLM, OpenAI, etc.).
-	sanitized := sanitizeToolResultOrphans(req.Messages)
+	sanitized := foldLeadingSystemMessages(sanitizeToolResultOrphans(req.Messages))
 	for _, message := range sanitized {
 		messages = append(messages, openAIMessageParts(message)...)
 	}
 	return messages
+}
+
+// foldLeadingSystemMessages turns the system messages that open the conversation into one user message when no user
+// message follows them. After a compaction the conversation is the summary and the compaction marker (both system
+// messages) followed by the tail that was kept, which can start with the agent's own call: z.ai answers that with
+// "api_invalid: The messages parameter is illegal", because a conversation needs a user message before the first
+// assistant one. The summary is what the user said and what was done, so sent as the user's turn it reads the same.
+func foldLeadingSystemMessages(messages []types.Message) []types.Message {
+	lead := 0
+	for lead < len(messages) && messages[lead].Role == types.RoleSystem {
+		lead++
+	}
+	if lead == 0 || (lead < len(messages) && messages[lead].Role == types.RoleUser) {
+		return messages
+	}
+	texts := make([]string, 0, lead)
+	for _, message := range messages[:lead] {
+		if text := strings.TrimSpace(joinTextBlocks(message.Content)); text != "" {
+			texts = append(texts, text)
+		}
+	}
+	if len(texts) == 0 {
+		return messages
+	}
+	folded := types.Message{
+		ID:      messages[0].ID,
+		Role:    types.RoleUser,
+		Content: []types.ContentBlock{types.TextContent{Text: strings.Join(texts, "\n\n")}},
+	}
+	out := make([]types.Message, 0, len(messages)-lead+1)
+	out = append(out, folded)
+	return append(out, messages[lead:]...)
 }
 
 // sanitizeToolResultOrphans removes tool_result blocks from user messages when

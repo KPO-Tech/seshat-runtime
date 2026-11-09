@@ -144,6 +144,11 @@ type SeshatServer struct {
 	clientFactory func(*pb.QueryRequest) (grpcSDKClient, error)
 	// allowStdioMCP: see GRPCConfig.AllowStdioMCP.
 	allowStdioMCP bool
+	// hostConfig is the configuration the server loaded, kept so a session can
+	// be built from it later.
+	hostConfig appconfig.Config
+	// registry holds the conversations attached to this server.
+	registry *sessionRegistry
 }
 
 var _ pb.SeshatServiceServer = (*SeshatServer)(nil)
@@ -164,6 +169,8 @@ func NewSeshatServer(hostConfig appconfig.Config) *SeshatServer {
 		skillsCWD:     cwd,
 		mcpManager:    publicmcp.GlobalManager(),
 		clientFactory: newSDKClientFactory(hostConfig),
+		hostConfig:    hostConfig,
+		registry:      newSessionRegistry(hostConfig),
 	}
 }
 
@@ -239,7 +246,13 @@ func main() {
 
 	seshatServer := NewSeshatServer(hostConfig)
 	seshatServer.allowStdioMCP = cfg.AllowStdioMCP
+	seshatServer.registry.allowStdioMCP = cfg.AllowStdioMCP
+	seshatServer.registry.tokenRequired = cfg.AuthToken != ""
+	seshatServer.registry.tlsEnabled = cfg.TLSCertFile != ""
 	pb.RegisterSeshatServiceServer(grpcServer, seshatServer)
+	pb.RegisterSessionServiceServer(grpcServer, NewSessionServer(seshatServer.registry))
+	pb.RegisterMemoryServiceServer(grpcServer, NewMemoryServer(seshatServer.registry))
+	pb.RegisterWorkflowServiceServer(grpcServer, NewWorkflowServer(seshatServer.registry))
 	if cfg.EnableReflection {
 		reflection.Register(grpcServer)
 	}
@@ -254,6 +267,9 @@ func main() {
 
 	<-ctx.Done()
 	grpcServer.GracefulStop()
+	for _, err := range seshatServer.registry.closeAll() {
+		fmt.Fprintf(os.Stderr, "[gRPC] warning shutdown: %v\n", err)
+	}
 	fmt.Println("[gRPC] stopped")
 }
 
@@ -478,6 +494,10 @@ func (s *SeshatServer) ListSkills(ctx context.Context, req *pb.ListSkillsRequest
 		if filter != "" && filter != "all" && src != filter {
 			continue
 		}
+		if req.GetIncludeContent() {
+			pbSkills = append(pbSkills, skillToProtoDetailed(sk))
+			continue
+		}
 		pbSkills = append(pbSkills, skillToProto(sk))
 	}
 
@@ -500,7 +520,8 @@ func (s *SeshatServer) GetSkillDetails(ctx context.Context, req *pb.GetSkillDeta
 	for _, sk := range skills {
 		if sk.Name == req.Name {
 			return &pb.GetSkillDetailsResponse{
-				Skill: skillToProto(sk),
+				Skill:  skillToProtoDetailed(sk),
+				Prompt: sk.Content,
 			}, nil
 		}
 	}
@@ -585,15 +606,22 @@ func (s *SeshatServer) DisconnectMCP(ctx context.Context, req *pb.DisconnectMCPR
 func (s *SeshatServer) GetModels(_ context.Context, _ *pb.GetModelsRequest) (*pb.GetModelsResponse, error) {
 	all := providers.AllProvidersInfo()
 	var models []*pb.ModelInfo
+	providersInfo := make([]*pb.ProviderInfo, 0, len(all))
 	for provider, info := range all {
 		for _, m := range info.Models {
 			models = append(models, &pb.ModelInfo{
-				Id:        m.Identifier,
-				Name:      m.Description,
-				Provider:  string(provider),
-				MaxTokens: int32(m.MaxOutput),
+				Id:            m.Identifier,
+				Name:          m.Description,
+				Provider:      string(provider),
+				MaxTokens:     int32(m.MaxOutput),
+				ContextWindow: int32(m.ContextWindow),
 			})
 		}
+		providersInfo = append(providersInfo, &pb.ProviderInfo{
+			Name:       string(provider),
+			Configured: appconfig.ResolveAPIKey(s.hostConfig, provider) != "",
+			ModelCount: int32(len(info.Models)),
+		})
 	}
 	sort.Slice(models, func(i, j int) bool {
 		if models[i].Provider == models[j].Provider {
@@ -601,7 +629,8 @@ func (s *SeshatServer) GetModels(_ context.Context, _ *pb.GetModelsRequest) (*pb
 		}
 		return models[i].Provider < models[j].Provider
 	})
-	return &pb.GetModelsResponse{Models: models}, nil
+	sort.Slice(providersInfo, func(i, j int) bool { return providersInfo[i].Name < providersInfo[j].Name })
+	return &pb.GetModelsResponse{Models: models, Providers: providersInfo}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -902,5 +931,15 @@ func skillToProto(sk publicskills.Skill) *pb.Skill {
 		Source:       string(sk.Source),
 		WhenToUse:    sk.WhenToUse,
 		AllowedTools: sk.AllowedTools,
+		Path:         sk.SkillRoot,
 	}
+}
+
+// skillToProtoDetailed adds the content of the skill, for the callers that need
+// to show it or load it: listing every skill with its content would send the
+// whole library on each call.
+func skillToProtoDetailed(sk publicskills.Skill) *pb.Skill {
+	out := skillToProto(sk)
+	out.Content = sk.Content
+	return out
 }

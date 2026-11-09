@@ -195,6 +195,21 @@ func (s *Session) Compact(ctx context.Context) (CompactionOutcome, error) {
 	return CompactionOutcome{PreTokens: out.PreTokens, PostTokens: out.PostTokens}, err
 }
 
+// ErrNothingToRewind is returned by RewindLastTurn when no turn can be taken back.
+var ErrNothingToRewind = engine.ErrNothingToRewind
+
+// RewindLastTurn takes the last turn out of the conversation, the user's prompt and everything the agent did after it, and
+// saves the result. The next prompt then starts from the conversation as it was before that turn, which is how an answer is
+// asked again without the first attempt staying in what the model sees. It refuses while a turn is running, and returns
+// ErrNothingToRewind when there is nothing to take back or the turn starts inside what a compaction kept. It returns the
+// number of messages removed, and an error on a nil session.
+func (s *Session) RewindLastTurn() (int, error) {
+	if s == nil || s.session == nil {
+		return 0, errors.New("nil session")
+	}
+	return s.session.RewindLastTurn()
+}
+
 // ApprovePlan records the user's acceptance of the plan this session submitted
 // with submit_plan. See the package-level ApprovePlan. It does nothing on a nil
 // session.

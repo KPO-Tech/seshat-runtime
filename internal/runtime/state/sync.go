@@ -25,6 +25,14 @@ func (s *Store) SyncTranscriptMessages(
 		return s.AppendTranscriptEntries(sessionID, types.TranscriptEntriesFromMessages(delta, ""))
 	}
 
+	if len(currentMessages) < len(previousMessages) && hasMessagePrefix(previousMessages, currentMessages) {
+		// A rewind: the end of the conversation was taken out. The entries before it stay as they are, those a compaction
+		// archived among them, which a full replacement would lose.
+		if cut := previousMessages[len(currentMessages)].ID; cut != "" {
+			return s.truncateTranscriptAt(sessionID, cut, currentMessages)
+		}
+	}
+
 	if dropped := droppedByCompaction(previousMessages, currentMessages); len(dropped) > 0 {
 		return s.replaceKeepingArchive(sessionID, dropped, currentMessages)
 	}
@@ -200,4 +208,19 @@ func applyCanonicalTranscriptSummary(metadata *types.SessionMetadata, messages [
 	} else {
 		metadata.LastCompactedAt = nil
 	}
+}
+
+// truncateTranscriptAt removes the entries from the first one with the given id on. When no entry has that id the transcript
+// is replaced by the current messages instead.
+func (s *Store) truncateTranscriptAt(sessionID types.SessionID, id types.MessageID, current []types.Message) error {
+	entries, err := s.LoadTranscript(sessionID)
+	if err != nil {
+		return err
+	}
+	for i, entry := range entries {
+		if entry.ID == id {
+			return s.ReplaceTranscript(sessionID, entries[:i])
+		}
+	}
+	return s.ReplaceTranscript(sessionID, types.TranscriptEntriesFromMessages(current, ""))
 }

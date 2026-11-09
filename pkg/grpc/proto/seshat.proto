@@ -1,137 +1,939 @@
 // ============================================================================
-// Seshat - Protocole gRPC
+// Seshat — gRPC contract
 // ============================================================================
 //
-// Ce fichier définit les services gRPC pour l'API Seshat.
+// This file is the complete wire contract of the Seshat runtime. Everything the
+// Go SDK (`pkg/sdk`) lets an embedding program do with a client, a session or
+// the long-term memory is reachable from here, so a client in another language
+// (the Python package in `python/`) gets the same surface as a Go host.
 //
-// État: expérimental et partiel. Le serveur (cmd/grpc) n'expose qu'une partie du SDK (requêtes, skills, MCP, modèles); les demandes de
-// permission, les questions à l'utilisateur, les plans et les sessions ne passent pas par ce contrat (voir docs/transports.md).
-// Les anciens services FileService et SystemService (dont une méthode Bash) ont été retirés: ils n'étaient pas implémentés.
+// The engine stays in Go: this contract is served by `cmd/grpc`, which adapts
+// `pkg/sdk` to these messages. Nothing is reimplemented on the client side, so
+// a Python caller runs the exact same tool loop, providers, permissions and
+// persistence as the terminal interface.
 //
-// À compiler avec: protoc --go_out=. --go-grpc_out=. seshat.proto
+// Three services:
 //
+//   SeshatService   server-wide: health, models, skills, MCP servers, sessions
+//   SessionService  one conversation: turns, events, approvals, tools, plans
+//   MemoryService   long-term memory graph
+//   WorkflowService workflows (validate, draft, run)
+//
+// Streaming. A turn is driven by `SessionService.SubmitMessageStream`, which
+// returns `SessionEvent` messages for the whole turn and ends with
+// `TurnCompleted` (carrying the full `TurnResult`) or `TurnFailed`. The same
+// events are available for any session through `SessionService.Subscribe`, so a
+// UI can attach to a turn another call started, and can resume after a
+// reconnection by replaying from `from_sequence`.
+//
+// Approvals and questions. The runtime blocks a tool call while a host decides.
+// Over gRPC the decision is another RPC: a `PermissionRequest` or a
+// `PromptRequest` event carries a `request_id`, and the client answers with
+// `RespondPermission` or `RespondPrompt` on any connection to the same server.
+// A `SubmitMessageStream` that receives no answer by the server's interaction
+// timeout fails the tool call with `DeadlineExceeded`; a request whose stream is
+// cancelled is denied.
+//
+// Authentication. When `SESHAT_GRPC_AUTH_TOKEN` is set, every call except
+// `HealthCheck` needs `authorization: Bearer <token>` (see docs/transports.md).
+//
+// Compatibility. Fields are only ever added, never renumbered. A client must
+// ignore fields it does not know, and treat an unknown `SessionEvent` payload or
+// an unknown string (permission mode, stop reason, tool stage) as opaque text:
+// the engine grows, and an older client keeps working.
+//
+// Regenerate with `make proto` (see docs/transports.md).
 // ============================================================================
 
 syntax = "proto3";
 
 package seshat;
 
-// Option pour générer le code Go
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
 option go_package = "github.com/KPO-Tech/seshat-runtime/pkg/grpc/seshat";
 
 // ============================================================================
 // Services
 // ============================================================================
 
-// SeshatService est le service principal pour les interactions avec le moteur IA
+// SeshatService is the server-wide surface: it answers for the runtime itself
+// and hands out sessions.
 service SeshatService {
-    // Exécute une requête simple (non-streaming)
-    rpc Query(QueryRequest) returns (QueryResponse);
+    // Liveness and version of the server.
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
 
-    // Exécute une requête en mode streaming (pour les réponses longues)
-    rpc QueryStream(QueryRequest) returns (stream QueryResponse);
+    // What this server is: version, model, working directory, enabled features.
+    rpc GetServerInfo(GetServerInfoRequest) returns (GetServerInfoResponse);
 
-    // Liste tous les skills disponibles
-    rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse);
-
-    // Retourne les détails d'un skill spécifique
-    rpc GetSkillDetails(GetSkillDetailsRequest) returns (GetSkillDetailsResponse);
-
-    // Liste les serveurs MCP connectés
-    rpc ListMCP(ListMCPRequest) returns (ListMCPResponse);
-
-    // Connecte à un serveur MCP
-    rpc ConnectMCP(ConnectMCPRequest) returns (ConnectMCPResponse);
-
-    // Déconnecte un serveur MCP
-    rpc DisconnectMCP(DisconnectMCPRequest) returns (DisconnectMCPResponse);
-
-    // Liste les modèles disponibles
+    // Models the provider registry knows, with their provider.
     rpc GetModels(GetModelsRequest) returns (GetModelsResponse);
 
-    // Health check pour le monitoring
-    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+    // Skills available to the runtime (bundled, file, managed, MCP).
+    rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse);
+
+    // One skill, optionally with its content.
+    rpc GetSkillDetails(GetSkillDetailsRequest) returns (GetSkillDetailsResponse);
+
+    // MCP servers known to this server and their status.
+    rpc ListMCP(ListMCPRequest) returns (ListMCPResponse);
+
+    // Connect an MCP server (and persist it in the user's configuration).
+    rpc ConnectMCP(ConnectMCPRequest) returns (ConnectMCPResponse);
+
+    // Disconnect a running MCP server.
+    rpc DisconnectMCP(DisconnectMCPRequest) returns (DisconnectMCPResponse);
+
+    // Reconnect a configured MCP server.
+    rpc ReconnectMCP(ReconnectMCPRequest) returns (ReconnectMCPResponse);
+
+    // Open a new conversation. The returned Session is attached to the server;
+    // use SessionService for everything that happens inside it.
+    rpc CreateSession(CreateSessionRequest) returns (Session);
+
+    // Conversations persisted by this server, most recently updated first.
+    rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+
+    // One conversation's current state.
+    rpc GetSession(GetSessionRequest) returns (Session);
+
+    // Conversations whose stored transcript contains a text.
+    rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse);
+
+    // Delete a conversation and the artifacts it stored.
+    rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+
+    // Single-turn query on a throwaway session. Kept for clients written against
+    // the previous contract; prefer CreateSession + SubmitMessage, which reuses
+    // one engine instead of building one per call.
+    rpc Query(QueryRequest) returns (QueryResponse);
+
+    // Streaming form of Query. Prefer SessionService.SubmitMessageStream: it
+    // carries approvals and questions, which this legacy stream does not.
+    rpc QueryStream(QueryRequest) returns (stream QueryResponse);
+}
+
+// SessionService is everything that happens inside one conversation.
+service SessionService {
+    // Run a turn and wait for its result. Interactive turns (a permission or a
+    // question) cannot be answered from a unary call: use
+    // SubmitMessageStream for those, or answer through another connection.
+    rpc SubmitMessage(SubmitMessageRequest) returns (TurnResult);
+
+    // Run a turn, streaming every event of it. The last message is
+    // TurnCompleted or TurnFailed.
+    rpc SubmitMessageStream(SubmitMessageRequest) returns (stream SessionEvent);
+
+    // Follow a session's events without starting a turn.
+    rpc Subscribe(SubscribeRequest) returns (stream SessionEvent);
+
+    // The messages the model sees, in order.
+    rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+
+    // The whole conversation, including what compactions archived.
+    rpc GetHistory(GetHistoryRequest) returns (GetHistoryResponse);
+
+    // Session state: modes, counters, tools.
+    rpc GetState(GetStateRequest) returns (SessionState);
+
+    // Stop the turn that is running.
+    rpc Interrupt(InterruptRequest) returns (Ack);
+
+    // Compact the conversation now instead of at the automatic threshold.
+    rpc Compact(CompactRequest) returns (CompactResponse);
+
+    // End the session and release what it holds.
+    rpc Close(CloseSessionRequest) returns (Ack);
+
+    // Change the permission mode from the next tool call on.
+    rpc SetPermissionMode(SetPermissionModeRequest) returns (Ack);
+
+    // Change the directory the file and shell tools work in.
+    rpc SetWorkingDirectory(SetWorkingDirectoryRequest) returns (Ack);
+
+    // Replace or extend the system prompt of this session.
+    rpc SetSystemPrompt(SetSystemPromptRequest) returns (Ack);
+
+    // Enter or leave plan mode.
+    rpc SetPlanMode(SetPlanModeRequest) returns (Ack);
+
+    // Record the user's acceptance of a submitted plan.
+    rpc ApprovePlan(ApprovePlanRequest) returns (Ack);
+
+    // Tools available in this session.
+    rpc ListTools(ListToolsRequest) returns (ListToolsResponse);
+
+    // Restrict the session to a set of tools (the others are unregistered).
+    rpc SetTools(SetToolsRequest) returns (Ack);
+
+    // Answer a permission_request event.
+    rpc RespondPermission(RespondPermissionRequest) returns (Ack);
+
+    // Answer a prompt_request event (a question a tool asks the user).
+    rpc RespondPrompt(RespondPromptRequest) returns (Ack);
+}
+
+// MemoryService is the long-term memory graph of the runtime.
+service MemoryService {
+    // Create entities that do not exist yet, deduplicated by name.
+    rpc UpsertEntities(UpsertEntitiesRequest) returns (UpsertEntitiesResponse);
+
+    // Append observations to existing entities.
+    rpc AddObservations(AddObservationsRequest) returns (AddObservationsResponse);
+
+    // Search entity names, types and observations.
+    rpc SearchMemory(SearchMemoryRequest) returns (MemoryGraph);
+
+    // Open specific entities by exact name, with the relations that touch them.
+    rpc OpenEntities(OpenEntitiesRequest) returns (MemoryGraph);
+
+    // The Markdown block the runtime injects for a query, capped in tokens.
+    rpc RetrieveContext(RetrieveContextRequest) returns (RetrieveContextResponse);
+}
+
+// WorkflowService runs a workflow: a set of prompts linked by their needs.
+service WorkflowService {
+    // Check a workflow definition (YAML or JSON).
+    rpc ValidateWorkflow(WorkflowDefinitionRequest) returns (WorkflowValidationResponse);
+
+    // Normalise a definition and render it back as YAML or JSON.
+    rpc DraftWorkflow(DraftWorkflowRequest) returns (DraftWorkflowResponse);
+
+    // Run a definition, node by node, each node a turn of an agent.
+    rpc RunWorkflow(RunWorkflowRequest) returns (WorkflowRunResponse);
 }
 
 // ============================================================================
-// Messages de requête
+// Shared primitives
 // ============================================================================
 
-// Requête pour exécuter une requête IA
-message QueryRequest {
-    string prompt = 1;           // Le prompt à exécuter
-    string model = 2;            // Modèle à utiliser (ex: "claude-3-5-sonnet-20241022")
-    repeated string tools = 3;   // Liste des tools à activer
-    bool stream = 4 [deprecated = true];             // Ignoré par le serveur: la méthode appelée (Query ou QueryStream) décide du mode
-    string context_id = 5;       // ID de contexte pour la continuité de conversation
+// Ack is the empty success of a command that has nothing to return.
+message Ack {}
 
-    // Paramètres optionnels
-    float temperature = 10 [deprecated = true];     // Ignoré par le serveur pour le moment (non transmis au modèle)
-    int32 max_tokens = 11;       // Nombre max de tokens en sortie
-    string api_key = 12;           // Clé API ou bearer token OAuth explicite pour cette requête
+// TokenUsage is what one request cost.
+message TokenUsage {
+    int64 input_tokens = 1;
+    int64 output_tokens = 2;
+    int64 total_tokens = 3;
+    // Tokens served from a provider cache.
+    int64 cached_tokens = 4;
+    // Tokens read from the Anthropic prompt cache.
+    int64 cache_read_input_tokens = 5;
+    // Tokens written into the Anthropic prompt cache.
+    int64 cache_creation_input_tokens = 6;
 }
 
-// Requête pour lister les skills
-message ListSkillsRequest {
-    string source_filter = 1;    // Filter par source: "all", "bundled", "mcp", "file"
+// TextBlock is plain text.
+message TextBlock {
+    string text = 1;
 }
 
-// Requête pour obtenir les détails d'un skill
-message GetSkillDetailsRequest {
-    string name = 1;             // Nom du skill
+// ThinkingBlock is reasoning the model produced (extended thinking).
+message ThinkingBlock {
+    string thinking = 1;
 }
 
-// Requête pour lister les serveurs MCP
-message ListMCPRequest {}
-
-// Requête pour connecter un serveur MCP
-message ConnectMCPRequest {
-    string name = 1;             // Nom du serveur
-    string type = 2;             // Type: "stdio", "http", "sse", "ws"
-    string command = 3;          // Commande (pour stdio)
-    repeated string args = 4;     // Arguments de la commande
-    string url = 5;              // URL (pour http/sse/ws)
-    map<string, string> env = 6; // Variables d'environnement
-    int32 timeout = 7;          // Timeout en secondes
+// ImageBlock is an image attached to a message, base64 encoded.
+message ImageBlock {
+    // "base64" for inline data.
+    string source_type = 1;
+    // e.g. "image/png".
+    string media_type = 2;
+    // Base64 payload.
+    string data = 3;
 }
 
-// Requête pour déconnecter un serveur MCP
-message DisconnectMCPRequest {
-    string name = 1;             // Nom du serveur à déconnecter
+// ToolUse is the model asking for a tool call.
+message ToolUse {
+    // The id that ties this call to its result.
+    string id = 1;
+    string name = 2;
+    // The tool input, as it was parsed.
+    google.protobuf.Struct input = 3;
 }
 
-// Requête pour lister les modèles
-message GetModelsRequest {}
+// ToolResult is what a tool call returned.
+message ToolResult {
+    // The id of the ToolUse this answers.
+    string tool_use_id = 1;
+    string content = 2;
+    bool is_error = 3;
+}
 
-// Requête pour health check
+// ContentBlock is one block of a message. `type` is always set; the matching
+// field is the one for that type. Types: "text", "thinking", "tool_use",
+// "tool_result", "image".
+message ContentBlock {
+    string type = 1;
+
+    oneof block {
+        TextBlock text = 2;
+        ThinkingBlock thinking = 3;
+        ToolUse tool_use = 4;
+        ToolResult tool_result = 5;
+        ImageBlock image = 6;
+    }
+}
+
+// Message is one message of a conversation.
+message Message {
+    string id = 1;
+    // "user", "assistant" or "system".
+    string role = 2;
+    repeated ContentBlock content = 3;
+    google.protobuf.Timestamp timestamp = 4;
+    // The turn this message belongs to, when it is part of one.
+    string turn_id = 5;
+}
+
+// ChunkDelta is one piece of a model response as it streams in.
+message ChunkDelta {
+    // "content_block_start", "content_block_delta", "content_block_stop",
+    // "message_delta", "message_stop" or "error".
+    string type = 1;
+    // Provider delta variant, e.g. "text_delta", "thinking_delta",
+    // "input_json_delta".
+    string delta_type = 2;
+    // Text of the delta, when it carries text.
+    string delta = 3;
+    // Index of the content block this delta belongs to, when the provider
+    // interleaves several.
+    optional int32 index = 4;
+    // Incremental JSON of a tool call input.
+    string partial_json = 5;
+    // The complete block, on a start.
+    ContentBlock content_block = 6;
+    // Why generation stopped, on message_delta.
+    string stop_reason = 7;
+    // Token usage, when the provider reports it.
+    TokenUsage usage = 8;
+}
+
+// ToolProgress is the progress of a running tool.
+message ToolProgress {
+    string tool_name = 1;
+    string tool_use_id = 2;
+    // "pending", "running", "completed" or "failed".
+    string stage = 3;
+    // Human-readable message of what the tool is doing.
+    string message = 4;
+    // 0-100.
+    double percent_complete = 5;
+    // Free-form details the tool publishes.
+    google.protobuf.Struct metadata = 6;
+}
+
+// ============================================================================
+// Sessions
+// ============================================================================
+
+// SessionInfo is the summary of a stored conversation.
+message SessionInfo {
+    string id = 1;
+    string title = 2;
+    // "active" or "closed".
+    string status = 3;
+    google.protobuf.Timestamp created_at = 4;
+    google.protobuf.Timestamp updated_at = 5;
+    int32 total_turns = 6;
+    int64 total_tokens = 7;
+    // First user message, truncated.
+    string preview = 8;
+    // True for a session a sub-agent or a background task ran in.
+    bool subagent = 9;
+    // The session that launched this one, when it was recorded.
+    string parent_id = 10;
+}
+
+// Session is a conversation attached to the server.
+message Session {
+    string id = 1;
+    string title = 2;
+    // "active" or "closed".
+    string status = 3;
+    google.protobuf.Timestamp created_at = 4;
+    google.protobuf.Timestamp updated_at = 5;
+    // "provider:model" the session runs on.
+    string model = 6;
+    string working_dir = 7;
+    int32 turn_number = 8;
+    int64 total_tokens = 9;
+    // See PermissionMode values in docs/sdk.md.
+    string permission_mode = 10;
+    // "execute" or "plan".
+    string execution_mode = 11;
+    // Tools available in the session.
+    repeated string tools = 12;
+    // Whether this server can decide permission prompts itself (auto mode with
+    // a classifier); a client that shows an approval UI still receives them.
+    bool auto_mode_available = 13;
+    SessionInfo info = 14;
+}
+
+// SessionMetadata is what a session records about itself.
+message SessionMetadata {
+    string id = 1;
+    string title = 2;
+    string status = 3;
+    google.protobuf.Timestamp created_at = 4;
+    google.protobuf.Timestamp updated_at = 5;
+    string root_path = 6;
+    string model = 7;
+    int32 total_turns = 8;
+    int64 total_tokens = 9;
+    // Context window of the current model.
+    int32 max_tokens = 10;
+    int32 compact_count = 11;
+    google.protobuf.Timestamp last_compacted_at = 12;
+}
+
+// SessionState is the live state of an attached session.
+message SessionState {
+    SessionMetadata metadata = 1;
+    string permission_mode = 2;
+    string execution_mode = 3;
+    int32 turn_number = 4;
+    int64 total_tokens = 5;
+    repeated string tools = 6;
+    bool auto_mode_available = 7;
+}
+
+// TurnResult is the outcome of one turn: the model's answer, the tools it used,
+// and the state of the conversation afterwards.
+message TurnResult {
+    string session_id = 1;
+    // The final assistant text of the turn.
+    string content = 2;
+    // The whole transcript, as the model sees it after the turn.
+    repeated Message messages = 3;
+    TokenUsage usage = 4;
+    // "end_turn", "max_tokens", "stop_sequence", …
+    string stop_reason = 5;
+    int32 turn_number = 6;
+    bool is_complete = 7;
+    // True when auto-compaction ran during this turn.
+    bool compacted = 8;
+    int32 compact_pre_tokens = 9;
+    int32 compact_post_tokens = 10;
+    repeated ToolUse tool_uses = 11;
+    repeated ToolResult tool_results = 12;
+    int64 total_tokens = 13;
+    // Reasoning of the turn, when the model produced any.
+    string thinking = 14;
+}
+
+// ============================================================================
+// Events
+// ============================================================================
+
+// PermissionRequest asks the client to allow or deny a tool call. Answer it
+// with SessionService.RespondPermission and the request_id below.
+message PermissionRequest {
+    string request_id = 1;
+    string session_id = 2;
+    string turn_id = 3;
+    string tool_name = 4;
+    // Human-readable description of what the tool would do.
+    string description = 5;
+    // The candidate tool input.
+    google.protobuf.Struct tool_input = 6;
+    // Ties the decision to the tool call that asked.
+    string tool_use_id = 7;
+    // The permission mode in force when the request was made.
+    string permission_mode = 8;
+    string working_directory = 9;
+    // The permission stage being resolved, when the engine names one.
+    string stage = 10;
+    // When the server gives up on this request.
+    google.protobuf.Timestamp expires_at = 11;
+    // Set when the tool call comes from a sub-agent.
+    string agent_tool_use_id = 12;
+}
+
+// PromptOption is one choice of a choice prompt.
+message PromptOption {
+    string label = 1;
+    // The value returned when this option is chosen.
+    google.protobuf.Value value = 2;
+    string description = 3;
+}
+
+// PromptRequest is a question a tool asks the user. Answer it with
+// SessionService.RespondPrompt and the request_id below.
+message PromptRequest {
+    string request_id = 1;
+    string session_id = 2;
+    string turn_id = 3;
+    // "text", "choice" or "confirm".
+    string type = 4;
+    string message = 5;
+    repeated PromptOption options = 6;
+    // The value to use when the user accepts the default.
+    google.protobuf.Value default_value = 7;
+    // Context the tool attached to the question.
+    google.protobuf.Struct metadata = 8;
+    // When the server gives up on this request.
+    google.protobuf.Timestamp expires_at = 9;
+    string agent_tool_use_id = 10;
+}
+
+// TurnStarted opens a turn.
+message TurnStarted {
+    int32 turn_number = 1;
+    string turn_id = 2;
+    string model = 3;
+    string execution_mode = 4;
+}
+
+// TurnCompleted closes a turn successfully and carries its result.
+message TurnCompleted {
+    TurnResult result = 1;
+}
+
+// TurnFailed closes a turn that errored.
+message TurnFailed {
+    // A gRPC status code name: "INTERNAL", "CANCELLED", "DEADLINE_EXCEEDED", …
+    string code = 1;
+    string message = 2;
+}
+
+// PlanEvent is a plan document submitted by the model, or its status change.
+message PlanEvent {
+    string plan_id = 1;
+    string slug = 2;
+    string filename = 3;
+    // "pending", "approved", "rejected", …
+    string status = 4;
+    int32 version = 5;
+    // The plan itself, on submission.
+    string content = 6;
+}
+
+// TaskEvent is a change to the model's task list.
+message TaskEvent {
+    string task_id = 1;
+    // "created", "updated", "completed", …
+    string action = 2;
+    string status = 3;
+    string subject = 4;
+}
+
+// StageEvent is a named phase of pre-generation setup ("loading tools",
+// "searching knowledge").
+message StageEvent {
+    // Stable identifier: "tools", "session", "knowledge", …
+    string stage = 1;
+    // Phrase a client can show as it is.
+    string label = 2;
+}
+
+// GoalEvent is the long-running goal of an agent.
+message GoalEvent {
+    string session_id = 1;
+    string objective = 2;
+    string status = 3;
+    // Optional token budget of the goal.
+    optional int64 token_budget = 4;
+    int64 tokens_used = 5;
+    int64 time_used_seconds = 6;
+    int64 created_at_ms = 7;
+    int64 updated_at_ms = 8;
+}
+
+// AgentEvent is a multi-agent collaboration event (a sub-agent spawning,
+// waiting, exchanging a message or closing).
+message AgentEvent {
+    string event_type = 1;
+    string call_id = 2;
+    string agent_id = 3;
+    string agent_nickname = 4;
+    string agent_role = 5;
+    string prompt = 6;
+    string status = 7;
+    string message = 8;
+    int64 started_at_ms = 9;
+    int64 completed_at_ms = 10;
+}
+
+// ProviderRetry says the runtime is waiting before asking the provider again.
+message ProviderRetry {
+    // Number of the attempt about to be made (2 for the first retry).
+    int32 attempt = 1;
+    int32 max_attempts = 2;
+    int64 wait_ms = 3;
+    // "rate limited (429)", "server error (503)", "connection error", …
+    string reason = 4;
+}
+
+// CompactionEvent reports a compaction of the conversation.
+message CompactionEvent {
+    // True when the compaction is starting, false when it is done.
+    bool started = 1;
+    int32 pre_compact_tokens = 2;
+    int32 post_compact_tokens = 3;
+}
+
+// ContextUsage says how full the model's context window is.
+message ContextUsage {
+    int32 used_tokens = 1;
+    int32 window_tokens = 2;
+    int32 auto_compact_at_tokens = 3;
+    int32 blocking_limit_tokens = 4;
+    // "estimate" when the runtime counted it, "reported" when it starts from
+    // the provider's own figure.
+    string source = 5;
+}
+
+// BrowserEvent is browser activity (a session opening, a page, a screenshot).
+message BrowserEvent {
+    string action = 1;
+    string page_id = 2;
+    string url = 3;
+    string title = 4;
+    string active_page_id = 5;
+    int32 page_count = 6;
+    int32 action_count = 7;
+    int32 element_count = 8;
+    int32 heading_count = 9;
+    int32 text_length = 10;
+    int64 bytes = 11;
+    string persisted_path = 12;
+    int64 persisted_size = 13;
+    bool full_page = 14;
+}
+
+// RawEvent is an event this contract does not name yet. `type` is the engine's
+// own type string and `data` is its JSON payload, so a client can log it, show
+// it, or ignore it without failing.
+message RawEvent {
+    string type = 1;
+    google.protobuf.Struct data = 2;
+    string error = 3;
+}
+
+// SessionEvent is one thing that happened in a session.
+message SessionEvent {
+    // Unique, stable identifier of this event.
+    string event_id = 1;
+    string session_id = 2;
+    // Monotonic per session; send it back as SubscribeRequest.from_sequence to
+    // resume a stream without a gap.
+    uint64 sequence = 3;
+    google.protobuf.Timestamp timestamp = 4;
+    string turn_id = 5;
+    int32 turn_number = 6;
+    // The engine's own event type ("turn.started", "response.chunk",
+    // "tool.progress", "plan.submitted", …).
+    string type = 7;
+    // Set when the event comes from a sub-agent.
+    string agent_tool_use_id = 8;
+
+    oneof payload {
+        TurnStarted turn_started = 10;
+        ChunkDelta chunk = 11;
+        ToolProgress tool_progress = 12;
+        PermissionRequest permission_request = 13;
+        PromptRequest prompt_request = 14;
+        PlanEvent plan = 15;
+        TaskEvent task = 16;
+        StageEvent stage = 17;
+        ProviderRetry provider_retry = 18;
+        CompactionEvent compaction = 19;
+        ContextUsage context_usage = 20;
+        TurnCompleted turn_completed = 21;
+        TurnFailed turn_failed = 22;
+        AgentEvent agent = 23;
+        GoalEvent goal = 24;
+        BrowserEvent browser = 25;
+        RawEvent raw = 99;
+    }
+}
+
+// ============================================================================
+// SeshatService — requests and responses
+// ============================================================================
+
 message HealthCheckRequest {}
 
-// ============================================================================
-// Messages de réponse
-// ============================================================================
+message HealthCheckResponse {
+    // "ok", "degraded" or "down".
+    string status = 1;
+    string version = 2;
+    // Human-readable uptime, e.g. "1h2m3s".
+    string uptime = 3;
+    int64 uptime_seconds = 4;
+}
 
-// Réponse à une requête Query
+message GetServerInfoRequest {}
+
+message GetServerInfoResponse {
+    string version = 1;
+    int64 uptime_seconds = 2;
+    // Default model ("provider:model") of this server.
+    string model = 3;
+    string working_dir = 4;
+    string permission_mode = 5;
+    // Which bash sandbox the runtime resolved: "local", "sandboxed", "microvm".
+    string sandbox_kind = 6;
+    // Providers with a configured credential, and every provider known.
+    repeated string providers_configured = 7;
+    repeated string providers_available = 8;
+    // Feature flags of this build.
+    bool memory_enabled = 9;
+    bool hooks_enabled = 10;
+    bool monitoring_enabled = 11;
+    bool tool_search_enabled = 12;
+    bool session_persistence_enabled = 13;
+    bool stdio_mcp_allowed = 14;
+    // Whether an auth token is required (never the token itself).
+    bool auth_required = 15;
+    bool tls_enabled = 16;
+    int32 active_sessions = 17;
+}
+
+message GetModelsRequest {}
+
+message GetModelsResponse {
+    repeated ModelInfo models = 1;
+    repeated ProviderInfo providers = 2;
+}
+
+// ModelInfo is one model of the provider registry.
+message ModelInfo {
+    // The model identifier, e.g. "claude-sonnet-5-5".
+    string id = 1;
+    // Human-readable name.
+    string name = 2;
+    // "anthropic", "openai", "gemini", …
+    string provider = 3;
+    // Maximum output tokens.
+    int32 max_tokens = 4;
+    // Context window, when the registry knows it.
+    int32 context_window = 5;
+}
+
+// ProviderInfo is one provider.
+message ProviderInfo {
+    string name = 1;
+    bool configured = 2;
+    int32 model_count = 3;
+}
+
+message ListSkillsRequest {
+    // "all" (default), "bundled", "file", "managed", "mcp", "commands", "plugin".
+    string source_filter = 1;
+    // Include each skill's content in the response.
+    bool include_content = 2;
+}
+
+message ListSkillsResponse {
+    repeated Skill skills = 1;
+    int32 total_count = 2;
+}
+
+// Skill is a reusable instruction set the model can load.
+message Skill {
+    string name = 1;
+    string description = 2;
+    // "bundled", "file", "managed", "mcp", …
+    string source = 3;
+    // When the model should use this skill.
+    string when_to_use = 4;
+    repeated string allowed_tools = 5;
+    // The skill's content (its prompt), when asked for.
+    string content = 6;
+    string path = 7;
+}
+
+message GetSkillDetailsRequest {
+    string name = 1;
+    // Include the skill's content (the default is to include it).
+    bool include_content = 2;
+}
+
+message GetSkillDetailsResponse {
+    Skill skill = 1;
+    // The skill's content, also carried in Skill.content.
+    string prompt = 2;
+}
+
+message ListMCPRequest {}
+
+message ListMCPResponse {
+    repeated MCPServer servers = 1;
+    int32 total_count = 2;
+}
+
+// MCPServer is one MCP server.
+message MCPServer {
+    string name = 1;
+    // "connected", "disconnected", "error", …
+    string status = 2;
+    int32 tool_count = 3;
+    string last_error = 4;
+    // "stdio", "http", "sse", "ws".
+    string type = 5;
+    string url = 6;
+    bool enabled = 7;
+}
+
+message ConnectMCPRequest {
+    string name = 1;
+    // "stdio" (default), "http", "sse", "ws".
+    string type = 2;
+    // Command of a stdio server.
+    string command = 3;
+    repeated string args = 4;
+    // URL of an http, sse or ws server.
+    string url = 5;
+    map<string, string> env = 6;
+    // Timeout in seconds.
+    int32 timeout = 7;
+    // Keep the server in the user's configuration (default true).
+    bool persist = 8;
+}
+
+message ConnectMCPResponse {
+    bool success = 1;
+    string error = 2;
+    MCPServer server = 3;
+}
+
+message DisconnectMCPRequest {
+    string name = 1;
+}
+
+message DisconnectMCPResponse {
+    bool success = 1;
+    string error = 2;
+}
+
+message ReconnectMCPRequest {
+    string name = 1;
+}
+
+message ReconnectMCPResponse {
+    bool success = 1;
+    string error = 2;
+    MCPServer server = 3;
+}
+
+message CreateSessionRequest {
+    // "provider:model"; empty uses the server's default.
+    string model = 1;
+    // Maximum output tokens of a turn.
+    int32 max_tokens = 2;
+    // Provider credential for this session only. Empty uses the server's.
+    string api_key = 3;
+    // Working directory of the file and shell tools.
+    string working_dir = 4;
+    // Permission mode: "bypass", "auto", "acceptEdits", "onRequest" (default),
+    // "never" or "granular".
+    string permission_mode = 5;
+    // Replaces the default system prompt.
+    string system_prompt_template = 6;
+    // Appended to the system prompt.
+    string append_system_prompt = 7;
+    // Restrict the session to these tools; empty offers every enabled tool.
+    repeated string tools = 8;
+
+    // The knobs below shape the agent a session runs, and each one is optional:
+    // leaving it at zero (or unset, for an `optional` field) keeps what the
+    // server's own configuration says. They exist because a client that opens a
+    // session over the network should be able to describe an agent completely,
+    // not only name a model.
+
+    // How many model calls one turn may make. 0 keeps the server's value.
+    int32 max_iterations = 9;
+    // How many turns a session may run. 0 keeps the server's value.
+    int32 max_turns = 10;
+    // Tokens one turn may spend before it is continued or stopped. 0 keeps the
+    // server's value.
+    int32 turn_token_budget = 11;
+    // Consecutive refusals after which the turn stops asking and ends. 0 keeps
+    // the server's value.
+    int32 max_consecutive_denials = 12;
+    // Compact the conversation when it nears the context window. Unset keeps
+    // the server's value; `false` turns it off for this session.
+    optional bool auto_compact = 13;
+    // Keep deferred tools (MCP tools, skills) behind the tool_search tool, so
+    // the model finds them rather than seeing them from the start. Unset keeps
+    // the server's value; `true` turns it on for this session.
+    optional bool enable_tool_search = 14;
+}
+
+message ListSessionsRequest {
+    // Maximum number of sessions to return (0 means the server's default).
+    int32 limit = 1;
+    // Skip this many of the most recent sessions.
+    int32 offset = 2;
+    // Include sessions a sub-agent ran in.
+    bool include_subagent = 3;
+}
+
+message ListSessionsResponse {
+    repeated SessionInfo sessions = 1;
+    int32 total_count = 2;
+}
+
+message GetSessionRequest {
+    string session_id = 1;
+}
+
+message SearchSessionsRequest {
+    string query = 1;
+    // Maximum number of sessions to return (0 means the server's default).
+    int32 limit = 2;
+}
+
+message SearchSessionsResponse {
+    repeated string session_ids = 1;
+    repeated SessionInfo sessions = 2;
+}
+
+message DeleteSessionRequest {
+    string session_id = 1;
+}
+
+message DeleteSessionResponse {
+    bool success = 1;
+}
+
+// QueryRequest is the single-turn request of the legacy Query/QueryStream.
+message QueryRequest {
+    string prompt = 1;
+    // "provider:model"; empty uses the server's default.
+    string model = 2;
+    // Restrict the turn to these tools.
+    repeated string tools = 3;
+    // Ignored: the method called (Query or QueryStream) decides.
+    bool stream = 4 [deprecated = true];
+    // Load this session instead of creating a throwaway one.
+    string context_id = 5;
+    // Ignored: not transmitted to the model.
+    float temperature = 10 [deprecated = true];
+    // Maximum output tokens.
+    int32 max_tokens = 11;
+    // Provider credential for this call.
+    string api_key = 12;
+}
+
+// QueryResponse is the legacy single-turn response.
 message QueryResponse {
-    string content = 1;           // Contenu de la réponse
-    string model = 2;            // Modèle utilisé
-    TokenUsage token_usage = 3;  // Utilisation des tokens
-
-    // Métadonnées additionnelles
-    string conversation_id = 10; // ID de conversation
-    bool stopped = 11;           // Si la réponse a été coupée
-    string item_type = 12;       // "chunk", "runtime_event", "final"
-    ChunkDelta chunk = 13;       // Détails structurés pour un delta streamé
-    RuntimeEvent runtime_event = 14; // Événement runtime structuré
+    string content = 1;
+    string model = 2;
+    TokenUsage token_usage = 3;
+    string conversation_id = 10;
+    bool stopped = 11;
+    // "chunk", "runtime_event" or "final".
+    string item_type = 12;
+    ChunkDelta chunk = 13;
+    RuntimeEvent runtime_event = 14;
 }
 
-// Delta de réponse streamé
-message ChunkDelta {
-    string type = 1;
-    string delta_type = 2;
-    string delta = 3;
-}
-
-// Événement runtime structuré du moteur
+// RuntimeEvent is the legacy envelope of a streamed event. New clients read
+// SessionEvent instead, which carries the same information plus request ids.
 message RuntimeEvent {
     string type = 1;
     string session_id = 2;
@@ -148,77 +950,290 @@ message RuntimeEvent {
     string error = 13;
 }
 
-// Utilisation des tokens
-message TokenUsage {
-    int64 input_tokens = 1;
-    int64 output_tokens = 2;
-    int64 total_tokens = 3;
+// ============================================================================
+// SessionService — requests and responses
+// ============================================================================
+
+message SubmitMessageRequest {
+    string session_id = 1;
+    // The user message.
+    string text = 2;
+    // Images attached to the message.
+    repeated ImageBlock images = 3;
+    // Stop the turn if no event is produced for this many seconds (0 uses the
+    // server's default).
+    int32 idle_timeout_seconds = 4;
 }
 
-// Réponse pour ListSkills
-message ListSkillsResponse {
-    repeated Skill skills = 1;    // Liste des skills
-    int32 total_count = 2;        // Nombre total
+message SubscribeRequest {
+    string session_id = 1;
+    // Replay the buffered events that follow this sequence number. 0 starts at
+    // the next event.
+    uint64 from_sequence = 2;
 }
 
-// Informations sur un skill
-message Skill {
-    string name = 1;
-    string description = 2;
-    string source = 3;           // "bundled", "file", "mcp"
-    string when_to_use = 4;      // Quand utiliser ce skill
-    repeated string allowed_tools = 5;
+message GetMessagesRequest {
+    string session_id = 1;
 }
 
-// Réponse pour GetSkillDetails
-message GetSkillDetailsResponse {
-    Skill skill = 1;             // Détails du skill
-    string prompt = 2;           // Contenu du skill (si autorisé)
+message GetMessagesResponse {
+    repeated Message messages = 1;
 }
 
-// Réponse pour ListMCP
-message ListMCPResponse {
-    repeated MCPServer servers = 1;
+message GetHistoryRequest {
+    string session_id = 1;
+}
+
+message GetHistoryResponse {
+    // Messages a compaction took out of what the model sees, oldest first.
+    repeated Message archived = 1;
+    // Messages the model sees now.
+    repeated Message current = 2;
+}
+
+message GetStateRequest {
+    string session_id = 1;
+}
+
+message InterruptRequest {
+    string session_id = 1;
+}
+
+message CompactRequest {
+    string session_id = 1;
+}
+
+message CompactResponse {
+    int32 pre_tokens = 1;
+    int32 post_tokens = 2;
+}
+
+message CloseSessionRequest {
+    string session_id = 1;
+}
+
+message SetPermissionModeRequest {
+    string session_id = 1;
+    // "bypass", "auto", "acceptEdits", "onRequest", "never", "granular".
+    string mode = 2;
+}
+
+message SetWorkingDirectoryRequest {
+    string session_id = 1;
+    string path = 2;
+}
+
+message SetSystemPromptRequest {
+    string session_id = 1;
+    // Replaces the default system prompt; empty clears the override. Not
+    // applied when append is true.
+    string template = 2;
+    // Text appended to the system prompt.
+    string append = 3;
+    // True to apply `append` instead of `template`.
+    bool append_only = 4;
+}
+
+message SetPlanModeRequest {
+    string session_id = 1;
+    // True to enter plan mode, false to leave it.
+    bool enabled = 2;
+}
+
+message ApprovePlanRequest {
+    string session_id = 1;
+}
+
+message ListToolsRequest {
+    string session_id = 1;
+    // Only the tools of this category.
+    string category_filter = 2;
+}
+
+message ListToolsResponse {
+    repeated ToolInfo tools = 1;
     int32 total_count = 2;
 }
 
-// Informations sur un serveur MCP
-message MCPServer {
+// ToolInfo is one tool available in a session.
+message ToolInfo {
     string name = 1;
-    string status = 2;          // "connected", "disconnected", "error"
-    int32 tool_count = 3;        // Nombre de tools
-    string last_error = 4;       // Dernière erreur si applicable
+    string description = 2;
+    // False for a tool that was unregistered from this session.
+    bool enabled = 3;
+    // True for a tool loaded on demand through tool_search.
+    bool deferred = 4;
+    string category = 5;
 }
 
-// Réponse pour ConnectMCP
-message ConnectMCPResponse {
+message SetToolsRequest {
+    string session_id = 1;
+    // The tools to keep. Every other tool is unregistered from the session.
+    repeated string tools = 2;
+}
+
+message RespondPermissionRequest {
+    string session_id = 1;
+    string request_id = 2;
+    // "allow" lets this call through, "allow_session" also remembers the
+    // decision for the session, "deny" refuses it (any other value denies).
+    string decision = 3;
+    // Why it was denied; shown to the model.
+    string reason = 4;
+}
+
+message RespondPromptRequest {
+    string session_id = 1;
+    string request_id = 2;
+    // The answer: a string for a text prompt, the chosen PromptOption.value for
+    // a choice, a bool for a confirm.
+    google.protobuf.Value value = 3;
+    // True when the user dismissed the question.
+    bool cancelled = 4;
+    google.protobuf.Struct metadata = 5;
+}
+
+// ============================================================================
+// MemoryService
+// ============================================================================
+
+// Entity is one node of the memory graph.
+message MemoryEntity {
+    string id = 1;
+    string user_id = 2;
+    string name = 3;
+    string entity_type = 4;
+    repeated string observations = 5;
+    google.protobuf.Timestamp created_at = 6;
+    google.protobuf.Timestamp updated_at = 7;
+}
+
+// Relation is a directed edge between two entities, by name.
+message MemoryRelation {
+    string id = 1;
+    string user_id = 2;
+    string from = 3;
+    string to = 4;
+    string relation_type = 5;
+    google.protobuf.Timestamp created_at = 6;
+}
+
+message MemoryGraph {
+    repeated MemoryEntity entities = 1;
+    repeated MemoryRelation relations = 2;
+}
+
+message EntityInput {
+    string name = 1;
+    string entity_type = 2;
+    repeated string observations = 3;
+}
+
+message UpsertEntitiesRequest {
+    // Whose memory this is; empty uses the shared user.
+    string user_id = 1;
+    repeated EntityInput entities = 2;
+}
+
+message UpsertEntitiesResponse {
+    repeated MemoryEntity created = 1;
+}
+
+message ObservationInput {
+    string entity_name = 1;
+    repeated string contents = 2;
+}
+
+message AddObservationsRequest {
+    string user_id = 1;
+    repeated ObservationInput observations = 2;
+}
+
+message ObservationResult {
+    string entity_name = 1;
+    repeated string added_observations = 2;
+}
+
+message AddObservationsResponse {
+    repeated ObservationResult results = 1;
+}
+
+message SearchMemoryRequest {
+    string user_id = 1;
+    string query = 2;
+}
+
+message OpenEntitiesRequest {
+    string user_id = 1;
+    repeated string names = 2;
+}
+
+message RetrieveContextRequest {
+    string user_id = 1;
+    string query = 2;
+    // Cap of the returned block, in tokens (0 uses the server's default).
+    int32 max_tokens = 3;
+}
+
+message RetrieveContextResponse {
+    string context = 1;
+    bool found = 2;
+}
+
+// ============================================================================
+// WorkflowService
+// ============================================================================
+
+message WorkflowDefinitionRequest {
+    // The definition, as YAML or JSON.
+    string definition = 1;
+    // "yaml" or "json"; empty lets the server detect it.
+    string format = 2;
+}
+
+message WorkflowValidationResponse {
+    bool valid = 1;
+    // Why it is invalid, or the list of problems found.
+    string diagnostics = 2;
+    string name = 3;
+    int32 node_count = 4;
+}
+
+message DraftWorkflowRequest {
+    string definition = 1;
+    // "yaml" (default) or "json".
+    string format = 2;
+}
+
+message DraftWorkflowResponse {
+    // The normalised definition, rendered in the requested format.
+    string rendered = 1;
+    string diagnostics = 2;
+}
+
+message RunWorkflowRequest {
+    string definition = 1;
+    // How many nodes may run at once (0 uses the server's default).
+    int32 max_parallel = 2;
+    // "provider:model" for the agents that run the nodes.
+    string model = 3;
+}
+
+message WorkflowNodeResult {
+    string id = 1;
+    string agent = 2;
+    bool success = 3;
+    string output = 4;
+    string error = 5;
+    google.protobuf.Timestamp started_at = 6;
+    google.protobuf.Timestamp finished_at = 7;
+}
+
+message WorkflowRunResponse {
+    // True when every node succeeded.
     bool success = 1;
-    string error = 2;            // Message d'erreur si échec
-}
-
-// Réponse pour DisconnectMCP
-message DisconnectMCPResponse {
-    bool success = 1;
-    string error = 2;
-}
-
-// Réponse pour GetModels
-message GetModelsResponse {
-    repeated ModelInfo models = 1;
-}
-
-// Informations sur un modèle
-message ModelInfo {
-    string id = 1;               // ID du modèle (ex: "claude-3-5-sonnet-20241022")
-    string name = 2;            // Nom lisible (ex: "Claude 3.5 Sonnet")
-    string provider = 3;        // Provider (ex: "anthropic")
-    int32 max_tokens = 4;       // Token max en entrée
-    // Ajouter d'autres champs selon les besoins
-}
-
-// Réponse pour HealthCheck
-message HealthCheckResponse {
-    string status = 1;          // "ok", "degraded", "down"
-    string version = 2;          // Version du serveur
-    string uptime = 3;          // Durée de fonctionnement
+    // The result of each node, by id.
+    map<string, WorkflowNodeResult> results = 2;
+    // The order the nodes that ran finished in.
+    repeated string order = 3;
 }
