@@ -47,7 +47,7 @@ require (
 	github.com/rivo/uniseg v0.4.7
 	github.com/sahilm/fuzzy v0.1.3
 	github.com/sourcegraph/jsonrpc2 v0.2.3
-	github.com/tidwall/gjson v1.20.0
+	github.com/tidwall/gjson v1.20.1
 	github.com/tidwall/sjson v1.2.5
 	github.com/zeebo/xxh3 v1.1.0
 	golang.org/x/sys v0.49.0
