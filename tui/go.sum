@@ -286,8 +286,8 @@ github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c/go.mod h1:7rwL4CYBLnjL
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/posthog/posthog-go v1.39.0 h1:xYY6jwDQr1zYbpw+EC6VAbTSFpJE4JPYC4Ds4cfKvAk=
-github.com/posthog/posthog-go v1.39.0/go.mod h1:rN0C9Urenhytgo3KQ/QVorGkyGfpouquDTSs2Ujzr+g=
+github.com/posthog/posthog-go v1.41.1 h1:lYyd8Zl1vduhGQKNkk3DhhXXtwuOeh9XvMDL3rzw7fs=
+github.com/posthog/posthog-go v1.41.1/go.mod h1:rN0C9Urenhytgo3KQ/QVorGkyGfpouquDTSs2Ujzr+g=
 github.com/qdrant/go-client v1.18.3 h1:jWVjf+O2nlqHyLDo4UF8zUjPokGk7r9+GY1jS+jq49Y=
 github.com/qdrant/go-client v1.18.3/go.mod h1:BdfsUDNhN7GsClHQ6r2gkqwspWlN4h24DXaRaYfVJJ8=
 github.com/qjebbs/go-jsons v1.0.0-alpha.5 h1:U2PPDxeKI1MMOSw7e7xyxhwH9Ggc7UrDvaRIkJ+l0n8=
