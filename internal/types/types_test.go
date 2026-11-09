@@ -358,3 +358,37 @@ func TestStreamToolOutputReader(t *testing.T) {
 		t.Fatalf("expected reader output %q, got %q", "hello", string(data))
 	}
 }
+
+// What a session writes after a compaction is not part of what the compaction preserved: the session must still restore.
+func TestACompactedSessionStillValidatesAfterItGoesOn(t *testing.T) {
+	kept := []Message{
+		{ID: "tail-1", Role: RoleAssistant, Content: []ContentBlock{ToolUseContent{ID: "call-1", Name: "write"}}, Metadata: &MessageMetadata{TurnID: "t1"}},
+		{ID: "tail-2", Role: RoleUser, Content: []ContentBlock{ToolResultContent{ToolUseID: "call-1", Content: "ok"}}, Metadata: &MessageMetadata{TurnID: "t1"}},
+	}
+	hash, err := CanonicalTranscriptHash(kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary := &CompactionMetadata{
+		Kind: "summary", BoundaryVersion: CompactionBoundaryVersionV1,
+		PreservedMessages: 2, PreservedTurns: 1, PreservedToolPairs: 1,
+		FirstPreservedMessageID: "tail-1", LastPreservedMessageID: "tail-2", PreservedTailHash: hash,
+	}
+	summary := WithCompactionMetadata(Message{ID: "compact_summary", Role: RoleSystem, Content: []ContentBlock{TextContent{Text: "summary"}}}, boundary)
+	marker := WithCompactionMetadata(Message{ID: "compact_marker", Role: RoleSystem, Content: []ContentBlock{TextContent{Text: "marker"}}}, boundary)
+
+	conversation := append([]Message{summary, marker}, kept...)
+	if err := ValidateCompactionBoundary(conversation); err != nil {
+		t.Fatalf("right after the compaction: %v", err)
+	}
+
+	conversation = append(conversation, Message{ID: "later", Role: RoleUser, Content: []ContentBlock{TextContent{Text: "go on"}}, Metadata: &MessageMetadata{TurnID: "t2"}})
+	if err := ValidateCompactionBoundary(conversation); err != nil {
+		t.Fatalf("after the session went on: %v", err)
+	}
+
+	// A tail that lost a message is still refused.
+	if err := ValidateCompactionBoundary(conversation[:3]); err == nil {
+		t.Fatal("a preserved tail with a missing message must not validate")
+	}
+}
